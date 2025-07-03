@@ -4,7 +4,9 @@
 import pathlib
 from importlib.util import find_spec
 
-from click.testing import CliRunnerimport resoterre.cli as cli
+from click.testing import CliRunner
+
+import resoterre.cli as cli
 from resoterre import resoterre  # noqa: F401
 
 
