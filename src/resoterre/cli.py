@@ -7,7 +7,7 @@ from typing import Any
 import click
 
 
-@click.command()  # type: ignore[misc]
+@click.command()
 def main(args: Sequence[Any] | None = None) -> int:
     """
     Console script for resoterre.
