@@ -5,7 +5,7 @@ Credits
 Development Lead
 ----------------
 
-* Blaise Gauvin St-Denis <gauvin-st-denis.blaise@ouranos.ca> `@Ouranosinc <https://github.com/Ouranosinc>`_
+* Blaise Gauvin St-Denis <gauvin-st-denis.blaise@ouranos.ca> `@bstdenis <https://github.com/bstdenis>`_
 
 Co-Developers
 -------------
@@ -15,4 +15,4 @@ None yet. Why not be the first?
 Contributors
 ------------
 
-None yet. Why not be the first?
+* Trevor James Smith <smith.trevorj@ouranos.ca> `@Zeitsperre <https://github.com/Zeitsperre>`_
