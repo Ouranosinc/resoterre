@@ -32,7 +32,6 @@ classifiers = [
 dynamic = ["description", "version"]
 dependencies = [
   "click >=8.2.0"
-  
 ]
 
 [project.optional-dependencies]
@@ -53,6 +52,7 @@ dev = [
   "pytest-cov >=5.0.0",
   "ruff >=0.12.0",
   "tox >=4.26.0",
+  "types-click >=7.1.0",
   "watchdog >=4.0.0"
 ]
 docs = [
