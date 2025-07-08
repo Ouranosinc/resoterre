@@ -6,8 +6,6 @@ dependencies:
   - torch >=2.7.1
   # Dev tools and testing
   - pip >=25.1.1
-  - black ==25.1.0
-  - blackdoc ==0.3.9
   - bump-my-version >=1.2.0
   - click >=8.2.0
   - coverage >=7.5.0

@@ -8,7 +8,8 @@ authors = [
   {name = "Blaise Gauvin St-Denis", email = "gauvin-st-denis.blaise@ouranos.ca"}
 ]
 maintainers = [
-  {name = "Blaise Gauvin St-Denis", email = "gauvin-st-denis.blaise@ouranos.ca"}
+  {name = "Blaise Gauvin St-Denis", email = "gauvin-st-denis.blaise@ouranos.ca"},
+  {name = "Trevor James Smith", email = "smith.trevorj@ouranos.ca"}
 ]
 readme = {file = "README.rst", content-type = "text/x-rst"}
 requires-python = ">=3.10.0"
@@ -17,6 +18,7 @@ license = {file = "LICENSE"}
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
   "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
   "License :: OSI Approved :: Apache Software License",
   "Natural Language :: English",
   "Operating System :: OS Independent",
@@ -27,6 +29,8 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: Implementation :: CPython",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Atmospheric Science",
   "Typing :: Typed"
 ]
 dynamic = ["description", "version"]
@@ -38,8 +42,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   # Dev tools and testing
-  "black ==25.1.0",
-  "blackdoc ==0.4.1",
   "bump-my-version >=1.2.0",
   "coverage >=7.5.0",
   "flake8 >=7.2.0",
@@ -82,14 +84,6 @@ resoterre = "resoterre.cli:app"
 "Source" = "https://github.com/Ouranosinc/resoterre"
 
 [tool]
-
-[tool.black]
-target-version = [
-  "py310",
-  "py311",
-  "py312",
-  "py313"
-]
 
 [tool.bumpversion]
 current_version = "0.1.0"
@@ -206,10 +200,6 @@ exclude = [
   "docs/apidoc/resoterre*.rst",
   "docs/locales"
 ]
-
-[tool.isort]
-profile = "black"
-py_version = 310
 
 [tool.mypy]
 files = "."
