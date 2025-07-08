@@ -31,8 +31,8 @@ classifiers = [
 ]
 dynamic = ["description", "version"]
 dependencies = [
-  "click >=8.2.0"
-  
+  "click >=8.2.0",
+  "torch >=2.7.1"
 ]
 
 [project.optional-dependencies]
@@ -240,7 +240,8 @@ checks = [
 exclude = [
   # don't report on objects that match any of these regex
   '\.undocumented_method$',
-  '\.__repr__$'
+  '\.__repr__$',
+  '\.__init__$'
 ]
 override_SS05 = [
   # override SS05 to allow docstrings starting with these words
