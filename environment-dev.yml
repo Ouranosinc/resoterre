@@ -12,7 +12,7 @@ dependencies:
   - coverage >=7.5.0
   - flake8 >=7.2.0
   - flake8-rst-docstrings >=0.3.0
-  - flit >=3.12.0,<4.0
+  - flit >=3.11.0,<4.0
   - mypy >=1.14.1
   - numpydoc >=1.8.0
   - pre-commit >=3.5.0
@@ -20,4 +20,5 @@ dependencies:
   - pytest-cov >=5.0.0
   - ruff >=0.12.0
   - tox >=4.26.0
+  - types-click >=7.1.0
   - watchdog >=4.0.0
