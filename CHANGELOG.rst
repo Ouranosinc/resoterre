@@ -3,7 +3,6 @@ Changelog
 =========
 
 ..
-
     `Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
     ----------------------------------------------------------------
 
