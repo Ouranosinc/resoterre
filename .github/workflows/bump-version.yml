@@ -1,8 +1,3 @@
-# This workflow requires a personal access token named `BUMP_VERSION_TOKEN` with the following privileges:
-# - Contents: Read and Write
-# - Metadata: Read-Only
-# - Pull Requests: Read and Write
-
 name: "Bump Patch Version"
 
 on:
@@ -12,28 +7,31 @@ on:
     paths-ignore:
       - .cruft.json
       - .editorconfig
-      - .github/**.yml
+      - .github/*.md
+      - .github/*.yml
+      - .github/*/*.md
+      - .github/*/*.yml
       - .gitignore
       - .pre-commit-config.yaml
+      - .readthedocs.yml
       - .yamllint.yaml
       - .zenodo.json
       - AUTHORS.rst
       - CHANGELOG.rst
-      - CI/**/*.in
-      - CI/**/*.py
-      - CI/**/*.txt
+      - CI/*.in
+      - CI/*.py
+      - CI/*.txt
       - CODE_OF_CONDUCT.md
       - CONTRIBUTING.rst
       - Makefile
-      - .readthedocs.yml
       - docs/*.py
       - docs/*.rst
-      - environment-docs.yml
       - environment-dev.yml
+      - environment-docs.yml
       - pyproject.toml
-      - tests/**.py
-      - tox.ini
       - src/resoterre/__init__.py
+      - tests/*.py
+      - tox.ini
   workflow_dispatch:
 
 permissions:
@@ -47,36 +45,42 @@ jobs:
       contents: write
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
+        uses: step-security/harden-runner@002fdce3c6a235733a90a27c80493a3241e56863 # v2.12.1
         with:
           disable-sudo: true
           egress-policy: block
           allowed-endpoints: >
+            api.github.com:443
             files.pythonhosted.org:443
             github.com:443
             pypi.org:443
-
-      - name: Checkout Repository (no persist-credentials)
+      - name: Generate App Token
+        id: token_generator
+        uses: actions/create-github-app-token@df432ceedc7162793a195dd1713ff69aefc7379e # v2.0.6
+        with:
+          app-id: ${{ secrets.OURANOS_HELPER_BOT_ID }}
+          private-key: ${{ secrets.OURANOS_HELPER_BOT_KEY }}
+      - name: Checkout Repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          token: ${{ steps.token_generator.outputs.token }}
           persist-credentials: false
-          fetch-depth: 0
-
       - name: Set up Python3
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.x"
-
-      - name: Config Commit Bot
-        run: |
-          git config --local user.email "bumpversion[bot]@ouranos.ca"
-          git config --local user.name "bumpversion[bot]"
-
+      - name: Import GPG Key
+        uses: crazy-max/ghaction-import-gpg@e89d40939c28e39f97cf32126055eeae86ba74ec # v6.3.0
+        with:
+          gpg_private_key: ${{ secrets.OURANOS_HELPER_BOT_GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.OURANOS_HELPER_BOT_GPG_PRIVATE_KEY_PASSWORD }}
+          git_user_signingkey: true
+          git_commit_gpgsign: true
+          trust_level: 5
       - name: Install CI libraries
         run: |
           python -m pip install --require-hashes -r CI/requirements_ci.txt
-
-      - name: Conditional Bump Version
+      - name: Conditional Bump
         run: |
           CURRENT_VERSION=$(bump-my-version show current_version)
           if [[ ${CURRENT_VERSION} =~ -dev(\.\d+)? ]]; then
@@ -87,10 +91,9 @@ jobs:
             bump-my-version bump patch
           fi
           echo "new_version=$(bump-my-version show current_version)"
-
       - name: Push Changes
         uses: ad-m/github-push-action@d91a481090679876dfc4178fef17f286781251df # v0.8.0
         with:
           force: false
-          github_token: ${{ secrets.BUMP_VERSION_TOKEN }}
           branch: ${{ github.ref }}
+          github_token: ${{ steps.token_generator.outputs.token }}

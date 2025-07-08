@@ -3,7 +3,6 @@ Changelog
 =========
 
 ..
-
     `Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
     ----------------------------------------------------------------
 
@@ -17,12 +16,12 @@ Changelog
     ^^^^^
     * No change.
 
-    .. _changes_0.1.0:
+.. _changes_0.1.0:
 
-    `v0.1.0 <https://github.com/Ouranosinc/resoterre/tree/0.1.0>`_
-    --------------------------------------------------------------
+`v0.1.0 <https://github.com/Ouranosinc/resoterre/tree/0.1.0>`_
+--------------------------------------------------------------
 
-Contributors: Blaise Gauvin St-Denis (:user:`Ouranosinc`)
+Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:user:`Zeitsperre`)
 
 Changes
 ^^^^^^^

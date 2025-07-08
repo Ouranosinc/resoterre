@@ -2,7 +2,13 @@
   "title": "resoterre",
   "creators": [
     {
-      "name": "St-Denis, Blaise Gauvin"
+      "name": "St-Denis, Blaise Gauvin",
+      "affiliation": "Ouranos, Montréal, Québec, Canada"
+    },
+    {
+      "name": "Smith, Trevor James",
+      "affiliation": "Ouranos, Montréal, Québec, Canada",
+      "orcid": "0000-0001-5393-8359"
     }
   ],
   "keywords": [
