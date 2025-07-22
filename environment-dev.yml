@@ -1,6 +1,7 @@
 name: resoterre
 channels:
   - conda-forge
+  - pytorch
 dependencies:
   - python >=3.10,<3.14
   - torch >=2.7.1
