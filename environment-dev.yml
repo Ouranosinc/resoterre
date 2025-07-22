@@ -1,10 +1,8 @@
 name: resoterre
 channels:
   - conda-forge
-  - pytorch
 dependencies:
   - python >=3.10,<3.14
-  - torch >=2.7.1
   # Dev tools and testing
   - pip >=25.1.1
   - bump-my-version >=1.2.0
@@ -22,3 +20,5 @@ dependencies:
   - tox >=4.26.0
   - types-click >=7.1.0
   - watchdog >=4.0.0
+  - pip:
+      - torch >=2.7.1
