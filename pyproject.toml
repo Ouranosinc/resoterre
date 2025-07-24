@@ -122,8 +122,8 @@ replace = """\
 
 .. _changes_{new_version}:
 
-`v{new_version} <https://github.com/Ouranosinc/resoterre/tree/{new_version}>`_ ({now:%Y-%m-%d})
--------------------------------------------------------------------------------
+`v{new_version} <https://github.com/Ouranosinc/resoterre/tree/v{new_version}>`_ ({now:%Y-%m-%d})
+--------------------------------------------------------------------------------
 """
 
 [[tool.bumpversion.files]]
@@ -254,7 +254,7 @@ testpaths = [
 
 [tool.ruff]
 src = ["resoterre"]
-line-length = 150
+line-length = 120
 exclude = [
   ".eggs",
   ".git",
