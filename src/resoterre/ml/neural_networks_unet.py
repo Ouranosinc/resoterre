@@ -5,10 +5,11 @@ from dataclasses import dataclass, field
 import torch
 from torch import nn
 
-from resoterre.ml.neural_networks_basic import ModuleListWithInitFnTracker, SEBlock
+from resoterre.ml.neural_networks_basic import ModuleInitFnTracker, ModuleListInitTracker, ModuleWithInitTracker, SEBlock, SequentialInitTracker
 
 
 default_relu_init = "kaiming_uniform_"
+default_relu_kwargs = {"nonlinearity": "relu"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +44,7 @@ class UNetConfig:
     reduction_ratio: int | None = field(default=None, metadata={"is_hyperparameter": True, "immutable": True, "display_name": "reduction ratio"})
 
 
-class DoubleConvolution(ModuleListWithInitFnTracker):
+class DoubleConvolution(ModuleInitFnTracker, nn.Module):  # type: ignore[misc]
     """
     Double Convolution Layer with Batch Normalization and ReLU activation.
 
@@ -61,22 +62,26 @@ class DoubleConvolution(ModuleListWithInitFnTracker):
         super().__init__()
         if (kernel_size % 2) != 1:
             raise ValueError("Only odd kernel sizes are supported.")
-        self.connections = nn.ModuleList()
-        self.append_with_init_fn(
-            self.connections,
-            nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=(kernel_size - 1) // 2, bias=False),
-            init_fn_str=default_relu_init,
+        self.sequential_block = nn.Sequential(
+            self.track_init_fn(
+                ModuleWithInitTracker(
+                    nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=(kernel_size - 1) // 2, bias=False),
+                    init_weight_fn_name=default_relu_init,
+                    init_weight_fn_kwargs=default_relu_kwargs,
+                )
+            ),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(),
+            self.track_init_fn(
+                ModuleWithInitTracker(
+                    nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, padding=(kernel_size - 1) // 2, bias=False),
+                    init_weight_fn_name=default_relu_init,
+                    init_weight_fn_kwargs=default_relu_kwargs,
+                )
+            ),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(),
         )
-        self.connections.append(nn.BatchNorm2d(out_channels))
-        self.connections.append(nn.ReLU())
-        self.append_with_init_fn(
-            self.connections,
-            nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, padding=(kernel_size - 1) // 2, bias=False),
-            init_fn_str=default_relu_init,
-        )
-        self.connections.append(nn.BatchNorm2d(out_channels))
-        self.connections.append(nn.ReLU())
-        self.sequential = nn.Sequential(*self.connections)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -92,10 +97,10 @@ class DoubleConvolution(ModuleListWithInitFnTracker):
         torch.Tensor
             Output tensor of shape (batch_size, out_channels, height, width).
         """
-        return self.sequential(x)
+        return self.sequential_block(x)
 
 
-class MaxPoolingAndDoubleConvolution(ModuleListWithInitFnTracker):
+class MaxPoolingAndDoubleConvolution(ModuleInitFnTracker, nn.Module):  # type: ignore[misc]
     """
     Max Pooling followed by a Double Convolution Layer.
 
@@ -113,12 +118,10 @@ class MaxPoolingAndDoubleConvolution(ModuleListWithInitFnTracker):
 
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int = 3, reduction_ratio: int | None = None) -> None:
         super().__init__()
-        self.connections = nn.ModuleList()
-        self.connections.append(nn.MaxPool2d(2))
-        self.append_with_init_fn(self.connections, DoubleConvolution(in_channels, out_channels, kernel_size))
+        sequential_args = [nn.MaxPool2d(2), DoubleConvolution(in_channels, out_channels, kernel_size)]
         if reduction_ratio is not None:
-            self.append_with_init_fn(self.connections, SEBlock(out_channels, reduction_ratio=reduction_ratio))
-        self.sequential = nn.Sequential(*self.connections)
+            sequential_args.append(SEBlock(out_channels, reduction_ratio=reduction_ratio))
+        self.sequential_block = SequentialInitTracker(self.init_fn_tracker, *sequential_args)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -134,7 +137,7 @@ class MaxPoolingAndDoubleConvolution(ModuleListWithInitFnTracker):
         torch.Tensor
             Output tensor of shape (batch_size, out_channels, height // 2, width // 2).
         """
-        return self.sequential(x)
+        return self.sequential_block(x)
 
 
 class MaxPoolingTo1x1(nn.Module):  # type: ignore[misc]
@@ -170,7 +173,7 @@ class MaxPoolingTo1x1(nn.Module):  # type: ignore[misc]
         return self.max_pooling(x)
 
 
-class ConvolutionTransposeAndDoubleConvolution(ModuleListWithInitFnTracker):
+class ConvolutionTransposeAndDoubleConvolution(ModuleInitFnTracker, nn.Module):  # type: ignore[misc]
     """
     Convolution Transpose followed by a Double Convolution Layer.
 
@@ -195,11 +198,10 @@ class ConvolutionTransposeAndDoubleConvolution(ModuleListWithInitFnTracker):
         else:
             post_transpose_channels = in_channels // 2
 
-        self.connections = nn.ModuleList()
-        self.append_with_init_fn(self.connections, DoubleConvolution(post_transpose_channels, out_channels))
+        sequential_args = [DoubleConvolution(post_transpose_channels, out_channels)]
         if reduction_ratio is not None:
-            self.append_with_init_fn(self.connections, SEBlock(out_channels, reduction_ratio=reduction_ratio))
-        self.sequential = nn.Sequential(*self.connections)
+            sequential_args.append(SEBlock(out_channels, reduction_ratio=reduction_ratio))
+        self.sequential_block = SequentialInitTracker(self.init_fn_tracker, *sequential_args)
 
     def forward(self, x: torch.Tensor, skip_connection: torch.Tensor) -> torch.Tensor:
         """
@@ -222,7 +224,7 @@ class ConvolutionTransposeAndDoubleConvolution(ModuleListWithInitFnTracker):
             x2 = torch.cat([skip_connection, x1], dim=1)
         else:
             x2 = x1
-        return self.sequential(x2)
+        return self.sequential_block(x2)
 
 
 class ConvolutionTransposeOutOf1x1(nn.Module):  # type: ignore[misc]
@@ -263,7 +265,7 @@ class ConvolutionTransposeOutOf1x1(nn.Module):  # type: ignore[misc]
         return self.convolution_transpose(x)
 
 
-class UNet(ModuleListWithInitFnTracker):
+class UNet(ModuleInitFnTracker, nn.Module):  # type: ignore[misc]
     """
     UNet architecture with configurable parameters.
 
@@ -328,15 +330,12 @@ class UNet(ModuleListWithInitFnTracker):
         self.depth = depth
         self.resolution_increase_layers = resolution_increase_layers
 
-        self.initial_operation = nn.ModuleList()
-        self.append_with_init_fn(self.initial_operation, DoubleConvolution(in_channels, hidden_channels))
-        self.initial_sequential = nn.Sequential(*self.initial_operation)
+        self.initial_operation = self.track_init_fn(DoubleConvolution(in_channels, hidden_channels))
 
-        self.downward_operations = nn.ModuleList()
+        self.downward_operations = ModuleListInitTracker(init_fn_tracker=self.init_fn_tracker)
         for _ in range(self.depth):
-            self.append_with_init_fn(
-                self.downward_operations,
-                MaxPoolingAndDoubleConvolution(hidden_channels, hidden_channels * 2, kernel_size=kernel_size, reduction_ratio=reduction_ratio),
+            self.downward_operations.append(
+                MaxPoolingAndDoubleConvolution(hidden_channels, hidden_channels * 2, kernel_size=kernel_size, reduction_ratio=reduction_ratio)
             )
             hidden_channels *= 2
 
@@ -348,21 +347,20 @@ class UNet(ModuleListWithInitFnTracker):
             self.to_1x1_operation = MaxPoolingTo1x1(h_in, w_in)
             self.out_of_1x1_operation = ConvolutionTransposeOutOf1x1(hidden_channels + linear_size, hidden_channels, h_out=h_in, w_out=w_in)
 
-        self.upward_operations = nn.ModuleList()
+        self.upward_operations = ModuleListInitTracker(init_fn_tracker=self.init_fn_tracker)
         for i in range(self.depth + self.resolution_increase_layers):
             if i < self.depth:
                 concat = True
             else:
                 concat = False
-            self.append_with_init_fn(
-                self.upward_operations,
-                ConvolutionTransposeAndDoubleConvolution(hidden_channels, hidden_channels // 2, concat=concat, reduction_ratio=reduction_ratio),
+            self.upward_operations.append(
+                ConvolutionTransposeAndDoubleConvolution(hidden_channels, hidden_channels // 2, concat=concat, reduction_ratio=reduction_ratio)
             )
             hidden_channels = hidden_channels // 2
 
         self.last_operation = nn.Conv2d(hidden_channels, out_channels, kernel_size=kernel_size, padding=1)
 
-    def forward(self, x: torch.Tensor, x_linear: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, x_linear: torch.Tensor | None = None) -> torch.Tensor:
         """
         Forward pass through the UNet architecture.
 
@@ -378,7 +376,7 @@ class UNet(ModuleListWithInitFnTracker):
         torch.Tensor
             Output tensor of shape (batch_size, out_channels, height_out, width_out).
         """
-        downward_layers = [self.initial_sequential(x)]
+        downward_layers = [self.initial_operation(x)]
         for downward_operation in self.downward_operations:
             downward_layers.append(downward_operation(downward_layers[-1]))
         if x_linear is not None:

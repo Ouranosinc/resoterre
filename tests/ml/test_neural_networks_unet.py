@@ -6,28 +6,28 @@ from resoterre.ml.network_manager import nb_of_parameters
 
 def test_double_convolution():
     double_convolution = neural_networks_unet.DoubleConvolution(in_channels=2, out_channels=2)
-    assert len(double_convolution.init_fn_tracker["kaiming_uniform_"]) == 2
+    assert len(double_convolution.init_fn_tracker) == 2
 
 
 def test_unet_default():
     unet = neural_networks_unet.UNet(in_channels=2, out_channels=2)
     assert len(unet.downward_operations) == 3
     assert len(unet.upward_operations) == 3
-    assert len(unet.init_fn_tracker["kaiming_uniform_"]) == 14  # each double convolution has 2 relu activations
+    assert len(unet.init_fn_tracker) == 14  # each double convolution has 2 relu activations
 
 
 def test_unet_increase_resolution():
     unet = neural_networks_unet.UNet(in_channels=2, out_channels=2, resolution_increase_layers=1)
     assert len(unet.downward_operations) == 3
     assert len(unet.upward_operations) == 4
-    assert len(unet.init_fn_tracker["kaiming_uniform_"]) == 16  # each double convolution has 2 relu activations
+    assert len(unet.init_fn_tracker) == 16  # each double convolution has 2 relu activations
 
 
 def test_unet_to_1x1():
     unet = neural_networks_unet.UNet(in_channels=2, out_channels=2, go_to_1x1=True, h_in=32, w_in=16, linear_size=8)
     assert len(unet.downward_operations) == 3
     assert len(unet.upward_operations) == 3
-    assert len(unet.init_fn_tracker["kaiming_uniform_"]) == 14  # each double convolution has 2 relu activations
+    assert len(unet.init_fn_tracker) == 14  # each double convolution has 2 relu activations
 
 
 def test_unet_default_forward():
