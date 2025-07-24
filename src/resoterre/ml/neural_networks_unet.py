@@ -5,7 +5,13 @@ from dataclasses import dataclass, field
 import torch
 from torch import nn
 
-from resoterre.ml.neural_networks_basic import ModuleInitFnTracker, ModuleListInitTracker, ModuleWithInitTracker, SEBlock, SequentialInitTracker
+from resoterre.ml.neural_networks_basic import (
+    ModuleInitFnTracker,
+    ModuleListInitTracker,
+    ModuleWithInitTracker,
+    SEBlock,
+    SequentialInitTracker,
+)
 
 
 default_relu_init = "kaiming_uniform_"
@@ -38,10 +44,14 @@ class UNetConfig:
     in_channels: int
     out_channels: int
     depth: int = field(metadata={"is_hyperparameter": True, "immutable": True})
-    initial_nb_of_hidden_channels: int = field(metadata={"is_hyperparameter": True, "immutable": True, "display_name": "init chan"})
+    initial_nb_of_hidden_channels: int = field(
+        metadata={"is_hyperparameter": True, "immutable": True, "display_name": "init chan"}
+    )
     kernel_size: int = 3
     resolution_increase_layers: int = 0
-    reduction_ratio: int | None = field(default=None, metadata={"is_hyperparameter": True, "immutable": True, "display_name": "reduction ratio"})
+    reduction_ratio: int | None = field(
+        default=None, metadata={"is_hyperparameter": True, "immutable": True, "display_name": "reduction ratio"}
+    )
 
 
 class DoubleConvolution(ModuleInitFnTracker, nn.Module):  # type: ignore[misc]
@@ -65,7 +75,9 @@ class DoubleConvolution(ModuleInitFnTracker, nn.Module):  # type: ignore[misc]
         self.sequential_block = nn.Sequential(
             self.track_init_fn(
                 ModuleWithInitTracker(
-                    nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=(kernel_size - 1) // 2, bias=False),
+                    nn.Conv2d(
+                        in_channels, out_channels, kernel_size=kernel_size, padding=(kernel_size - 1) // 2, bias=False
+                    ),
                     init_weight_fn_name=default_relu_init,
                     init_weight_fn_kwargs=default_relu_kwargs,
                 )
@@ -74,7 +86,9 @@ class DoubleConvolution(ModuleInitFnTracker, nn.Module):  # type: ignore[misc]
             nn.ReLU(),
             self.track_init_fn(
                 ModuleWithInitTracker(
-                    nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, padding=(kernel_size - 1) // 2, bias=False),
+                    nn.Conv2d(
+                        out_channels, out_channels, kernel_size=kernel_size, padding=(kernel_size - 1) // 2, bias=False
+                    ),
                     init_weight_fn_name=default_relu_init,
                     init_weight_fn_kwargs=default_relu_kwargs,
                 )
@@ -116,7 +130,9 @@ class MaxPoolingAndDoubleConvolution(ModuleInitFnTracker, nn.Module):  # type: i
         Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
     """
 
-    def __init__(self, in_channels: int, out_channels: int, kernel_size: int = 3, reduction_ratio: int | None = None) -> None:
+    def __init__(
+        self, in_channels: int, out_channels: int, kernel_size: int = 3, reduction_ratio: int | None = None
+    ) -> None:
         super().__init__()
         sequential_args = [nn.MaxPool2d(2), DoubleConvolution(in_channels, out_channels, kernel_size)]
         if reduction_ratio is not None:
@@ -189,7 +205,9 @@ class ConvolutionTransposeAndDoubleConvolution(ModuleInitFnTracker, nn.Module): 
         Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
     """
 
-    def __init__(self, in_channels: int, out_channels: int, concat: bool = True, reduction_ratio: int | None = None) -> None:
+    def __init__(
+        self, in_channels: int, out_channels: int, concat: bool = True, reduction_ratio: int | None = None
+    ) -> None:
         super().__init__()
         self.concat = concat
         self.convolution_transpose = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
@@ -335,7 +353,9 @@ class UNet(ModuleInitFnTracker, nn.Module):  # type: ignore[misc]
         self.downward_operations = ModuleListInitTracker(init_fn_tracker=self.init_fn_tracker)
         for _ in range(self.depth):
             self.downward_operations.append(
-                MaxPoolingAndDoubleConvolution(hidden_channels, hidden_channels * 2, kernel_size=kernel_size, reduction_ratio=reduction_ratio)
+                MaxPoolingAndDoubleConvolution(
+                    hidden_channels, hidden_channels * 2, kernel_size=kernel_size, reduction_ratio=reduction_ratio
+                )
             )
             hidden_channels *= 2
 
@@ -345,7 +365,9 @@ class UNet(ModuleInitFnTracker, nn.Module):  # type: ignore[misc]
             if (h_in is None) or (w_in is None) or (linear_size is None):
                 raise ValueError("h_in, w_in, and linear_size must be provided if go_to_1x1 is True.")
             self.to_1x1_operation = MaxPoolingTo1x1(h_in, w_in)
-            self.out_of_1x1_operation = ConvolutionTransposeOutOf1x1(hidden_channels + linear_size, hidden_channels, h_out=h_in, w_out=w_in)
+            self.out_of_1x1_operation = ConvolutionTransposeOutOf1x1(
+                hidden_channels + linear_size, hidden_channels, h_out=h_in, w_out=w_in
+            )
 
         self.upward_operations = ModuleListInitTracker(init_fn_tracker=self.init_fn_tracker)
         for i in range(self.depth + self.resolution_increase_layers):
@@ -354,7 +376,9 @@ class UNet(ModuleInitFnTracker, nn.Module):  # type: ignore[misc]
             else:
                 concat = False
             self.upward_operations.append(
-                ConvolutionTransposeAndDoubleConvolution(hidden_channels, hidden_channels // 2, concat=concat, reduction_ratio=reduction_ratio)
+                ConvolutionTransposeAndDoubleConvolution(
+                    hidden_channels, hidden_channels // 2, concat=concat, reduction_ratio=reduction_ratio
+                )
             )
             hidden_channels = hidden_channels // 2
 

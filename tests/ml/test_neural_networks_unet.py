@@ -47,7 +47,9 @@ def test_unet_increase_resolution_forward():
 
 
 def test_unet_to_1x1_forward():
-    unet = neural_networks_unet.UNet(in_channels=2, out_channels=2, depth=2, go_to_1x1=True, h_in=64, w_in=32, linear_size=8)
+    unet = neural_networks_unet.UNet(
+        in_channels=2, out_channels=2, depth=2, go_to_1x1=True, h_in=64, w_in=32, linear_size=8
+    )
     x = torch.rand((1, 2, 64, 32))
     x_linear = torch.rand((1, 8))
     output = unet(x, x_linear=x_linear)
