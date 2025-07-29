@@ -20,4 +20,4 @@
 
 __author__ = """Blaise Gauvin St-Denis"""
 __email__ = "gauvin-st-denis.blaise@ouranos.ca"
-__version__ = "0.1.0"
+__version__ = "0.1.1-dev.0"
