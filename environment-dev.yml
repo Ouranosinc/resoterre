@@ -20,4 +20,4 @@ dependencies:
   - tox >=4.26.0
   - types-click >=7.1.0
   - watchdog >=4.0.0
-  - torch >=2.7.1
+  - pytorch >=2.7.1
