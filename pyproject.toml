@@ -77,9 +77,9 @@ all = ["resoterre[dev]", "resoterre[docs]"]
 resoterre = "resoterre.cli:app"
 
 [project.urls]
-# "Homepage" = "https://resoterre.readthedocs.io/"
-# "Changelog" = "https://resoterre.readthedocs.io/en/stable/changelog.html"
-# "About Ouranos" = "https://ouranos.ca/en/"
+"Homepage" = "https://resoterre.readthedocs.io/"
+"Changelog" = "https://resoterre.readthedocs.io/en/stable/changelog.html"
+"About Ouranos" = "https://ouranos.ca/en/"
 "Issue tracker" = "https://github.com/Ouranosinc/resoterre/issues"
 "Source" = "https://github.com/Ouranosinc/resoterre"
 
@@ -123,7 +123,7 @@ replace = """\
 .. _changes_{new_version}:
 
 `v{new_version} <https://github.com/Ouranosinc/resoterre/tree/v{new_version}>`_ ({now:%Y-%m-%d})
---------------------------------------------------------------------------------
+----------------------------------------------------------------------------
 """
 
 [[tool.bumpversion.files]]
