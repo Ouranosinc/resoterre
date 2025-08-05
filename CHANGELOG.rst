@@ -6,11 +6,12 @@ Changelog
     `Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
     ----------------------------------------------------------------
 
-    Contributors:
+    Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`)
 
     Changes
     ^^^^^^^
-    * No change.
+    * Add ``DenseUNet`` class to `neural_networks_unet` module. (:pull:`9`)
+    * Refactor handling of initialization functions in neural network modules. (:pull:`9`)
 
     Fixes
     ^^^^^
