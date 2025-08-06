@@ -48,6 +48,45 @@ class UNetConfig:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class DenseUNetConfig:
+    """
+    Configuration for the UNet architecture.
+
+    Attributes
+    ----------
+    in_channels : int
+        Number of input channels.
+    out_channels : int
+        Number of output channels.
+    depth : int, default=3
+        Depth of the UNet, i.e., number of downsampling operations.
+    out_additional_channels : int, default=16
+        Additional output channels for each dense convolution layer.
+    num_layers : int, default=2
+        Number of dense convolution layers in the block.
+    kernel_size : int, default=3
+        Size of the convolution kernel. Must be an odd number.
+    resolution_increase_layers : int, default=0
+        Number of additional resolution increase layers at the end of the UNet.
+    reduction_ratio : int | None, default=None
+        Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
+    """
+
+    in_channels: int
+    out_channels: int
+    depth: int = field(metadata={"is_hyperparameter": True, "immutable": True})
+    out_additional_channels: int = field(
+        metadata={"is_hyperparameter": True, "immutable": True, "display_name": "add chan"}
+    )
+    num_layers: int = field(metadata={"is_hyperparameter": True, "immutable": True, "display_name": "num layers"})
+    kernel_size: int = 3
+    resolution_increase_layers: int = 0
+    reduction_ratio: int | None = field(
+        default=None, metadata={"is_hyperparameter": True, "immutable": True, "display_name": "reduction ratio"}
+    )
+
+
 class DenseConvolution(nn.Module):  # type: ignore[misc]
     """
     Dense Convolution Layer with Batch Normalization and ReLU activation.
@@ -544,7 +583,7 @@ class UNetBase(nn.Module):  # type: ignore[misc]
         return x
 
 
-class UNet(nn.Module):  # type: ignore[misc]
+class UNet(UNetBase, nn.Module):  # type: ignore[misc]
     """
     UNet architecture with configurable parameters.
 
@@ -600,8 +639,8 @@ class UNet(nn.Module):  # type: ignore[misc]
             for _ in range(depth):
                 if h_in % 2 != 0 or w_in % 2 != 0:
                     raise ValueError("h_in and h_out must be divisible by 2 up to the depth of the UNET.")
-                h_in = h_in // 2
-                w_in = w_in // 2
+                h_in //= 2
+                w_in //= 2
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size
@@ -644,42 +683,6 @@ class UNet(nn.Module):  # type: ignore[misc]
             hidden_channels = hidden_channels // 2
 
         self.last_operation = nn.Conv2d(hidden_channels, out_channels, kernel_size=kernel_size, padding=1)
-
-    def forward(self, x: torch.Tensor, x_linear: torch.Tensor | None = None) -> torch.Tensor:
-        """
-        Forward pass through the UNet architecture.
-
-        Parameters
-        ----------
-        x : torch.Tensor
-            Input tensor of shape (batch_size, in_channels, height, width).
-        x_linear : torch.Tensor, optional
-            Linear input tensor of shape (batch_size, linear_size). Required if `go_to_1x1` is True.
-
-        Returns
-        -------
-        torch.Tensor
-            Output tensor of shape (batch_size, out_channels, height_out, width_out).
-        """
-        downward_layers = [self.initial_operation(x)]
-        for downward_operation in self.downward_operations:
-            downward_layers.append(downward_operation(downward_layers[-1]))
-        if x_linear is not None:
-            if (self.to_1x1_operation is None) or (self.out_of_1x1_operation is None):
-                raise ValueError("x_linear can only be provided if go_to_1x1 is True.")
-            x = self.to_1x1_operation(downward_layers[-1])
-            x_linear = x_linear.unsqueeze(-1).unsqueeze(-1)
-            x = torch.cat([x, x_linear], dim=1)
-            x = self.out_of_1x1_operation(x)
-        else:
-            x = downward_layers[-1]
-        for i, upward_operation in enumerate(self.upward_operations):
-            if i < self.depth:
-                x = upward_operation(x, downward_layers[-2 - i])
-            else:
-                x = upward_operation(x, None)
-        x = self.last_operation(x)
-        return x
 
 
 class DenseUNet(UNetBase, nn.Module):  # type: ignore[misc]
@@ -741,8 +744,8 @@ class DenseUNet(UNetBase, nn.Module):  # type: ignore[misc]
             for _ in range(depth):
                 if h_in % 2 != 0 or w_in % 2 != 0:
                     raise ValueError("h_in and h_out must be divisible by 2 up to the depth of the UNET.")
-                h_in = h_in // 2
-                w_in = w_in // 2
+                h_in //= 2
+                w_in //= 2
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size
@@ -750,9 +753,13 @@ class DenseUNet(UNetBase, nn.Module):  # type: ignore[misc]
         self.resolution_increase_layers = resolution_increase_layers
         self.channel_tracker = []
 
-        # ToDo: Here, in the first step, we want to create multiple of 2s up to depth, but this is a bug if
-        #       out_additional_channels is not a multiple of 2 up to depth or in_channels is larger or close
-        #       out_additional_channels.
+        if out_additional_channels <= in_channels:
+            raise ValueError("out_additional_channels must be larger than in_channels.")
+        out_additional_channels_check = out_additional_channels
+        for _ in range(depth):
+            if out_additional_channels_check % 2 != 0:
+                raise ValueError("out_additional_channels must be a multiple of 2 up to depth.")
+            out_additional_channels_check //= 2
         self.initial_operation = DenseConvolutionBlock(
             in_channels,
             out_additional_channels,

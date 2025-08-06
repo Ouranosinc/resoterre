@@ -10,7 +10,8 @@ Changelog
 
     Changes
     ^^^^^^^
-    * Add ``DenseUNet`` class to `neural_networks_unet` module. (:pull:`9`)
+    * Add ``DenseUNet`` class to ``neural_networks_unet`` module. (:pull:`9`)
+    * Add ``DenseUNetConfig`` class to ``neural_networks_unet`` module. (:pull:`9`)
     * Refactor handling of initialization functions in neural network modules. (:pull:`9`)
 
     Fixes

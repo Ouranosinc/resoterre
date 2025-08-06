@@ -146,3 +146,20 @@ def test_unet_dense_forward():
     output = unet(x)
     assert unet_nb_of_parameters == 165_514
     assert output.shape == (1, 2, 128, 128)
+
+
+def test_unet_dense_increase_resolution_forward():
+    unet = neural_networks_unet.DenseUNet(in_channels=2, out_channels=2, depth=2, resolution_increase_layers=2)
+    x = torch.rand((1, 2, 128, 128))
+    output = unet(x)
+    assert output.shape == (1, 2, 512, 512)
+
+
+def test_unet_dense_to_1x1_forward():
+    unet = neural_networks_unet.DenseUNet(
+        in_channels=2, out_channels=2, depth=2, go_to_1x1=True, h_in=64, w_in=32, linear_size=8
+    )
+    x = torch.rand((1, 2, 64, 32))
+    x_linear = torch.rand((1, 8))
+    output = unet(x, x_linear=x_linear)
+    assert output.shape == (1, 2, 64, 32)
