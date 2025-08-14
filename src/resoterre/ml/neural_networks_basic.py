@@ -1,136 +1,75 @@
 """Basic neural network building blocks."""
 
+from typing import Any
+
 import torch
 from torch import nn
 
 
-class ModuleWithInitTracker:
+class Linear(nn.Linear):  # type: ignore[misc]
     """
-    A module that tracks its initialization functions.
+    A linear layer that tracks its initialization function.
+
+    Parameters
+    ----------
+    init_weight_fn_name : str | None, optional
+        The name of the weight initialization function, by default None.
+    init_weight_fn_kwargs : dict | None, optional
+        Keyword arguments for the weight initialization function, by default None.
+    **kwargs : dict
+        Parameters for the torch.nn.Linear layer.
+    """
+
+    def __init__(
+        self, init_weight_fn_name: str | None = None, init_weight_fn_kwargs: dict[Any, Any] | None = None, **kwargs: Any
+    ) -> None:
+        super().__init__(**kwargs)
+        self.init_weight_fn_name = init_weight_fn_name
+        self.init_weight_fn_kwargs = init_weight_fn_kwargs
+
+
+class Conv2d(nn.Conv2d):  # type: ignore[misc]
+    """
+    A 2d convolution layer that tracks its initialization function.
+
+    Parameters
+    ----------
+    init_weight_fn_name : str | None, optional
+        The name of the weight initialization function, by default None.
+    init_weight_fn_kwargs : dict | None, optional
+        Keyword arguments for the weight initialization function, by default None.
+    **kwargs : dict
+        Parameters for the torch.nn.Conv2d layer.
+    """
+
+    def __init__(
+        self, init_weight_fn_name: str | None = None, init_weight_fn_kwargs: dict[Any, Any] | None = None, **kwargs: Any
+    ) -> None:
+        super().__init__(**kwargs)
+        self.init_weight_fn_name = init_weight_fn_name
+        self.init_weight_fn_kwargs = init_weight_fn_kwargs
+
+
+def init_weights(module: nn.Module) -> None:
+    """
+    Initialize weights of a module based on its initialization function name.
 
     Parameters
     ----------
     module : nn.Module
-        The module to track.
-    init_weight_fn_name : str | None, optional
-        The name of the weight initialization function, by default None.
-    init_weight_fn_kwargs : dict[str, str] | None, optional
-        Keyword arguments for the weight initialization function, by default None.
-    init_bias_fn_name : str | None, optional
-        The name of the bias initialization function, by default None.
+        The module whose weights are to be initialized.
     """
-
-    def __init__(
-        self,
-        module: nn.Module,
-        init_weight_fn_name: str | None = None,
-        init_weight_fn_kwargs: dict[str, str] | None = None,
-        init_bias_fn_name: str | None = None,
-    ) -> None:
-        self.module = module
-        self.init_weight_fn_name = init_weight_fn_name
-        self.init_weight_fn_kwargs = {} if init_weight_fn_kwargs is None else init_weight_fn_kwargs
-        self.init_bias_fn_name = init_bias_fn_name
+    for submodule in module.modules():
+        if hasattr(submodule, "init_weight_fn_name") and submodule.init_weight_fn_name is not None:
+            init_fn = getattr(nn.init, submodule.init_weight_fn_name, None)
+            if init_fn is not None:
+                init_kwargs = submodule.init_weight_fn_kwargs or {}
+                init_fn(submodule.weight, **init_kwargs)
+            else:
+                raise ValueError(f"Initialization function {submodule.init_weight_fn_name} not found.")
 
 
-class ModuleInitFnTracker:
-    """
-    Tracker for initialization functions of modules.
-
-    Attributes
-    ----------
-    init_fn_tracker : list[ModuleWithInitTracker]
-        A list that tracks the initialization functions of modules.
-    """
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.init_fn_tracker: list[ModuleWithInitTracker] = []
-
-    def track_init_fn(self, module: nn.Module | ModuleWithInitTracker) -> nn.Module:
-        """
-        Track the initialization function of a module.
-
-        Parameters
-        ----------
-        module : nn.ModuleWithInitTracker
-            The module to track.
-
-        Returns
-        -------
-        nn.Module
-            The original module.
-        """
-        if hasattr(module, "init_fn_tracker"):
-            self.init_fn_tracker.extend(module.init_fn_tracker)
-        elif isinstance(module, ModuleWithInitTracker):
-            self.init_fn_tracker.append(module)
-            return module.module
-        return module
-
-    def init_weights(self) -> None:
-        """Initialize the weights and biases of the tracked modules using the specified initialization functions."""
-        for tracker in self.init_fn_tracker:
-            if tracker.init_weight_fn_name is not None:
-                getattr(nn.init, tracker.init_weight_fn_name)(tracker.module.weight, **tracker.init_weight_fn_kwargs)
-            if tracker.init_bias_fn_name is not None:
-                getattr(nn.init, tracker.init_bias_fn_name)(tracker.module.module.bias)
-
-
-class ModuleListInitTracker(nn.ModuleList):  # type: ignore[misc]
-    """
-    A module list that tracks initialization functions of its modules.
-
-    Parameters
-    ----------
-    init_fn_tracker : list[ModuleWithInitTracker]
-        A list that tracks the initialization functions of modules.
-    modules : list[nn.Module] | None, optional
-        An optional list of modules to initialize the ModuleList with, by default None.
-    """
-
-    def __init__(self, init_fn_tracker: list[ModuleWithInitTracker], modules: list[nn.Module] | None = None) -> None:
-        self.init_fn_tracker = init_fn_tracker
-        if modules is not None:
-            for module in modules:
-                if hasattr(module, "init_fn_tracker"):
-                    self.init_fn_tracker.extend(module.init_fn_tracker)
-        super().__init__(modules=modules)
-
-    def append(self, module: nn.Module) -> None:
-        """
-        Append a module to the list and track its initialization function.
-
-        Parameters
-        ----------
-        module : nn.Module
-            The module to append.
-        """
-        if hasattr(module, "init_fn_tracker"):
-            self.init_fn_tracker.extend(module.init_fn_tracker)
-        super().append(module)
-
-
-class SequentialInitTracker(nn.Sequential):  # type: ignore[misc]
-    """
-    A sequential container that tracks initialization functions of its modules.
-
-    Parameters
-    ----------
-    init_tracker : list[ModuleWithInitTracker]
-        A list that tracks the initialization functions of modules.
-    *args : nn.Module
-        Variable length argument list of modules to initialize the Sequential with.
-    """
-
-    def __init__(self, init_tracker: list[ModuleWithInitTracker], *args: nn.Module) -> None:
-        for arg in args:
-            if hasattr(arg, "init_fn_tracker"):
-                init_tracker.extend(arg.init_fn_tracker)
-        super().__init__(*args)
-
-
-class SEBlock(ModuleInitFnTracker, nn.Module):  # type: ignore[misc]
+class SEBlock(nn.Module):  # type: ignore[misc]
     """
     Squeeze and Excitation Block.
 
@@ -158,12 +97,12 @@ class SEBlock(ModuleInitFnTracker, nn.Module):  # type: ignore[misc]
         reduced_channel = max(in_channels // reduction_ratio, min_reduced_channels)
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.sequential_block = nn.Sequential(
-            self.track_init_fn(
-                ModuleWithInitTracker(
-                    nn.Linear(in_channels, reduced_channel, bias=False),
-                    init_weight_fn_name="kaiming_uniform_",
-                    init_weight_fn_kwargs={"nonlinearity": "relu"},
-                )
+            Linear(
+                init_weight_fn_name="kaiming_uniform_",
+                init_weight_fn_kwargs={"nonlinearity": "relu"},
+                in_features=in_channels,
+                out_features=reduced_channel,
+                bias=False,
             ),
             nn.ReLU(inplace=True),
             nn.Linear(reduced_channel, in_channels, bias=False),

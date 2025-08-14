@@ -36,6 +36,8 @@ classifiers = [
 dynamic = ["description", "version"]
 dependencies = [
   "click >=8.2.0",
+  "numpy >=1.26.4",
+  "scikit-learn >=1.6.1",
   "torch >=2.7.1"
 ]
 

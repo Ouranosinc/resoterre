@@ -12,6 +12,7 @@ dependencies:
   - flake8-rst-docstrings >=0.3.0
   - flit >=3.11.0,<4.0
   - mypy >=1.14.1
+  - numpy >=1.26.4
   - numpydoc >=1.8.0
   - pre-commit >=3.5.0
   - pytest >=8.3.2
@@ -21,3 +22,4 @@ dependencies:
   - types-click >=7.1.0
   - watchdog >=4.0.0
   - pytorch >=2.7.1
+  - scikit-learn >=1.6.1
