@@ -11,7 +11,7 @@
       "project_slug": "resoterre",
       "project_short_description": "Machine learning tools and extensions for climate science.",
       "pypi_username": "bstdenis",
-      "version": "0.1.1",
+      "version": "0.1.2-dev.0",
       "use_pytest": "y",
       "use_black": "y",
       "use_conda": "y",
