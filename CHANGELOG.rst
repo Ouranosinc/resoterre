@@ -2,22 +2,17 @@
 Changelog
 =========
 
-..
-    `Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
-    ----------------------------------------------------------------
+`Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
+----------------------------------------------------------------
 
-    Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`)
+Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`)
 
-    Changes
-    ^^^^^^^
-    * Add ``DenseUNet`` class to ``neural_networks_unet`` module. (:pull:`11`)
-    * Add ``DenseUNetConfig`` class to ``neural_networks_unet`` module. (:pull:`11`)
-    * Refactor handling of initialization functions in neural network modules. (:pull:`11`)
-    * Add ``data_loader_utils`` module. (:pull:`11`)
-
-    Fixes
-    ^^^^^
-    * No change.
+Changes
+^^^^^^^
+* Add ``DenseUNet`` class to ``neural_networks_unet`` module. (:pull:`11`)
+* Add ``DenseUNetConfig`` class to ``neural_networks_unet`` module. (:pull:`11`)
+* Refactor handling of initialization functions in neural network modules. (:pull:`11`)
+* Add ``data_loader_utils`` module. (:pull:`11`)
 
 .. _changes_0.1.1:
 
