@@ -21,3 +21,4 @@ dependencies:
   - types-click >=7.1.0
   - watchdog >=4.0.0
   - pytorch >=2.7.1
+  - scikit-learn >=1.6.1
