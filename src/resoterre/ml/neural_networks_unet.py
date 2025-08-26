@@ -400,8 +400,12 @@ class ConvolutionTransposeAndDoubleConvolution(nn.Module):  # type: ignore[misc]
     """
 
     def __init__(
-        self, in_channels: int, out_channels: int, concat: bool = True, reduction_ratio: int | None = None,
-        post_transpose_additional_channels: int = 0
+        self,
+        in_channels: int,
+        out_channels: int,
+        concat: bool = True,
+        reduction_ratio: int | None = None,
+        post_transpose_additional_channels: int = 0,
     ) -> None:
         super().__init__()
         self.concat = concat
@@ -418,9 +422,8 @@ class ConvolutionTransposeAndDoubleConvolution(nn.Module):  # type: ignore[misc]
         self.sequential_block = nn.Sequential(*sequential_args)
 
     def forward(
-        self, x: torch.Tensor,
-        skip_connection: torch.Tensor,
-        post_transpose_input: torch.Tensor | None) -> torch.Tensor:
+        self, x: torch.Tensor, skip_connection: torch.Tensor, post_transpose_input: torch.Tensor | None = None
+    ) -> torch.Tensor:
         """
         Forward pass through the Convolution Transpose and Double Convolution layer.
 
@@ -430,7 +433,7 @@ class ConvolutionTransposeAndDoubleConvolution(nn.Module):  # type: ignore[misc]
             Input tensor of shape (batch_size, in_channels, height, width).
         skip_connection : torch.Tensor
             Skip connection tensor of shape (batch_size, in_channels, height // 2, width // 2).
-        post_transpose_input : torch.Tensor | None
+        post_transpose_input : torch.Tensor | None, optional
             Additional input after the convolution transpose.
 
         Returns
@@ -478,7 +481,7 @@ class ConvolutionTransposeAndDenseConvolutionBlock(nn.Module):  # type: ignore[m
         kernel_size: int = 3,
         concat_size: int = 0,
         reduction_ratio: int | None = None,
-        post_transpose_additional_channels: int = 0
+        post_transpose_additional_channels: int = 0,
     ) -> None:
         super().__init__()
         self.concat_size = concat_size
@@ -494,8 +497,9 @@ class ConvolutionTransposeAndDenseConvolutionBlock(nn.Module):  # type: ignore[m
             )
         self.sequential_block = nn.Sequential(*sequential_args)
 
-    def forward(self, x: torch.Tensor, skip_connection: torch.Tensor,
-                post_transpose_input: torch.Tensor | None) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, skip_connection: torch.Tensor, post_transpose_input: torch.Tensor | None = None
+    ) -> torch.Tensor:
         """
         Forward pass through the Convolution Transpose and Dense Convolution block.
 
@@ -506,7 +510,7 @@ class ConvolutionTransposeAndDenseConvolutionBlock(nn.Module):  # type: ignore[m
         skip_connection : torch.Tensor, optional
             Skip connection tensor of shape (batch_size, concat_size, height // 2, width // 2).
             Required if concat_size > 0.
-        post_transpose_input : torch.Tensor | None
+        post_transpose_input : torch.Tensor | None, optional
             Additional input after the convolution transpose.
 
         Returns
@@ -566,10 +570,8 @@ class UNetBase(nn.Module):  # type: ignore[misc]
     """Base class for UNet architectures."""
 
     def forward(
-        self,
-        x: torch.Tensor,
-        x_linear: torch.Tensor | None = None,
-        x_last_layer: torch.Tensor | None = None) -> torch.Tensor:
+        self, x: torch.Tensor, x_linear: torch.Tensor | None = None, x_last_layer: torch.Tensor | None = None
+    ) -> torch.Tensor:
         """
         Forward pass through the UNet architecture.
 
@@ -711,8 +713,11 @@ class UNet(UNetBase, nn.Module):  # type: ignore[misc]
                 local_post_transpose_additional_channels = num_last_layer_input_channels
             self.upward_operations.append(
                 ConvolutionTransposeAndDoubleConvolution(
-                    hidden_channels, hidden_channels // 2, concat=concat, reduction_ratio=reduction_ratio,
-                    post_transpose_additional_channels=local_post_transpose_additional_channels
+                    hidden_channels,
+                    hidden_channels // 2,
+                    concat=concat,
+                    reduction_ratio=reduction_ratio,
+                    post_transpose_additional_channels=local_post_transpose_additional_channels,
                 )
             )
             hidden_channels = hidden_channels // 2
@@ -847,12 +852,14 @@ class DenseUNet(UNetBase, nn.Module):  # type: ignore[misc]
                     num_layers=num_layers,
                     concat_size=concat_size,
                     reduction_ratio=reduction_ratio,
-                    post_transpose_additional_channels = local_post_transpose_additional_channels
+                    post_transpose_additional_channels=local_post_transpose_additional_channels,
                 )
             )
             self.channel_tracker.append(
-                self.channel_tracker[-1] // 2 + concat_size + num_layers * out_additional_channels +
-                local_post_transpose_additional_channels
+                self.channel_tracker[-1] // 2
+                + concat_size
+                + num_layers * out_additional_channels
+                + local_post_transpose_additional_channels
             )
 
         self.last_operation = nn.Conv2d(self.channel_tracker[-1], out_channels, kernel_size=kernel_size, padding=1)
