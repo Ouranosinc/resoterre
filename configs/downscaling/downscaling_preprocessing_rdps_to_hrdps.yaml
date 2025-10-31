@@ -1,0 +1,78 @@
+# snakemake -s rdps_to_hrdps_on_disk.smk --config config_yaml=rdps_to_hrdps_on_disk.yaml -j1 --directory=/path/to/workflow/outputs
+
+# workflow and output paths
+path_workflow: /path/to/workflow/
+path_logs: /path/to/logs
+path_figures: /path/to/figures
+path_rdps_regrid: /path/to/rdps_regrid
+path_hrdps_regrid: /path/to/hrdps_regrid
+path_ml_data: /path/to/ml_data
+
+# input data paths
+path_rdps: /path/to/rdps_data
+path_rdps_climatology: /path/to/rdps_climatology  # pre-computed, required if anomaly variables are used
+path_hrdps: /path/to/hrdps_data
+path_hrdps_climatology: /path/to/hrdps_climatology  # pre-computed, required if anomaly variables are used
+path_hrdps_mask: /path/to/hrdps_mask
+path_hrdps_mf: /path/to/hrdps_mf
+path_hrdps_sftlf: /path/to/hrdps_sftlf
+path_grids: /path/to/grids
+
+# settings
+random_seed: 0
+max_save_count: null  # Used to limit the number of samples saved during data generation; null means no limit
+
+# Dataset specifications
+grid_input_for_ml: 8km_north_america_ml
+grid_output_for_ml: 2km_north_america_ml
+start_datetime: "2017-05-22 00:00:00"
+end_datetime: "2024-05-30 18:00:00"
+rdps_variables:
+  - TT_model_levels
+  - PR
+  - HU850
+  - GZ500
+  - PC
+hrdps_variables:
+  - HRDPS_P_TT_10000
+  - HRDPS_P_PR_SFC
+
+rdps_window_size: null  # e.g., 64 for 64x64 patches
+overlap_factor: null  # preferably a divisor of rdps_window_size
+hrdps_required_unmasked_fraction: null  # e.g., 0.8 means at least 80% of HRDPS pixels in the patch must be unmasked
+
+temporal_window: null  # 1 means +/- 1 time step around the target time step
+# variables_with_temporal_context:
+
+# anomaly_variables:
+
+normalize: true
+
+# Currently the test set will be taken from the end of the dataset, validation set from before that, and the rest is training set
+# within each set, there is a partial random shuffling of samples (samples coming from the same file are together to minimize I/O)
+train_fraction: 0.8
+validation_fraction: 0.1
+test_fraction: 0.1
+
+save_batch_size: 16
+
+# Additional metadata for stac extension
+hrdps_extent_coordinates:
+  lat_min: 0.0
+  lat_max: 0.0
+  lon_min: 0.0
+  lon_max: 0.0
+hrdps_shape:
+  lat_size: 0
+  lon_size: 0
+rdps_extent_coordinates:
+  lat_min: 0.0
+  lat_max: 0.0
+  lon_min: 0.0
+  lon_max: 0.0
+rdps_shape:
+  lat_size: 0
+  lon_size: 0
+
+framework: pytorch
+framework_version: '2.9.0+cu130'
