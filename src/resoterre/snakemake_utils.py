@@ -54,20 +54,45 @@ def decode_period_string(period_string):
     return start_datetime, end_datetime
 
 
-def split_period(start_datetime, end_datetime, batch_size, datetime_format, days=0, seconds=0, microseconds=0,
-                 milliseconds=0, minutes=0, hours=0, weeks=0):
+def split_period(
+    start_datetime,
+    end_datetime,
+    batch_size,
+    datetime_format,
+    days=0,
+    seconds=0,
+    microseconds=0,
+    milliseconds=0,
+    minutes=0,
+    hours=0,
+    weeks=0,
+):
     period_strings = []
     current_datetime = start_datetime
     while current_datetime <= end_datetime:
         period_start_datetime = current_datetime
         for _ in range(batch_size - 1):
-            current_datetime += timedelta(days=days, seconds=seconds, microseconds=microseconds,
-                                          milliseconds=milliseconds, minutes=minutes, hours=hours, weeks=weeks)
+            current_datetime += timedelta(
+                days=days,
+                seconds=seconds,
+                microseconds=microseconds,
+                milliseconds=milliseconds,
+                minutes=minutes,
+                hours=hours,
+                weeks=weeks,
+            )
             if current_datetime == end_datetime:
                 break
         period_start_string = period_start_datetime.strftime(datetime_format)
         period_end_string = current_datetime.strftime(datetime_format)
         period_strings.append(f"{period_start_string}_{period_end_string}")
-        current_datetime += timedelta(days=days, seconds=seconds, microseconds=microseconds,
-                                      milliseconds=milliseconds, minutes=minutes, hours=hours, weeks=weeks)
+        current_datetime += timedelta(
+            days=days,
+            seconds=seconds,
+            microseconds=microseconds,
+            milliseconds=milliseconds,
+            minutes=minutes,
+            hours=hours,
+            weeks=weeks,
+        )
     return period_strings

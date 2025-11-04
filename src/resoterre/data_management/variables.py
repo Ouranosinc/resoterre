@@ -1,19 +1,36 @@
-degree_celsius_units = '°C'
+degree_celsius_units = "°C"
 
 
 class VariableHandler:
-    def __init__(self, name, units, netcdf_key=None, target_cf_units=None, vertical_level=None,
-                 vertical_level_units=None,min_value=None, max_value=None,
-                 mean_min=None, mean_max=None, clip_min=None, clip_max=None, nan_min=None, nan_max=None,
-                 cumulative=False, log_normalize=False, normalize_min=None, normalize_max=None,
-                 normalize_log_offset=None):
+    def __init__(
+        self,
+        name,
+        units,
+        netcdf_key=None,
+        target_cf_units=None,
+        vertical_level=None,
+        vertical_level_units=None,
+        min_value=None,
+        max_value=None,
+        mean_min=None,
+        mean_max=None,
+        clip_min=None,
+        clip_max=None,
+        nan_min=None,
+        nan_max=None,
+        cumulative=False,
+        log_normalize=False,
+        normalize_min=None,
+        normalize_max=None,
+        normalize_log_offset=None,
+    ):
         self.name = name
         self.units = units
         self.netcdf_key = netcdf_key or name
         self.target_cf_units = target_cf_units
         self.vertical_level = vertical_level
         if (vertical_level is not None) and (vertical_level_units is None):
-            raise ValueError('If vertical_level is specified, vertical_level_units must also be specified.')
+            raise ValueError("If vertical_level is specified, vertical_level_units must also be specified.")
         self.vertical_level_units = vertical_level_units
         self.min = min_value
         self.max = max_value
