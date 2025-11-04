@@ -15,12 +15,6 @@
       "href": "./ml-model-package/collection.json",
       "type": "application/json",
       "title": "Machine Learning Model packaging"
-    },
-    {
-      "rel": "child",
-      "href": "./ml-model-package/collection.json",
-      "type": "application/json",
-      "title": "Machine Learning Model packaging"
     }
   ],
   "title": "ML Model Catalog"
