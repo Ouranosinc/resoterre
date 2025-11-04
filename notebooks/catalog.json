@@ -1,0 +1,27 @@
+{
+  "type": "Catalog",
+  "id": "ml-model-catalog",
+  "stac_version": "1.1.0",
+  "description": "Catalog for ML model collections",
+  "links": [
+    {
+      "rel": "root",
+      "href": "./catalog.json",
+      "type": "application/json",
+      "title": "ML Model Catalog"
+    },
+    {
+      "rel": "child",
+      "href": "./ml-model-package/collection.json",
+      "type": "application/json",
+      "title": "Machine Learning Model packaging"
+    },
+    {
+      "rel": "child",
+      "href": "./ml-model-package/collection.json",
+      "type": "application/json",
+      "title": "Machine Learning Model packaging"
+    }
+  ],
+  "title": "ML Model Catalog"
+}
