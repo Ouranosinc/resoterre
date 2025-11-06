@@ -57,22 +57,39 @@ test_fraction: 0.1
 save_batch_size: 16
 
 # Additional metadata for stac extension
+# Note that ideally this should be retrieved from the data files
 hrdps_extent_coordinates:
-  lat_min: 0.0
-  lat_max: 0.0
-  lon_min: 0.0
-  lon_max: 0.0
+  lat_min: 27.284586
+  lat_max: 70.6115
+  lon_min: -152.73064
+  lon_max: -40.708557
 hrdps_shape:
-  lat_size: 0
-  lon_size: 0
+  rlat_size: 1290
+  rlon_size: 2540
 rdps_extent_coordinates:
-  lat_min: 0.0
-  lat_max: 0.0
-  lon_min: 0.0
-  lon_max: 0.0
+  lat_min: -7.7491064
+  lat_max: 89.96573
+  lon_min: 0.00029021563
+  lon_max: 359.9995
 rdps_shape:
-  lat_size: 0
-  lon_size: 0
+  rlat_size: 1076
+  rlon_size: 1102
+north_america_8km_grid_extent_coordinates:
+  lat_min: 18.35
+  lat_max: 79.55
+  lon_min: -158.05
+  lon_max: -35.41
+north_america_8km_grid_shape:
+  lat_size: 256
+  lon_size: 512
+north_america_2km_grid_extent_coordinates:
+  lat_min: 18.26
+  lat_max: 79.64
+  lon_min: -158.14
+  lon_max: -35.32
+north_america_2km_grid_shape:
+  rlat_size: 1024
+  rlon_size: 2048
 
 framework: pytorch
 framework_version: '2.9.0+cu130'

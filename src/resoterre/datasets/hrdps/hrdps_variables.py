@@ -1,3 +1,5 @@
+"""Specifications for HRDPS variables."""
+
 import copy
 
 from resoterre.data_management.variables import VariableHandler, VariableHandlerCollection, degree_celsius_units

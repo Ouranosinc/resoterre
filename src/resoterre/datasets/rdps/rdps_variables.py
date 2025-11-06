@@ -1,3 +1,5 @@
+"""Specifications for HRDPS variables."""
+
 import copy
 
 from resoterre.data_management.variables import VariableHandler, VariableHandlerCollection, degree_celsius_units
@@ -273,19 +275,19 @@ for vertical_level in vertical_levels:
     rdps_variables[f"GZ{vertical_level}_anomaly"].normalize_max = 30.0
     rdps_variables[f"GZ{vertical_level}_anomaly"].vertical_level = vertical_level
     rdps_variables[f"GZ{vertical_level}_anomaly"].vertical_level_units = "hPa"
-rdps_variables["GZ850"].min_value = 50.0
-rdps_variables["GZ850"].max_value = 500.0
+rdps_variables["GZ850"].min = 50.0
+rdps_variables["GZ850"].max = 500.0
 rdps_variables["GZ850"].mean_min = 50.0
 rdps_variables["GZ850"].mean_max = 250.0
-rdps_variables["GZ700"].min_value = 100.0
-rdps_variables["GZ700"].max_value = 1000.0
+rdps_variables["GZ700"].min = 100.0
+rdps_variables["GZ700"].max = 1000.0
 rdps_variables["GZ700"].mean_min = 200.0
 rdps_variables["GZ700"].mean_max = 400.0
-rdps_variables["GZ500"].min_value = 200.0
-rdps_variables["GZ500"].max_value = 1000.0
+rdps_variables["GZ500"].min = 200.0
+rdps_variables["GZ500"].max = 1000.0
 rdps_variables["GZ500"].mean_min = 450.0
 rdps_variables["GZ500"].mean_max = 650.0
-rdps_variables["GZ250"].min_value = 500.0
-rdps_variables["GZ250"].max_value = 1500.0
+rdps_variables["GZ250"].min = 500.0
+rdps_variables["GZ250"].max = 1500.0
 rdps_variables["GZ250"].mean_min = 900.0
 rdps_variables["GZ250"].mean_max = 1300.0

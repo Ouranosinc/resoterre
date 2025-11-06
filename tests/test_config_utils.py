@@ -1,5 +1,6 @@
 import tempfile
 from dataclasses import dataclass, field
+from typing import Any
 
 import yaml
 
@@ -35,7 +36,7 @@ def test_config_from_yaml_01():
     @dataclass(frozen=True, slots=True)
     class NestedConfig:
         fixed: FixedConfig
-        customs: dict = field(default_factory=dict)
+        customs: dict[str, Any] = field(default_factory=dict)
         c: float = 0.0
 
     with tempfile.NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp_file:
