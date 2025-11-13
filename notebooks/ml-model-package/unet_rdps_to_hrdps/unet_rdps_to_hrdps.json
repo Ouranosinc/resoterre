@@ -51,8 +51,8 @@
     "mlm:name": "UNet RDPS HRDPS Downscaling",
     "mlm:architecture": "resoterre.ml.neural_networks_unet.UNet",
     "mlm:tasks": [
-      "super-resolution",
-      "downscaling"
+      "downscaling",
+      "super-resolution"
     ],
     "mlm:input": [
       {
@@ -74,9 +74,9 @@
           ],
           "dim_order": [
             "time",
+            "variables",
             "latitude",
-            "longitude",
-            "variables"
+            "longitude"
           ],
           "data_type": "float32"
         },
@@ -92,8 +92,8 @@
         ],
         "name": "hrdps_outputs",
         "tasks": [
-          "super-resolution",
-          "downscaling"
+          "downscaling",
+          "super-resolution"
         ],
         "result": {
           "shape": [
@@ -104,16 +104,16 @@
           ],
           "dim_order": [
             "time",
+            "variables",
             "latitude",
-            "longitude",
-            "variables"
+            "longitude"
           ],
           "data_type": "float32"
         },
         "post_processing_function": null
       }
     ],
-    "mlm:total_parameters": 1927842,
+    "mlm:total_parameters": 2439578,
     "mlm:pretrained": true,
     "mlm:pretrained_source": "Custom RDPS-HRDPS dataset",
     "cube:dimensions": {
@@ -258,7 +258,7 @@
   ],
   "assets": {
     "model": {
-      "href": "/path/to/models",
+      "href": "/path/to/models/unet-model.ckpt",
       "type": "application/octet-stream; application/pytorch",
       "title": "UNet checkpoint",
       "description": "UNet trained on RDPS HRDPS downscaling task.",
