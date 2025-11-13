@@ -118,72 +118,39 @@
     "mlm:pretrained_source": "Custom RDPS-HRDPS dataset",
     "cube:dimensions": {
       "time": {
-        "type": "geometry",
-        "dim_type": "temporal",
+        "type": "temporal",
         "description": "Time dimension",
-        "bbox": [
-          1495425600.0,
-          1495425600.0,
-          1717106400.0,
-          1717106400.0
-        ],
         "extent": [
           "2017-05-22T00:00:00Z",
           "2024-05-30T18:00:00Z"
         ],
-        "values": [
-          "2017-05-22T00:00:00Z",
-          "2024-05-30T18:00:00Z"
-        ],
-        "axis": "t",
-        "unit": "seconds"
+        "unit": "s"
       },
       "latitude": {
-        "type": "geometry",
-        "dim_type": "spatial",
+        "type": "spatial",
         "description": "Latitude",
-        "bbox": [
-          37.13739,
-          37.13739,
-          58.21798,
-          58.21798
-        ],
         "extent": [
           37.13739,
           58.21798
         ],
         "axis": "y",
-        "unit": "degrees",
+        "unit": "degree",
         "reference_system": "EPSG:4326"
       },
       "longitude": {
-        "type": "geometry",
-        "dim_type": "spatial",
+        "type": "spatial",
         "description": "Longitude",
-        "bbox": [
-          -7.88219,
-          -7.88219,
-          27.91165,
-          27.91165
-        ],
         "extent": [
           -7.88219,
           27.91165
         ],
         "axis": "x",
-        "unit": "degrees",
+        "unit": "degree",
         "reference_system": "EPSG:4326"
       },
       "level": {
         "type": "spatial",
-        "dim_type": "vertical",
         "description": "Pressure levels",
-        "bbox": [
-          250,
-          850,
-          250,
-          850
-        ],
         "extent": [
           250,
           850
