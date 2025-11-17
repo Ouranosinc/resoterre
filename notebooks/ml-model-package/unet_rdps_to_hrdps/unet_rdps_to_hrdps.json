@@ -6,6 +6,33 @@
     "https://stac-extensions.github.io/datacube/v2.3.0/schema.json"
   ],
   "id": "unet_rdps_to_hrdps",
+  "collection": "ml-model-package",
+  "mlm:entrypoint": "resoterre.ml.neural_networks_unet.UNet",
+  "mlm:hyperparameters": {
+    "nb_of_new_epochs": 5,
+    "networks": {
+      "UNet": {
+        "type": "UNet",
+        "in_channels": 5,
+        "out_channels": 2,
+        "depth": 3,
+        "initial_nb_of_hidden_channels": 36,
+        "resolution_increase_layers": 2
+      }
+    },
+    "data_loader": {
+      "batch_size": 16,
+      "num_workers": 6,
+      "multiprocessing_context": "spawn"
+    },
+    "optimizers": {
+      "UNet": {
+        "type": "Adam",
+        "lr": 0.002,
+        "weight_decay": 1e-05
+      }
+    }
+  },
   "geometry": {
     "type": "Polygon",
     "coordinates": [
@@ -51,8 +78,8 @@
     "mlm:name": "UNet RDPS HRDPS Downscaling",
     "mlm:architecture": "resoterre.ml.neural_networks_unet.UNet",
     "mlm:tasks": [
-      "super-resolution",
-      "downscaling"
+      "downscaling",
+      "super-resolution"
     ],
     "mlm:input": [
       {
@@ -92,8 +119,8 @@
         ],
         "name": "hrdps_outputs",
         "tasks": [
-          "super-resolution",
-          "downscaling"
+          "downscaling",
+          "super-resolution"
         ],
         "result": {
           "shape": [
@@ -277,33 +304,6 @@
         "mlm:source_code",
         "code"
       ]
-    }
-  },
-  "collection": "ml-model-package",
-  "mlm:entrypoint": "resoterre.ml.neural_networks_unet.UNet",
-  "mlm:hyperparameters": {
-    "nb_of_new_epochs": 5,
-    "networks": {
-      "UNet": {
-        "type": "UNet",
-        "in_channels": 5,
-        "out_channels": 2,
-        "depth": 3,
-        "initial_nb_of_hidden_channels": 36,
-        "resolution_increase_layers": 2
-      }
-    },
-    "data_loader": {
-      "batch_size": 16,
-      "num_workers": 6,
-      "multiprocessing_context": "spawn"
-    },
-    "optimizers": {
-      "UNet": {
-        "type": "Adam",
-        "lr": 0.002,
-        "weight_decay": 1e-05
-      }
     }
   }
 }
