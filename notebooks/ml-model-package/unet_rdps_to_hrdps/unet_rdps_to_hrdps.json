@@ -11,33 +11,33 @@
     "coordinates": [
       [
         [
-          -7.88219,
-          37.13739
+          -158.05,
+          18.35
         ],
         [
-          -7.88219,
-          58.21798
+          -158.05,
+          79.55
         ],
         [
-          27.91165,
-          58.21798
+          -35.41,
+          79.55
         ],
         [
-          27.91165,
-          37.13739
+          -35.41,
+          18.35
         ],
         [
-          -7.88219,
-          37.13739
+          -158.05,
+          18.35
         ]
       ]
     ]
   },
   "bbox": [
-    -7.88219,
-    37.13739,
-    27.91165,
-    58.21798
+    -158.05,
+    18.35,
+    -35.41,
+    79.55
   ],
   "properties": {
     "description": "UNet trained to downscale RDPS meteorological data to HRDPS resolution.",
@@ -51,8 +51,8 @@
     "mlm:name": "UNet RDPS HRDPS Downscaling",
     "mlm:architecture": "resoterre.ml.neural_networks_unet.UNet",
     "mlm:tasks": [
-      "downscaling",
-      "super-resolution"
+      "super-resolution",
+      "downscaling"
     ],
     "mlm:input": [
       {
@@ -92,8 +92,8 @@
         ],
         "name": "hrdps_outputs",
         "tasks": [
-          "downscaling",
-          "super-resolution"
+          "super-resolution",
+          "downscaling"
         ],
         "result": {
           "shape": [
@@ -130,8 +130,8 @@
         "type": "spatial",
         "description": "Latitude",
         "extent": [
-          37.13739,
-          58.21798
+          18.35,
+          79.55
         ],
         "axis": "y",
         "unit": "degree",
@@ -141,8 +141,8 @@
         "type": "spatial",
         "description": "Longitude",
         "extent": [
-          -7.88219,
-          27.91165
+          -158.05,
+          -35.41
         ],
         "axis": "x",
         "unit": "degree",
