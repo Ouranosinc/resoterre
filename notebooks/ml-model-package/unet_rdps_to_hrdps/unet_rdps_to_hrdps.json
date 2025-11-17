@@ -280,5 +280,30 @@
     }
   },
   "collection": "ml-model-package",
-  "mlm:entrypoint": "resoterre.ml.neural_networks_unet.UNet"
+  "mlm:entrypoint": "resoterre.ml.neural_networks_unet.UNet",
+  "mlm:hyperparameters": {
+    "nb_of_new_epochs": 5,
+    "networks": {
+      "UNet": {
+        "type": "UNet",
+        "in_channels": 5,
+        "out_channels": 2,
+        "depth": 3,
+        "initial_nb_of_hidden_channels": 36,
+        "resolution_increase_layers": 2
+      }
+    },
+    "data_loader": {
+      "batch_size": 16,
+      "num_workers": 6,
+      "multiprocessing_context": "spawn"
+    },
+    "optimizers": {
+      "UNet": {
+        "type": "Adam",
+        "lr": 0.002,
+        "weight_decay": 1e-05
+      }
+    }
+  }
 }
