@@ -78,8 +78,8 @@
     "mlm:name": "UNet RDPS HRDPS Downscaling",
     "mlm:architecture": "resoterre.ml.neural_networks_unet.UNet",
     "mlm:tasks": [
-      "downscaling",
-      "super-resolution"
+      "super-resolution",
+      "downscaling"
     ],
     "mlm:input": [
       {
@@ -119,8 +119,8 @@
         ],
         "name": "hrdps_outputs",
         "tasks": [
-          "downscaling",
-          "super-resolution"
+          "super-resolution",
+          "downscaling"
         ],
         "result": {
           "shape": [
