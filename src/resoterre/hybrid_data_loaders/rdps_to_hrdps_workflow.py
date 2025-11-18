@@ -44,8 +44,8 @@ class RDPSToHRDPSOnDiskConfig:
         Random seed for reproducibility.
     rdps_input_validation_batch_size : int
         Batch size for RDPS input validation.
-    max_save_count : int | None
-        Maximum number of samples to save.
+    data_loader_snakemake_batch_size : int
+        How many time steps are processed in a single snakemake job. This should be a multiple of save_batch_size.
     grid_input_for_ml : str | None
         Grid name for input data in machine learning.
     grid_output_for_ml : str | None
@@ -58,6 +58,9 @@ class RDPSToHRDPSOnDiskConfig:
         List of RDPS variable names to process.
     hrdps_variables : list[str]
         List of HRDPS variable names to process.
+    forecast_hours : list[int]
+        List of forecast hours to include.
+        Only tested with [7, 8, 9, 10, 11, 12].
     rdps_window_size : int | None
         Size of the RDPS patches (if using tiling).
     overlap_factor : int | None
@@ -97,15 +100,16 @@ class RDPSToHRDPSOnDiskConfig:
     path_hrdps_sftlf: Path | None = None
     path_grids: Path | None = None
     random_seed: int | None = 0
-    rdps_input_validation_batch_size: int = 32
+    rdps_input_validation_batch_size: int = 32  # ToDo: this is also used for hrdps validation batch size
+    data_loader_snakemake_batch_size: int = 128
     # ToDo: many more workflow settings are needed here
-    max_save_count: int | None = None
     grid_input_for_ml: str | None = None
     grid_output_for_ml: str | None = None
     start_datetime: datetime.datetime | None = None
     end_datetime: datetime.datetime | None = None
     rdps_variables: list[str] = field(default_factory=list)
     hrdps_variables: list[str] = field(default_factory=list)
+    forecast_hours: list[int] = field(default_factory=list)
     rdps_window_size: int | None = None
     overlap_factor: int | None = None  # preferably a divisor of rdps_window_size
     hrdps_required_unmasked_fraction: float | None = None
