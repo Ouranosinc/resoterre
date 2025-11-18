@@ -6,7 +6,7 @@ Changelog
     `Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
     ----------------------------------------------------------------
 
-    Contributors:
+    Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`)
 
     Changes
     ^^^^^^^
@@ -14,7 +14,7 @@ Changelog
 
     Fixes
     ^^^^^
-    * No change.
+    * Set github workflows python version to 3.13.
 
 .. _changes_0.1.2:
 
