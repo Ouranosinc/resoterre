@@ -25,3 +25,4 @@ dependencies:
   - pytorch >=2.7.1
   - scikit-learn >=1.6.1
   - types-PyYAML >=6.0.12
+  - dacite >=1.8.1
