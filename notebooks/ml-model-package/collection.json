@@ -1,0 +1,47 @@
+{
+  "type": "Collection",
+  "id": "ml-model-package",
+  "stac_version": "1.1.0",
+  "description": "Collection of ML model items",
+  "links": [
+    {
+      "rel": "root",
+      "href": "../catalog.json",
+      "type": "application/json",
+      "title": "ML Model Catalog"
+    },
+    {
+      "rel": "parent",
+      "href": "../catalog.json",
+      "type": "application/json",
+      "title": "ML Model Catalog"
+    },
+    {
+      "rel": "item",
+      "href": "./unet_rdps_to_hrdps/unet_rdps_to_hrdps.json",
+      "type": "application/geo+json"
+    }
+  ],
+  "title": "Machine Learning Model packaging",
+  "extent": {
+    "spatial": {
+      "bbox": [
+        [
+          -158.05,
+          18.35,
+          -35.41,
+          79.55
+        ]
+      ]
+    },
+    "temporal": {
+      "interval": [
+        [
+          "2017-05-22T00:00:00Z",
+          "2024-05-30T18:00:00Z"
+        ]
+      ]
+    }
+  },
+  "license": "other"
+}

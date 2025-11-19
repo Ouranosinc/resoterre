@@ -62,3 +62,6 @@ nb_of_new_epochs: 5
 # Hardware specifications
 device: cuda
 num_threads: 16
+
+framework: pytorch
+framework_version: '2.9.0+cu130'

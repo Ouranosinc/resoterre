@@ -1,0 +1,309 @@
+{
+  "type": "Feature",
+  "stac_version": "1.1.0",
+  "stac_extensions": [
+    "https://stac-extensions.github.io/mlm/v1.5.0/schema.json",
+    "https://stac-extensions.github.io/datacube/v2.2.0/schema.json"
+  ],
+  "id": "unet_rdps_to_hrdps",
+  "collection": "ml-model-package",
+  "mlm:entrypoint": "resoterre.ml.neural_networks_unet.UNet",
+  "mlm:hyperparameters": {
+    "nb_of_new_epochs": 5,
+    "networks": {
+      "UNet": {
+        "type": "UNet",
+        "in_channels": 5,
+        "out_channels": 2,
+        "depth": 3,
+        "initial_nb_of_hidden_channels": 36,
+        "resolution_increase_layers": 2
+      }
+    },
+    "data_loader": {
+      "batch_size": 16,
+      "num_workers": 6,
+      "multiprocessing_context": "spawn"
+    },
+    "optimizers": {
+      "UNet": {
+        "type": "Adam",
+        "lr": 0.002,
+        "weight_decay": 1e-05
+      }
+    }
+  },
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          -158.05,
+          18.35
+        ],
+        [
+          -158.05,
+          79.55
+        ],
+        [
+          -35.41,
+          79.55
+        ],
+        [
+          -35.41,
+          18.35
+        ],
+        [
+          -158.05,
+          18.35
+        ]
+      ]
+    ]
+  },
+  "bbox": [
+    -158.05,
+    18.35,
+    -35.41,
+    79.55
+  ],
+  "properties": {
+    "description": "UNet trained to downscale RDPS meteorological data to HRDPS resolution.",
+    "start_datetime": "2017-05-22T00:00:00Z",
+    "end_datetime": "2024-05-30T18:00:00Z",
+    "datetime": null,
+    "mlm:framework": "pytorch",
+    "mlm:framework_version": "2.9.0+cu130",
+    "mlm:accelerator": "cuda",
+    "mlm:accelerator_constrained": false,
+    "mlm:name": "UNet RDPS HRDPS Downscaling",
+    "mlm:architecture": "resoterre.ml.neural_networks_unet.UNet",
+    "mlm:tasks": [
+      "super-resolution",
+      "downscaling"
+    ],
+    "mlm:input": [
+      {
+        "bands": [],
+        "variables": [
+          "TT_model_levels",
+          "PR",
+          "HU850",
+          "GZ500",
+          "PC"
+        ],
+        "name": "rdps_inputs",
+        "input": {
+          "shape": [
+            -1,
+            5,
+            64,
+            64
+          ],
+          "dim_order": [
+            "time",
+            "variables",
+            "latitude",
+            "longitude"
+          ],
+          "data_type": "float32"
+        },
+        "pre_processing_function": null
+      }
+    ],
+    "mlm:output": [
+      {
+        "bands": [],
+        "variables": [
+          "HRDPS_P_TT_10000",
+          "HRDPS_P_PR_SFC"
+        ],
+        "name": "hrdps_outputs",
+        "tasks": [
+          "super-resolution",
+          "downscaling"
+        ],
+        "result": {
+          "shape": [
+            -1,
+            2,
+            64,
+            64
+          ],
+          "dim_order": [
+            "time",
+            "variables",
+            "latitude",
+            "longitude"
+          ],
+          "data_type": "float32"
+        },
+        "post_processing_function": null
+      }
+    ],
+    "mlm:total_parameters": 2439578,
+    "mlm:pretrained": true,
+    "mlm:pretrained_source": "Custom RDPS-HRDPS dataset",
+    "cube:dimensions": {
+      "time": {
+        "type": "temporal",
+        "description": "Time dimension",
+        "extent": [
+          "2017-05-22T00:00:00Z",
+          "2024-05-30T18:00:00Z"
+        ],
+        "unit": "s"
+      },
+      "latitude": {
+        "type": "spatial",
+        "description": "Latitude",
+        "extent": [
+          18.35,
+          79.55
+        ],
+        "axis": "y",
+        "unit": "degree",
+        "reference_system": "EPSG:4326"
+      },
+      "longitude": {
+        "type": "spatial",
+        "description": "Longitude",
+        "extent": [
+          -158.05,
+          -35.41
+        ],
+        "axis": "x",
+        "unit": "degree",
+        "reference_system": "EPSG:4326"
+      },
+      "level": {
+        "type": "spatial",
+        "description": "Pressure levels",
+        "extent": [
+          250,
+          850
+        ],
+        "values": [
+          850,
+          700,
+          500,
+          250
+        ],
+        "axis": "z",
+        "unit": "hPa"
+      }
+    },
+    "cube:variables": {
+      "TT_model_levels": {
+        "dimensions": [
+          "time",
+          "latitude",
+          "longitude",
+          "level"
+        ],
+        "type": "data",
+        "data_type": "float32"
+      },
+      "PR": {
+        "dimensions": [
+          "time",
+          "latitude",
+          "longitude"
+        ],
+        "type": "data",
+        "data_type": "float32"
+      },
+      "HU850": {
+        "dimensions": [
+          "time",
+          "latitude",
+          "longitude",
+          "level"
+        ],
+        "type": "data",
+        "data_type": "float32"
+      },
+      "GZ500": {
+        "dimensions": [
+          "time",
+          "latitude",
+          "longitude",
+          "level"
+        ],
+        "type": "data",
+        "data_type": "float32"
+      },
+      "PC": {
+        "dimensions": [
+          "time",
+          "latitude",
+          "longitude",
+          "level"
+        ],
+        "type": "data",
+        "data_type": "float32"
+      },
+      "HRDPS_P_TT_10000": {
+        "dimensions": [
+          "time",
+          "latitude",
+          "longitude",
+          "level"
+        ],
+        "type": "data",
+        "data_type": "float32"
+      },
+      "HRDPS_P_PR_SFC": {
+        "dimensions": [
+          "time",
+          "latitude",
+          "longitude"
+        ],
+        "type": "data",
+        "data_type": "float32"
+      }
+    }
+  },
+  "links": [
+    {
+      "rel": "root",
+      "href": "../../catalog.json",
+      "type": "application/json",
+      "title": "ML Model Catalog"
+    },
+    {
+      "rel": "collection",
+      "href": "../collection.json",
+      "type": "application/json",
+      "title": "Machine Learning Model packaging"
+    },
+    {
+      "rel": "parent",
+      "href": "../collection.json",
+      "type": "application/json",
+      "title": "Machine Learning Model packaging"
+    }
+  ],
+  "assets": {
+    "model": {
+      "href": "/path/to/models/unet-model.ckpt",
+      "type": "application/octet-stream; application/pytorch",
+      "title": "UNet checkpoint",
+      "description": "UNet trained on RDPS HRDPS downscaling task.",
+      "mlm:artifact_type": "torch.save",
+      "roles": [
+        "mlm:model",
+        "mlm:weights"
+      ]
+    },
+    "source_code": {
+      "href": "https://github.com/Ouranosinc/resoterre",
+      "type": "text/html",
+      "title": "Source code for UNet",
+      "description": "GitHub repo of the PyTorch model",
+      "roles": [
+        "mlm:source_code",
+        "code"
+      ]
+    }
+  }
+}
