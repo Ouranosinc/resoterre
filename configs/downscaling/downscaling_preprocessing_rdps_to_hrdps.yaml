@@ -1,4 +1,8 @@
-# snakemake -s rdps_to_hrdps_on_disk.smk --config config_yaml=rdps_to_hrdps_on_disk.yaml -j1 --directory=/path/to/workflow/outputs
+preprocessing_command: |
+  snakemake -s scripts/hybrid_data_loaders/rdps_to_hrdps_on_disk.smk \
+    --config config_yaml=/path/to/downscaling_preprocessing_rdps_to_hrdps.yaml \
+    -j1 \
+    --directory=/path/to/workflow/outputs
 
 # workflow and output paths
 path_workflow: /path/to/workflow/
