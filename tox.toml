@@ -27,14 +27,14 @@ commands_post = []
 allowlist_externals = ["make"]
 
 [env_run_base]
-setenv = {PYTEST_ADDOPTS = "--color=yes", PYTHONPATH = "{toxinidir}"}
+setenv = {PYTEST_ADDOPTS = "--color=yes --cov=resoterre --cov-report=lcov", PYTHONPATH = "{toxinidir}"}
 passenv = ["COVERALLS_*", "GITHUB_*"]
 extras = ["dev"]
 download = true
 install_command = ["python", "-m", "pip", "install", "--no-user", "{opts}", "{packages}"]
 commands_pre = [["pip", "list"], ["pip", "check"]]
 commands = [
-  ["pytest", "--cov"]
+  ["pytest", "{posargs}"]
 ]
 commands_post = [
   ["coverage", "report"]
