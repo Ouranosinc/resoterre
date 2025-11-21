@@ -2,7 +2,7 @@ name: resoterre
 channels:
   - conda-forge
 dependencies:
-  - python >=3.10,<3.14
+  - python >=3.10,<3.15
   # Dev tools and testing
   - pip >=25.2
   # - bump-my-version >=1.2.3  # temporarily disabled due to incompatibility with click>=8.3
