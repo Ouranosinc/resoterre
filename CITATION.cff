@@ -1,0 +1,27 @@
+# This CITATION.cff file was generated with cffinit and templated with cookiecutter.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: "1.2.0"
+title: "resoterre"
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: "software"
+authors:
+  - given-names: 'Blaise'
+    family-names: 'Gauvin St-Denis'
+    email: 'gauvin-st-denis.blaise@ouranos.ca'
+    orcid: 'https://orcid.org/0009-0004-9049-2092'
+  - family-names: 'Smith'
+    given-names: 'Trevor James'
+    email: 'smith.trevorj@ouranos.ca'
+    orcid: "https://orcid.org/0000-0001-5393-8359"
+contact:
+  - given-names: 'Blaise'
+    family-names: 'Gauvin St-Denis'
+    email: 'gauvin-st-denis.blaise@ouranos.ca'
+    orcid: 'https://orcid.org/0009-0004-9049-2092'
+repository-code: "https://github.com/Ouranosinc/resoterre"
+abstract: "Machine learning tools and extensions for climate science."
+license: "Apache-2.0"
+version: "0.1.2"

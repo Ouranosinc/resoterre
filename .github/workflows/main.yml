@@ -27,8 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version:
-          - "3.13"
+        python-version: [ "3.13" ]
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
@@ -51,7 +50,7 @@ jobs:
         with:
           path: |
             .tox
-          key: ${{ hashFiles('pyproject.toml', 'tox.ini') }}-lint
+          key: ${{ hashFiles('pyproject.toml', 'tox.toml') }}-lint
       - name: Run linting suite
         run: |
           python -m tox -e lint
@@ -85,15 +84,15 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .tox
-          key: ${{ matrix.os }}-Python${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'tox.ini') }}
+          key: ${{ matrix.os }}-Python${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'tox.toml') }}
       - name: Test with tox
         run: |
           python -m tox
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          COVERALLS_FLAG_NAME: run-${{ matrix.python-version }}
-          COVERALLS_PARALLEL: true
-          COVERALLS_SERVICE_NAME: github
+      - name: Report Coverage
+        uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+        with:
+          flag-name: run-${{ matrix.python-version }}-pypi
+          parallel: true
 
   test-conda:
     name: Test with Python${{ matrix.python-version }} (Anaconda, ${{ matrix.os }})
