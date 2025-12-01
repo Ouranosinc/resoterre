@@ -19,8 +19,9 @@ dependencies:
   - pytest-cov >=5.0.0
   - pyyaml >=6.0.1
   - ruff >=0.12.0
-  - tox >=4.26.0
+  - tox >=4.30.3
   - types-click >=7.1.0
+  - vulture >=2.14
   - watchdog >=4.0.0
   - pytorch >=2.7.1
   - ruff >=0.13.3
