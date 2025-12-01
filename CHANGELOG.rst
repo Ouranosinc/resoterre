@@ -2,19 +2,28 @@
 Changelog
 =========
 
-..
-    `Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
-    ----------------------------------------------------------------
+`Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
+----------------------------------------------------------------
 
-    Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`)
+Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:user:`Zeitsperre`).
 
-    Changes
-    ^^^^^^^
-    * No change.
+Changes
+^^^^^^^
+* No change.
 
-    Fixes
-    ^^^^^
-    * Set github workflows python version to 3.13.
+Fixes
+^^^^^
+* Set GitHub workflows Python version to 3.13 (:pull:`22`).
+
+Internal changes
+^^^^^^^^^^^^^^^^
+* Updated the cookiecutter template (:pull:`24`):
+    * Replaced ``tox.ini`` with new ``tox.toml`` spec
+    * Enabled the labelling workflow
+    * Updated ``pyproject.toml`` to use PEP 639
+    * Added a ``CITATION.cff`` file
+    * Replaced the `python-coveralls` dependency (abandoned) for the `coverallsapp/github-action`
+    * Updated the ``CODE_OF_CONDUCT.md`` to Contributor Covenant v3.0
 
 .. _changes_0.1.2:
 
