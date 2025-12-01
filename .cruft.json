@@ -1,19 +1,19 @@
 {
   "template": "https://github.com/Ouranosinc/cookiecutter-pypackage",
-  "commit": "a58a1f8dfd7610c4f0e7517c68fcd7c60279f5a8",
+  "commit": "273d570f627b0ac0fb07c2457f0072e492bff6d7",
   "checkout": null,
   "context": {
     "cookiecutter": {
       "full_name": "Blaise Gauvin St-Denis",
       "email": "gauvin-st-denis.blaise@ouranos.ca",
       "github_username": "Ouranosinc",
+      "orcid_id": "0009-0004-9049-2092",
       "project_name": "resoterre",
       "project_slug": "resoterre",
       "project_short_description": "Machine learning tools and extensions for climate science.",
       "pypi_username": "bstdenis",
       "version": "0.1.2",
       "use_pytest": "y",
-      "use_black": "y",
       "use_conda": "y",
       "make_docs": "y",
       "add_translations": "y",
@@ -23,7 +23,7 @@
       "generated_with_cruft": "y",
       "__gh_slug": "https://github.com/Ouranosinc/resoterre",
       "_template": "https://github.com/Ouranosinc/cookiecutter-pypackage",
-      "_commit": "a58a1f8dfd7610c4f0e7517c68fcd7c60279f5a8"
+      "_commit": "273d570f627b0ac0fb07c2457f0072e492bff6d7"
     }
   },
   "directory": null
