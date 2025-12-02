@@ -31,6 +31,16 @@ class UNetConfig:
         Size of the convolution kernel. Must be an odd number.
     resolution_increase_layers : int, default=0
         Number of additional resolution increase layers at the end of the UNet.
+    go_to_1x1 : bool, default=False
+        If True, the UNet will go to a 1x1 layer at the bottom.
+    h_in : int | None, default=None
+        Height of the input tensor. Required if `go_to_1x1` is True.
+    w_in : int | None, default=None
+        Width of the input tensor. Required if `go_to_1x1` is True.
+    linear_size : int | None, default=None
+        Size of the linear input tensor. Required if `go_to_1x1` is True.
+    num_last_layer_input_channels : int, default=0
+        Number of channels in the last layer input (for fixed additional 2d information).
     reduction_ratio : int | None, default=None
         Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
     """
@@ -43,6 +53,11 @@ class UNetConfig:
     )
     kernel_size: int = 3
     resolution_increase_layers: int = 0
+    go_to_1x1: bool = False
+    h_in: int | None = None
+    w_in: int | None = None
+    linear_size: int | None = None
+    num_last_layer_input_channels: int = 0
     reduction_ratio: int | None = field(
         default=None, metadata={"is_hyperparameter": True, "immutable": True, "display_name": "reduction ratio"}
     )
@@ -69,6 +84,8 @@ class DenseUNetConfig:
         Size of the convolution kernel. Must be an odd number.
     resolution_increase_layers : int, default=0
         Number of additional resolution increase layers at the end of the UNet.
+    num_last_layer_input_channels : int, default=0
+        Number of channels in the last layer input (for fixed additional 2d information).
     reduction_ratio : int | None, default=None
         Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
     """
@@ -82,6 +99,7 @@ class DenseUNetConfig:
     num_layers: int = field(metadata={"is_hyperparameter": True, "immutable": True, "display_name": "num layers"})
     kernel_size: int = 3
     resolution_increase_layers: int = 0
+    num_last_layer_input_channels: int = 0
     reduction_ratio: int | None = field(
         default=None, metadata={"is_hyperparameter": True, "immutable": True, "display_name": "reduction ratio"}
     )
@@ -391,14 +409,24 @@ class ConvolutionTransposeAndDoubleConvolution(nn.Module):  # type: ignore[misc]
         Number of input channels.
     out_channels : int
         Number of output channels.
+    kernel_size : int, default=3
+        Size of the convolution kernel. Must be an odd number.
     concat : bool, default=True
         If True, concatenates the skip connection with the transposed convolution output.
     reduction_ratio : int, optional
         Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
+    post_transpose_additional_channels : int, default = 0
+        Number of additional channels introduced after the convolutional transpose.
     """
 
     def __init__(
-        self, in_channels: int, out_channels: int, concat: bool = True, reduction_ratio: int | None = None
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int = 3,
+        concat: bool = True,
+        reduction_ratio: int | None = None,
+        post_transpose_additional_channels: int = 0,
     ) -> None:
         super().__init__()
         self.concat = concat
@@ -407,13 +435,16 @@ class ConvolutionTransposeAndDoubleConvolution(nn.Module):  # type: ignore[misc]
             post_transpose_channels = in_channels
         else:
             post_transpose_channels = in_channels // 2
+        post_transpose_channels += post_transpose_additional_channels
 
-        sequential_args = [DoubleConvolution(post_transpose_channels, out_channels)]
+        sequential_args = [DoubleConvolution(post_transpose_channels, out_channels, kernel_size=kernel_size)]
         if reduction_ratio is not None:
             sequential_args.append(SEBlock(out_channels, reduction_ratio=reduction_ratio))
         self.sequential_block = nn.Sequential(*sequential_args)
 
-    def forward(self, x: torch.Tensor, skip_connection: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, skip_connection: torch.Tensor, post_transpose_input: torch.Tensor | None = None
+    ) -> torch.Tensor:
         """
         Forward pass through the Convolution Transpose and Double Convolution layer.
 
@@ -423,6 +454,8 @@ class ConvolutionTransposeAndDoubleConvolution(nn.Module):  # type: ignore[misc]
             Input tensor of shape (batch_size, in_channels, height, width).
         skip_connection : torch.Tensor
             Skip connection tensor of shape (batch_size, in_channels, height // 2, width // 2).
+        post_transpose_input : torch.Tensor | None, optional
+            Additional input after the convolution transpose.
 
         Returns
         -------
@@ -434,6 +467,8 @@ class ConvolutionTransposeAndDoubleConvolution(nn.Module):  # type: ignore[misc]
             x2 = torch.cat([skip_connection, x1], dim=1)
         else:
             x2 = x1
+        if post_transpose_input is not None:
+            x2 = torch.cat([post_transpose_input, x2], dim=1)
         return self.sequential_block(x2)
 
 
@@ -455,6 +490,8 @@ class ConvolutionTransposeAndDenseConvolutionBlock(nn.Module):  # type: ignore[m
         If greater than 0, concatenates the skip connection with the transposed convolution output.
     reduction_ratio : int, optional
         Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
+    post_transpose_additional_channels : int, default = 0
+        Number of additional channels introduced after the convolutional transpose.
     """
 
     def __init__(
@@ -465,11 +502,12 @@ class ConvolutionTransposeAndDenseConvolutionBlock(nn.Module):  # type: ignore[m
         kernel_size: int = 3,
         concat_size: int = 0,
         reduction_ratio: int | None = None,
+        post_transpose_additional_channels: int = 0,
     ) -> None:
         super().__init__()
         self.concat_size = concat_size
         self.convolution_transpose = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
-        post_transpose_channels = in_channels // 2 + concat_size
+        post_transpose_channels = in_channels // 2 + concat_size + post_transpose_additional_channels
 
         sequential_args = [
             DenseConvolutionBlock(post_transpose_channels, out_additional_channels, num_layers, kernel_size=kernel_size)
@@ -480,7 +518,9 @@ class ConvolutionTransposeAndDenseConvolutionBlock(nn.Module):  # type: ignore[m
             )
         self.sequential_block = nn.Sequential(*sequential_args)
 
-    def forward(self, x: torch.Tensor, skip_connection: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, skip_connection: torch.Tensor, post_transpose_input: torch.Tensor | None = None
+    ) -> torch.Tensor:
         """
         Forward pass through the Convolution Transpose and Dense Convolution block.
 
@@ -491,6 +531,8 @@ class ConvolutionTransposeAndDenseConvolutionBlock(nn.Module):  # type: ignore[m
         skip_connection : torch.Tensor, optional
             Skip connection tensor of shape (batch_size, concat_size, height // 2, width // 2).
             Required if concat_size > 0.
+        post_transpose_input : torch.Tensor | None, optional
+            Additional input after the convolution transpose.
 
         Returns
         -------
@@ -502,6 +544,8 @@ class ConvolutionTransposeAndDenseConvolutionBlock(nn.Module):  # type: ignore[m
             x2 = torch.cat([skip_connection, x1], dim=1)
         else:
             x2 = x1
+        if post_transpose_input is not None:
+            x2 = torch.cat([post_transpose_input, x2], dim=1)
         return self.sequential_block(x2)
 
 
@@ -546,7 +590,9 @@ class ConvolutionTransposeOutOf1x1(nn.Module):  # type: ignore[misc]
 class UNetBase(nn.Module):  # type: ignore[misc]
     """Base class for UNet architectures."""
 
-    def forward(self, x: torch.Tensor, x_linear: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, x_linear: torch.Tensor | None = None, x_last_layer: torch.Tensor | None = None
+    ) -> torch.Tensor:
         """
         Forward pass through the UNet architecture.
 
@@ -556,6 +602,8 @@ class UNetBase(nn.Module):  # type: ignore[misc]
             Input tensor of shape (batch_size, in_channels, height, width).
         x_linear : torch.Tensor, optional
             Linear input tensor of shape (batch_size, linear_size). Required if `go_to_1x1` is True.
+        x_last_layer : torch.Tensor, optional
+            Last layer input tensor of shape (batch_size, num_last_layer_input_channels, height, width).
 
         Returns
         -------
@@ -575,10 +623,13 @@ class UNetBase(nn.Module):  # type: ignore[misc]
         else:
             x = downward_layers[-1]
         for i, upward_operation in enumerate(self.upward_operations):
+            local_x_last_layer = None
+            if (x_last_layer is not None) and (i == len(self.upward_operations) - 1):
+                local_x_last_layer = x_last_layer
             if i < self.depth:
-                x = upward_operation(x, downward_layers[-2 - i])
+                x = upward_operation(x, downward_layers[-2 - i], post_transpose_input=local_x_last_layer)
             else:
-                x = upward_operation(x, None)
+                x = upward_operation(x, None, post_transpose_input=local_x_last_layer)
         x = self.last_operation(x)
         return x
 
@@ -609,6 +660,8 @@ class UNet(UNetBase, nn.Module):  # type: ignore[misc]
         Width of the input tensor. Required if `go_to_1x1` is True.
     linear_size : int, optional
         Size of the linear input tensor. Required if `go_to_1x1` is True.
+    num_last_layer_input_channels : int, default=0
+        Number of channels in the last layer input (for fixed additional 2d information).
     reduction_ratio : int, optional
         Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
 
@@ -630,6 +683,7 @@ class UNet(UNetBase, nn.Module):  # type: ignore[misc]
         h_in: int | None = None,
         w_in: int | None = None,
         linear_size: int | None = None,
+        num_last_layer_input_channels: int = 0,
         reduction_ratio: int | None = None,
     ) -> None:
         super().__init__()
@@ -647,8 +701,9 @@ class UNet(UNetBase, nn.Module):  # type: ignore[misc]
         hidden_channels = initial_nb_of_hidden_channels
         self.depth = depth
         self.resolution_increase_layers = resolution_increase_layers
+        self.num_last_layer_input_channels = num_last_layer_input_channels
 
-        self.initial_operation = DoubleConvolution(in_channels, hidden_channels)
+        self.initial_operation = DoubleConvolution(in_channels, hidden_channels, kernel_size=kernel_size)
 
         self.downward_operations = nn.ModuleList()
         for _ in range(self.depth):
@@ -675,14 +730,24 @@ class UNet(UNetBase, nn.Module):  # type: ignore[misc]
                 concat = True
             else:
                 concat = False
+            local_post_transpose_additional_channels = 0
+            if i == self.depth + self.resolution_increase_layers - 1:
+                local_post_transpose_additional_channels = num_last_layer_input_channels
             self.upward_operations.append(
                 ConvolutionTransposeAndDoubleConvolution(
-                    hidden_channels, hidden_channels // 2, concat=concat, reduction_ratio=reduction_ratio
+                    hidden_channels,
+                    hidden_channels // 2,
+                    kernel_size=kernel_size,
+                    concat=concat,
+                    reduction_ratio=reduction_ratio,
+                    post_transpose_additional_channels=local_post_transpose_additional_channels,
                 )
             )
             hidden_channels = hidden_channels // 2
 
-        self.last_operation = nn.Conv2d(hidden_channels, out_channels, kernel_size=kernel_size, padding=1)
+        self.last_operation = nn.Conv2d(
+            hidden_channels, out_channels, kernel_size=kernel_size, padding=(kernel_size - 1) // 2
+        )
 
 
 class DenseUNet(UNetBase, nn.Module):  # type: ignore[misc]
@@ -713,6 +778,8 @@ class DenseUNet(UNetBase, nn.Module):  # type: ignore[misc]
         Width of the input tensor. Required if `go_to_1x1` is True.
     linear_size : int, optional
         Size of the linear input tensor. Required if `go_to_1x1` is True.
+    num_last_layer_input_channels : int, default=0
+        Number of channels in the last layer input (for fixed additional 2d information).
     reduction_ratio : int, optional
         Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
 
@@ -735,6 +802,7 @@ class DenseUNet(UNetBase, nn.Module):  # type: ignore[misc]
         h_in: int | None = None,
         w_in: int | None = None,
         linear_size: int | None = None,
+        num_last_layer_input_channels: int = 0,
         reduction_ratio: int | None = None,
     ) -> None:
         super().__init__()
@@ -751,6 +819,7 @@ class DenseUNet(UNetBase, nn.Module):  # type: ignore[misc]
         self.kernel_size = kernel_size
         self.depth = depth
         self.resolution_increase_layers = resolution_increase_layers
+        self.num_last_layer_input_channels = num_last_layer_input_channels
         self.channel_tracker = []
 
         if out_additional_channels <= in_channels:
@@ -798,18 +867,28 @@ class DenseUNet(UNetBase, nn.Module):  # type: ignore[misc]
                 concat = True
             else:
                 concat = False
+            local_post_transpose_additional_channels = 0
+            if i == self.depth + self.resolution_increase_layers - 1:
+                local_post_transpose_additional_channels = num_last_layer_input_channels
             concat_size = self.channel_tracker[-2 * (i + 1)] if concat else 0
             self.upward_operations.append(
                 ConvolutionTransposeAndDenseConvolutionBlock(
                     self.channel_tracker[-1],
                     out_additional_channels=out_additional_channels,
                     num_layers=num_layers,
+                    kernel_size=kernel_size,
                     concat_size=concat_size,
                     reduction_ratio=reduction_ratio,
+                    post_transpose_additional_channels=local_post_transpose_additional_channels,
                 )
             )
             self.channel_tracker.append(
-                self.channel_tracker[-1] // 2 + concat_size + num_layers * out_additional_channels
+                self.channel_tracker[-1] // 2
+                + concat_size
+                + num_layers * out_additional_channels
+                + local_post_transpose_additional_channels
             )
 
-        self.last_operation = nn.Conv2d(self.channel_tracker[-1], out_channels, kernel_size=kernel_size, padding=1)
+        self.last_operation = nn.Conv2d(
+            self.channel_tracker[-1], out_channels, kernel_size=kernel_size, padding=(kernel_size - 1) // 2
+        )
