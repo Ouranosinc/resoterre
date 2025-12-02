@@ -431,17 +431,6 @@ class ConvolutionTransposeAndDoubleConvolution(nn.Module):  # type: ignore[misc]
         super().__init__()
         self.concat = concat
         self.convolution_transpose = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
-        # ToDo: these next 2 lines are an experiment
-        # self.convolution_transpose = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-        # self.post_upsample = Conv2d(
-        #     init_weight_fn_name=default_relu_init,
-        #     init_weight_fn_kwargs=default_relu_kwargs,
-        #     in_channels=in_channels,
-        #     out_channels=in_channels // 2,
-        #     kernel_size=1,
-        #     padding=0,
-        #     bias=False,
-        # )
         if self.concat:
             post_transpose_channels = in_channels
         else:
@@ -474,8 +463,6 @@ class ConvolutionTransposeAndDoubleConvolution(nn.Module):  # type: ignore[misc]
             Output tensor of shape (batch_size, out_channels, height * 2, width * 2).
         """
         x1 = self.convolution_transpose(x)
-        # ToDo: this next line is an experiment
-        # x1 = self.post_upsample(x1)
         if self.concat:
             x2 = torch.cat([skip_connection, x1], dim=1)
         else:

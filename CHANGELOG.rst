@@ -9,7 +9,8 @@ Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:us
 
 Changes
 ^^^^^^^
-* No change.
+* Add UNet option to go to a linear layer at the bottom for 1D inputs.
+* Add UNet option to use inputs in the last layer for static features.
 
 Fixes
 ^^^^^
