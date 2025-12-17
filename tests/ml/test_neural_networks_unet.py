@@ -84,6 +84,16 @@ def test_unet_to_1x1_forward():
     assert output.shape == (1, 2, 64, 32)
 
 
+def test_unet_last_layer_input_forward():
+    unet = neural_networks_unet.UNet(
+        in_channels=2, out_channels=2, depth=2, resolution_increase_layers=1, num_last_layer_input_channels=3
+    )
+    x = torch.rand((1, 2, 64, 32))
+    x_last_layer = torch.rand(1, 3, 128, 64)
+    output = unet(x, x_last_layer=x_last_layer)
+    assert output.shape == (1, 2, 128, 64)
+
+
 def test_unet_se_forward():
     unet = neural_networks_unet.UNet(in_channels=2, out_channels=2, reduction_ratio=4)
     unet_nb_of_parameters = nb_of_parameters(unet)
@@ -163,3 +173,13 @@ def test_unet_dense_to_1x1_forward():
     x_linear = torch.rand((1, 8))
     output = unet(x, x_linear=x_linear)
     assert output.shape == (1, 2, 64, 32)
+
+
+def test_unet_dense_last_layer_input_forward():
+    unet = neural_networks_unet.DenseUNet(
+        in_channels=2, out_channels=2, depth=2, resolution_increase_layers=1, num_last_layer_input_channels=3
+    )
+    x = torch.rand((1, 2, 64, 32))
+    x_last_layer = torch.rand(1, 3, 128, 64)
+    output = unet(x, x_last_layer=x_last_layer)
+    assert output.shape == (1, 2, 128, 64)

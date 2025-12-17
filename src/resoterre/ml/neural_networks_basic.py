@@ -12,9 +12,9 @@ class Linear(nn.Linear):  # type: ignore[misc]
 
     Parameters
     ----------
-    init_weight_fn_name : str | None, optional
+    init_weight_fn_name : str, optional
         The name of the weight initialization function, by default None.
-    init_weight_fn_kwargs : dict | None, optional
+    init_weight_fn_kwargs : dict, optional
         Keyword arguments for the weight initialization function, by default None.
     **kwargs : dict
         Parameters for the torch.nn.Linear layer.
@@ -34,9 +34,9 @@ class Conv2d(nn.Conv2d):  # type: ignore[misc]
 
     Parameters
     ----------
-    init_weight_fn_name : str | None, optional
+    init_weight_fn_name : str, optional
         The name of the weight initialization function, by default None.
-    init_weight_fn_kwargs : dict | None, optional
+    init_weight_fn_kwargs : dict, optional
         Keyword arguments for the weight initialization function, by default None.
     **kwargs : dict
         Parameters for the torch.nn.Conv2d layer.
@@ -77,9 +77,9 @@ class SEBlock(nn.Module):  # type: ignore[misc]
     ----------
     in_channels : int
         Number of input channels.
-    reduction_ratio : int, default=16
+    reduction_ratio : int
         Reduction ratio for the number of channels in the bottleneck layer.
-    min_reduced_channels : int, default=2
+    min_reduced_channels : int
         Minimum number of reduced channels.
 
     Notes
