@@ -23,25 +23,25 @@ class UNetConfig:
         Number of input channels.
     out_channels : int
         Number of output channels.
-    depth : int, default=3
+    depth : int
         Depth of the UNet, i.e., number of downsampling operations.
-    initial_nb_of_hidden_channels : int, default=64
+    initial_nb_of_hidden_channels : int
         Number of initial hidden channels.
-    kernel_size : int, default=3
+    kernel_size : int
         Size of the convolution kernel. Must be an odd number.
-    resolution_increase_layers : int, default=0
+    resolution_increase_layers : int
         Number of additional resolution increase layers at the end of the UNet.
-    go_to_1x1 : bool, default=False
+    go_to_1x1 : bool
         If True, the UNet will go to a 1x1 layer at the bottom.
-    h_in : int | None, default=None
+    h_in : int, optional
         Height of the input tensor. Required if `go_to_1x1` is True.
-    w_in : int | None, default=None
+    w_in : int, optional
         Width of the input tensor. Required if `go_to_1x1` is True.
-    linear_size : int | None, default=None
+    linear_size : int, optional
         Size of the linear input tensor. Required if `go_to_1x1` is True.
-    num_last_layer_input_channels : int, default=0
+    num_last_layer_input_channels : int
         Number of channels in the last layer input (for fixed additional 2d information).
-    reduction_ratio : int | None, default=None
+    reduction_ratio : int, optional
         Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
     """
 
@@ -74,19 +74,19 @@ class DenseUNetConfig:
         Number of input channels.
     out_channels : int
         Number of output channels.
-    depth : int, default=3
+    depth : int
         Depth of the UNet, i.e., number of downsampling operations.
-    out_additional_channels : int, default=16
+    out_additional_channels : int
         Additional output channels for each dense convolution layer.
-    num_layers : int, default=2
+    num_layers : int
         Number of dense convolution layers in the block.
-    kernel_size : int, default=3
+    kernel_size : int
         Size of the convolution kernel. Must be an odd number.
-    resolution_increase_layers : int, default=0
+    resolution_increase_layers : int
         Number of additional resolution increase layers at the end of the UNet.
-    num_last_layer_input_channels : int, default=0
+    num_last_layer_input_channels : int
         Number of channels in the last layer input (for fixed additional 2d information).
-    reduction_ratio : int | None, default=None
+    reduction_ratio : int, optional
         Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
     """
 
@@ -115,7 +115,7 @@ class DenseConvolution(nn.Module):  # type: ignore[misc]
         Number of input channels.
     out_additional_channels : int
         Number of additional output channels to be concatenated with the input.
-    kernel_size : int, default=3
+    kernel_size : int
         Size of the convolution kernel. Must be an odd number.
     """
 
@@ -164,7 +164,7 @@ class DoubleConvolution(nn.Module):  # type: ignore[misc]
         Number of input channels.
     out_channels : int
         Number of output channels.
-    kernel_size : int, default=3
+    kernel_size : int
         Size of the convolution kernel. Must be an odd number.
     """
 
@@ -226,9 +226,9 @@ class DenseConvolutionBlock(nn.Module):  # type: ignore[misc]
         Number of additional output channels for each dense convolution layer.
     num_layers : int
         Number of dense convolution layers in the block.
-    kernel_size : int, default=3
+    kernel_size : int
         Size of the convolution kernel. Must be an odd number.
-    multiple_of_additional_channels : bool, default=False
+    multiple_of_additional_channels : bool
         If True, the first dense convolution layer will output (out_additional_channels - in_channels)
         additional channels to ensure the total output channels is a multiple of out_additional_channels.
     """
@@ -280,7 +280,7 @@ class MaxPoolingAndDoubleConvolution(nn.Module):  # type: ignore[misc]
         Number of input channels.
     out_channels : int
         Number of output channels.
-    kernel_size : int, default=3
+    kernel_size : int
         Size of the convolution kernel. Must be an odd number.
     reduction_ratio : int, optional
         Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
@@ -324,7 +324,7 @@ class MaxPoolingAndDenseConvolutionBlock(nn.Module):  # type: ignore[misc]
         Number of additional output channels for each dense convolution layer.
     num_layers : int
         Number of dense convolution layers in the block.
-    kernel_size : int, default=3
+    kernel_size : int
         Size of the convolution kernel. Must be an odd number.
     reduction_ratio : int, optional
         Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
@@ -409,13 +409,13 @@ class ConvolutionTransposeAndDoubleConvolution(nn.Module):  # type: ignore[misc]
         Number of input channels.
     out_channels : int
         Number of output channels.
-    kernel_size : int, default=3
+    kernel_size : int
         Size of the convolution kernel. Must be an odd number.
-    concat : bool, default=True
+    concat : bool
         If True, concatenates the skip connection with the transposed convolution output.
     reduction_ratio : int, optional
         Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
-    post_transpose_additional_channels : int, default = 0
+    post_transpose_additional_channels : int
         Number of additional channels introduced after the convolutional transpose.
     """
 
@@ -454,7 +454,7 @@ class ConvolutionTransposeAndDoubleConvolution(nn.Module):  # type: ignore[misc]
             Input tensor of shape (batch_size, in_channels, height, width).
         skip_connection : torch.Tensor
             Skip connection tensor of shape (batch_size, in_channels, height // 2, width // 2).
-        post_transpose_input : torch.Tensor | None, optional
+        post_transpose_input : torch.Tensor, optional
             Additional input after the convolution transpose.
 
         Returns
@@ -484,13 +484,13 @@ class ConvolutionTransposeAndDenseConvolutionBlock(nn.Module):  # type: ignore[m
         Number of additional output channels for each dense convolution layer.
     num_layers : int
         Number of dense convolution layers in the block.
-    kernel_size : int, default=3
+    kernel_size : int
         Size of the convolution kernel. Must be an odd number.
-    concat_size : int, default=0
+    concat_size : int
         If greater than 0, concatenates the skip connection with the transposed convolution output.
     reduction_ratio : int, optional
         Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
-    post_transpose_additional_channels : int, default = 0
+    post_transpose_additional_channels : int
         Number of additional channels introduced after the convolutional transpose.
     """
 
@@ -519,7 +519,10 @@ class ConvolutionTransposeAndDenseConvolutionBlock(nn.Module):  # type: ignore[m
         self.sequential_block = nn.Sequential(*sequential_args)
 
     def forward(
-        self, x: torch.Tensor, skip_connection: torch.Tensor, post_transpose_input: torch.Tensor | None = None
+        self,
+        x: torch.Tensor,
+        skip_connection: torch.Tensor | None = None,
+        post_transpose_input: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Forward pass through the Convolution Transpose and Dense Convolution block.
@@ -531,7 +534,7 @@ class ConvolutionTransposeAndDenseConvolutionBlock(nn.Module):  # type: ignore[m
         skip_connection : torch.Tensor, optional
             Skip connection tensor of shape (batch_size, concat_size, height // 2, width // 2).
             Required if concat_size > 0.
-        post_transpose_input : torch.Tensor | None, optional
+        post_transpose_input : torch.Tensor, optional
             Additional input after the convolution transpose.
 
         Returns
@@ -644,15 +647,15 @@ class UNet(UNetBase, nn.Module):  # type: ignore[misc]
         Number of input channels.
     out_channels : int
         Number of output channels.
-    kernel_size : int, default=3
+    kernel_size : int
         Size of the convolution kernel. Must be an odd number.
-    initial_nb_of_hidden_channels : int, default=64
+    initial_nb_of_hidden_channels : int
         Number of initial hidden channels.
-    depth : int, default=3
+    depth : int
         Depth of the UNet, i.e., number of downsampling operations.
-    resolution_increase_layers : int, default=0
+    resolution_increase_layers : int
         Number of additional resolution increase layers at the end of the UNet.
-    go_to_1x1 : bool, default=False
+    go_to_1x1 : bool
         If True, the UNet will go to a 1x1 layer at the bottom.
     h_in : int, optional
         Height of the input tensor. Required if `go_to_1x1` is True.
@@ -660,7 +663,7 @@ class UNet(UNetBase, nn.Module):  # type: ignore[misc]
         Width of the input tensor. Required if `go_to_1x1` is True.
     linear_size : int, optional
         Size of the linear input tensor. Required if `go_to_1x1` is True.
-    num_last_layer_input_channels : int, default=0
+    num_last_layer_input_channels : int
         Number of channels in the last layer input (for fixed additional 2d information).
     reduction_ratio : int, optional
         Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
@@ -760,17 +763,17 @@ class DenseUNet(UNetBase, nn.Module):  # type: ignore[misc]
         Number of input channels.
     out_channels : int
         Number of output channels.
-    out_additional_channels : int, default=16
+    out_additional_channels : int
         Number of additional output channels for each dense convolution layer.
-    num_layers : int, default=2
+    num_layers : int
         Number of dense convolution layers in the block.
-    kernel_size : int, default=3
+    kernel_size : int
         Size of the convolution kernel. Must be an odd number.
-    depth : int, default=3
+    depth : int
         Depth of the UNet, i.e., number of downsampling operations.
-    resolution_increase_layers : int, default=0
+    resolution_increase_layers : int
         Number of additional resolution increase layers at the end of the UNet.
-    go_to_1x1 : bool, default=False
+    go_to_1x1 : bool
         If True, the UNet will go to a 1x1 layer at the bottom.
     h_in : int, optional
         Height of the input tensor. Required if `go_to_1x1` is True.
@@ -778,7 +781,7 @@ class DenseUNet(UNetBase, nn.Module):  # type: ignore[misc]
         Width of the input tensor. Required if `go_to_1x1` is True.
     linear_size : int, optional
         Size of the linear input tensor. Required if `go_to_1x1` is True.
-    num_last_layer_input_channels : int, default=0
+    num_last_layer_input_channels : int
         Number of channels in the last layer input (for fixed additional 2d information).
     reduction_ratio : int, optional
         Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.

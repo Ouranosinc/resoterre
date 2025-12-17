@@ -27,16 +27,16 @@ def index_train_validation_test_split(
     ----------
     n : int
         Total number of samples.
-    train_fraction : float, default=0.8
+    train_fraction : float
         Fraction of samples to use for training.
-    test_fraction_from_validation_set : float, default=0.5
+    test_fraction_from_validation_set : float
         Fraction of the remaining samples (after training) to use for testing.
         The remaining samples will be used for validation.
-    random_seed : int, optional
+    random_seed : int
         Random seed for reproducibility, by default None.
-    shuffle : bool, default=True
+    shuffle : bool
         Whether to shuffle the indices before splitting.
-    shuffle_within_sets : bool, default=False
+    shuffle_within_sets : bool
         Whether to shuffle the indices within each set after splitting.
 
     Returns
@@ -112,15 +112,15 @@ def normalize(
     ----------
     data : np.array
         Input data to normalize.
-    mode : tuple[int], default=(-1, 1)
+    mode : tuple[int]
         The range to normalize the data to.
-    valid_min : float, optional
+    valid_min : float
         Minimum value for normalization. If None, the minimum of the data is used.
-    valid_max : float, optional
+    valid_max : float
         Maximum value for normalization. If None, the maximum of the data is used.
-    log_normalize : bool, default=False
+    log_normalize : bool
         Whether to apply logarithmic normalization.
-    log_offset : float, default=1.0
+    log_offset : float
         Offset for logarithmic normalization to avoid log(0).
 
     Returns
@@ -166,11 +166,11 @@ def inverse_normalize(
         Minimum value previously used to normalize the data.
     known_max : float
         Maximum value previously used to normalize the data.
-    mode : tuple[int], default=(-1, 1)
+    mode : tuple[int]
         The range to inverse normalize the data from.
-    log_normalize : bool, default=False
+    log_normalize : bool
         Whether the data was logarithmically normalized.
-    log_offset : float, default=1.0
+    log_offset : float
         Offset for logarithmic normalization to avoid log(0).
 
     Returns
