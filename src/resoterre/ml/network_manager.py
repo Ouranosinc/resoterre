@@ -11,7 +11,7 @@ def nb_of_parameters(model: nn.Module, only_trainable: bool = True) -> int:
     ----------
     model : nn.Module
         The PyTorch model for which to calculate the number of parameters.
-    only_trainable : bool, default=True
+    only_trainable : bool
         If True, only count trainable parameters. If False, count all parameters.
 
     Returns
