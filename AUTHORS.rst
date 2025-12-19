@@ -16,3 +16,4 @@ Contributors
 ------------
 
 * Trevor James Smith <smith.trevorj@ouranos.ca> `@Zeitsperre <https://github.com/Zeitsperre>`_
+* Nazim Azeli <nazim.azeli@crim.ca> `@Nazim-crim <https://github.com/Nazim-crim>`_
