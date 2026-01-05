@@ -44,10 +44,10 @@ def merge_logs(
         If a single path is provided, all .log files in that directory are merged.
     output : Path | str
         Output log file path.
-    search_patterns : list[str] | None, optional
+    search_patterns : list[str], optional
         List of strings to search for in log lines. Only lines containing at least one of these strings are included.
         If None, all lines are included. Default is None.
-    purge : bool, optional
+    purge : bool
         If True, delete input log files that do not contribute any lines to the output log file.
         Default is False.
     """
@@ -127,20 +127,20 @@ def split_period(
         Number of time steps in each smaller period.
     datetime_format : str
         Format string for datetime objects.
-    days : int, optional
-        Number of days in the time delta. Default is 0.
-    seconds : int, optional
-        Number of seconds in the time delta. Default is 0.
-    microseconds : int, optional
-        Number of microseconds in the time delta. Default is 0.
-    milliseconds : int, optional
-        Number of milliseconds in the time delta. Default is 0.
-    minutes : int, optional
-        Number of minutes in the time delta. Default is 0.
-    hours : int, optional
-        Number of hours in the time delta. Default is 0.
-    weeks : int, optional
-        Number of weeks in the time delta. Default is 0.
+    days : int
+        Number of days in the time delta.
+    seconds : int
+        Number of seconds in the time delta.
+    microseconds : int
+        Number of microseconds in the time delta.
+    milliseconds : int
+        Number of milliseconds in the time delta.
+    minutes : int
+        Number of minutes in the time delta.
+    hours : int
+        Number of hours in the time delta.
+    weeks : int
+        Number of weeks in the time delta.
 
     Returns
     -------

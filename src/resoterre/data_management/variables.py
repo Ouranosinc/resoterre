@@ -13,39 +13,39 @@ class VariableHandler:
         The name of the variable.
     units : str
         The units of the variable.
-    netcdf_key : str | None, optional
+    netcdf_key : str, optional
         The key used in NetCDF files for this variable. Defaults to the variable name.
-    target_cf_units : str | None, optional
+    target_cf_units : str, optional
         The CF-compliant units for the variable if it were to be converted to standard CF units.
-    vertical_level : int | float | None, optional
+    vertical_level : int | float, optional
         The vertical level (e.g., depth or height) at which the variable is measured.
-    vertical_level_units : str | None, optional
+    vertical_level_units : str, optional
         The units of the vertical level.
-    min_value : float | None, optional
+    min_value : float, optional
         The minimum valid value for the variable.
-    max_value : float | None, optional
+    max_value : float, optional
         The maximum valid value for the variable.
-    mean_min : float | None, optional
+    mean_min : float, optional
         The minimum mean value threshold for the variable.
-    mean_max : float | None, optional
+    mean_max : float, optional
         The maximum mean value threshold for the variable.
-    clip_min : float | None, optional
+    clip_min : float, optional
         The minimum clipping value for the variable.
-    clip_max : float | None, optional
+    clip_max : float, optional
         The maximum clipping value for the variable.
-    nan_min : float | None, optional
+    nan_min : float, optional
         The minimum value below which data is considered NaN.
-    nan_max : float | None, optional
+    nan_max : float, optional
         The maximum value above which data is considered NaN.
-    cumulative : bool, default=False
+    cumulative : bool
         Whether the variable represents cumulative data.
-    log_normalize : bool, default=False
+    log_normalize : bool
         Whether to apply logarithmic normalization to the variable.
-    normalize_min : float | None, optional
+    normalize_min : float, optional
         The minimum value for normalization.
-    normalize_max : float | None, optional
+    normalize_max : float, optional
         The maximum value for normalization.
-    normalize_log_offset : float | None, optional
+    normalize_log_offset : float, optional
         The offset used in logarithmic normalization to avoid log(0).
         Should be slightly smaller than the smallest non-zero value.
     """
@@ -140,9 +140,9 @@ class VariableHandlerCollection(dict[str, VariableHandler]):
 
     Parameters
     ----------
-    d : dict[str, VariableHandler] | None, optional
+    d : dict[str, VariableHandler], optional
         A dictionary to initialize the collection with.
-    mapping : dict[str, str] | None, optional
+    mapping : dict[str, str], optional
         A mapping of alternative keys to the actual keys in the collection.
     """
 

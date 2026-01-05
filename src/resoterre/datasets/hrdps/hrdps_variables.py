@@ -53,6 +53,44 @@ hrdps_variables["P_PR_SFC"] = VariableHandler(
 )
 # found some -1.8e-12 and 9.96e36 in the data, allowing small negative values to be caught
 
+hrdps_variables["P_UUC_10000"] = VariableHandler(
+    "P_UUC_10000",
+    "kts",
+    netcdf_key="HRDPS_P_UUC_10000",
+    target_cf_units="m s-1",
+    min_value=-120.0,
+    max_value=120.0,
+    mean_min=-10.0,
+    mean_max=10.0,  # conservative guess
+    clip_min=None,
+    clip_max=None,
+    nan_min=None,
+    nan_max=8e36,  # found some 9.96e36 in the data
+    cumulative=False,
+    log_normalize=False,
+    normalize_min=-100.0,
+    normalize_max=100.0,
+)
+
+hrdps_variables["P_VVC_10000"] = VariableHandler(
+    "P_VVC_10000",
+    "kts",
+    netcdf_key="HRDPS_P_VVC_10000",
+    target_cf_units="m s-1",
+    min_value=-120.0,
+    max_value=120.0,
+    mean_min=-10.0,
+    mean_max=10.0,  # conservative guess
+    clip_min=None,
+    clip_max=None,
+    nan_min=None,
+    nan_max=8e36,  # found some 9.96e36 in the data
+    cumulative=False,
+    log_normalize=False,
+    normalize_min=-100.0,
+    normalize_max=100.0,
+)
+
 # orog?
 hrdps_variables["MF"] = VariableHandler(
     "MF",
@@ -94,3 +132,5 @@ hrdps_variables["sftlf"] = VariableHandler(
 hrdps_variables.mapping["HRDPS_P_TT_10000"] = "P_TT_10000"
 hrdps_variables.mapping["HRDPS_P_TT_10000_anomaly"] = "P_TT_10000_anomaly"
 hrdps_variables.mapping["HRDPS_P_PR_SFC"] = "P_PR_SFC"
+hrdps_variables.mapping["HRDPS_P_UUC_10000"] = "P_UUC_10000"
+hrdps_variables.mapping["HRDPS_P_VVC_10000"] = "P_VVC_10000"

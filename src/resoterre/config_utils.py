@@ -24,7 +24,7 @@ def register_config(name: str, known_configs_dict: dict[str, Any] | None = None,
         The name to register the configuration class under.
     known_configs_dict : dict, optional
         The dictionary to register the configuration class in. Defaults to the global known_configs.
-    overwrite : bool, default=False
+    overwrite : bool
         Whether overwriting an existing configuration with the same name is allowed.
 
     Returns
@@ -69,7 +69,7 @@ def assign_custom_class_to_config_dict(
         The configuration dictionary to process.
     known_custom_config_dict : dict, optional
         A dictionary mapping names to configuration classes. Defaults to the global known_configs.
-    type_key : str, default="type"
+    type_key : str
         The key in the configuration dictionary that indicates the class name to assign.
 
     Returns
@@ -118,7 +118,7 @@ def config_from_yaml(
         The YAML object to convert.
     known_custom_config_dict : dict, optional
         A dictionary mapping names to configuration classes. Defaults to the global known_configs.
-    type_key : str, default="type"
+    type_key : str
         The key in the configuration dictionary that indicates the class name to assign.
 
     Returns

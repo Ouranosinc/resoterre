@@ -33,7 +33,7 @@ class DataLoaderConfig:
         Whether to shuffle the data at every epoch. Default is False.
     num_workers : int
         Number of subprocesses to use for data loading. Default is 0 (data will be loaded in the main process).
-    multiprocessing_context : str | None
+    multiprocessing_context : str, optional
         The multiprocessing context to use. If None, the default context is used. Default is None.
     """
 
@@ -63,7 +63,7 @@ def index_train_validation_test_split(
     test_fraction_from_validation_set : float
         Fraction of the remaining samples (after training) to use for testing.
         The remaining samples will be used for validation.
-    random_seed : int
+    random_seed : int, optional
         Random seed for reproducibility, by default None.
     shuffle : bool
         Whether to shuffle the indices before splitting.
@@ -145,9 +145,9 @@ def normalize(
         Input data to normalize.
     mode : tuple[int]
         The range to normalize the data to.
-    valid_min : float
+    valid_min : float, optional
         Minimum value for normalization. If None, the minimum of the data is used.
-    valid_max : float
+    valid_max : float, optional
         Maximum value for normalization. If None, the maximum of the data is used.
     log_normalize : bool
         Whether to apply logarithmic normalization.

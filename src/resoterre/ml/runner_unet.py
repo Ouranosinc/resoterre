@@ -22,33 +22,33 @@ class UNetReconstructionRunnerConfig:
         Configuration for the validation dataset.
     nb_of_new_epochs : int
         Number of new epochs to train the model.
-    path_models : Path | None, optional
+    path_models : Path, optional
         Path to save or load model checkpoints. If None, models are not saved. Default is None.
-    pth_file : Path | None, optional
+    pth_file : Path, optional
         Path to a .pth file to load a pre-trained model.
         If None, training starts from scratch or continues from the last checkpoint. Default is None.
-    path_figures : Path | None, optional
+    path_figures : Path, optional
         Path to save training figures. If None, figures are not saved. Default is None.
-    data_loader : DataLoaderConfig, optional
+    data_loader : DataLoaderConfig
         Configuration for the data loader. Default is DataLoaderConfig().
-    input_channel_sub_selection : list, optional
+    input_channel_sub_selection : list[int]
         List of input channels to select from the dataset. Default is an empty list (all channels).
-    target_channel_sub_selection : list, optional
+    target_channel_sub_selection : list[int]
         List of target channels to select from the dataset. Default is an empty list (all channels).
-    networks : dict, optional
+    networks : dict
         Dictionary of network configurations. Default is an empty dictionary.
-    optimizers : dict, optional
+    optimizers : dict
         Dictionary of optimizer configurations. Default is an empty dictionary.
-    lr_schedulers : dict, optional
+    lr_schedulers : dict
         Dictionary of learning rate scheduler configurations. Default is an empty dictionary.
-    restart : bool, optional
+    restart : bool
         Whether to restart training from scratch.
         If False and pth_file or path_models is provided, continue training from the loaded model. Default is True.
-    device : str, optional
+    device : str
         Device to use for training (e.g., 'cpu', 'cuda'). Default is 'cpu'.
-    num_threads : int, optional
+    num_threads : int
         Number of threads to use for data loading. Default is 1.
-    emissions_tracker_kwargs : dict, optional
+    emissions_tracker_kwargs : dict
         Configuration for emissions tracking (e.g., CodeCarbon). Default is an empty dictionary.
     """
 

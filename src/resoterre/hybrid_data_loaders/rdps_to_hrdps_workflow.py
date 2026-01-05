@@ -14,45 +14,45 @@ class RDPSToHRDPSOnDiskConfig:
     ----------
     path_workflow : Path
         Path to the main workflow directory.
-    path_logs : Path | None
+    path_logs : Path, optional
         Path to the logs directory.
-    path_figures : Path | None
+    path_figures : Path, optional
         Path to the figures directory.
-    path_rdps_regrid : Path | None
+    path_rdps_regrid : Path, optional
         Path to the RDPS regridded data directory.
-    path_hrdps_regrid : Path | None
+    path_hrdps_regrid : Path, optional
         Path to the HRDPS regridded data directory.
-    path_ml_data : Path | None
+    path_ml_data : Path, optional
         Path for the output machine learning data.
-    path_rdps : Path | None
+    path_rdps : Path, optional
         Path to the raw RDPS data directory.
-    path_rdps_climatology : Path | None
+    path_rdps_climatology : Path, optional
         Path to the RDPS climatology data directory.
-    path_hrdps : Path | None
+    path_hrdps : Path, optional
         Path to the raw HRDPS data directory.
-    path_hrdps_climatology : Path | None
+    path_hrdps_climatology : Path, optional
         Path to the HRDPS climatology data directory.
-    path_hrdps_mask : Path | None
+    path_hrdps_mask : Path, optional
         Path to the HRDPS mask file.
-    path_hrdps_mf : Path | None
+    path_hrdps_mf : Path, optional
         Path to the HRDPS topography file.
-    path_hrdps_sftlf : Path | None
+    path_hrdps_sftlf : Path, optional
         Path to the HRDPS land-sea mask file.
-    path_grids : Path | None
+    path_grids : Path, optional
         Path to the grids directory.
-    random_seed : int | None
+    random_seed : int, optional
         Random seed for reproducibility.
     rdps_input_validation_batch_size : int
         Batch size for RDPS input validation.
     data_loader_snakemake_batch_size : int
         How many time steps are processed in a single snakemake job. This should be a multiple of save_batch_size.
-    grid_input_for_ml : str | None
+    grid_input_for_ml : str, optional
         Grid name for input data in machine learning.
-    grid_output_for_ml : str | None
+    grid_output_for_ml : str, optional
         Grid name for output data in machine learning.
-    start_datetime : datetime.datetime | None
+    start_datetime : datetime.datetime, optional
         Start datetime for data processing.
-    end_datetime : datetime.datetime | None
+    end_datetime : datetime.datetime, optional
         End datetime for data processing.
     rdps_variables : list[str]
         List of RDPS variable names to process.
@@ -61,13 +61,13 @@ class RDPSToHRDPSOnDiskConfig:
     forecast_hours : list[int]
         List of forecast hours to include.
         Only tested with [7, 8, 9, 10, 11, 12].
-    rdps_window_size : int | None
+    rdps_window_size : int, optional
         Size of the RDPS patches (if using tiling).
-    overlap_factor : int | None
+    overlap_factor : int, optional
         Overlap factor for RDPS patches.
-    hrdps_required_unmasked_fraction : float | None
+    hrdps_required_unmasked_fraction : float, optional
         Required unmasked fraction for HRDPS data.
-    temporal_window : int | None
+    temporal_window : int, optional
         Temporal window size for including context (1 = one timestep on each side of current timestep).
     variables_with_temporal_context : list[str]
         List of variable names that should include temporal context.
