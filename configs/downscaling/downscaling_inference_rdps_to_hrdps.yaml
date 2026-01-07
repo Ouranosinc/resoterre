@@ -1,1 +1,14 @@
-# ToDo: define inference config
+path_logs: /path/to/logs
+path_models: /path/to/models
+path_ml_data: /path/to/ml_data
+path_figures: /path/to/figures
+path_output: /path/to/output
+
+experiment_name: experiment_name
+
+# Hardware specifications
+device: cuda
+num_threads: 16
+
+framework: pytorch
+framework_version: '2.9.0+cu130'
