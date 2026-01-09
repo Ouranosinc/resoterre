@@ -78,8 +78,8 @@
     "mlm:name": "UNet RDPS HRDPS Downscaling",
     "mlm:architecture": "resoterre.ml.neural_networks_unet.UNet",
     "mlm:tasks": [
-      "super-resolution",
-      "downscaling"
+      "downscaling",
+      "super-resolution"
     ],
     "mlm:input": [
       {
@@ -107,7 +107,10 @@
           ],
           "data_type": "float32"
         },
-        "pre_processing_function": null
+        "pre_processing_function": {
+          "format": "snakemake",
+          "expression": "snakemake -s scripts/hybrid_data_loaders/rdps_to_hrdps_on_disk.smk --config config_yaml=/path/to/downscaling_preprocessing_rdps_to_hrdps.yaml -j1 --directory=/path/to/workflow/outputs"
+        }
       }
     ],
     "mlm:output": [
@@ -119,8 +122,8 @@
         ],
         "name": "hrdps_outputs",
         "tasks": [
-          "super-resolution",
-          "downscaling"
+          "downscaling",
+          "super-resolution"
         ],
         "result": {
           "shape": [
@@ -236,8 +239,7 @@
         "dimensions": [
           "time",
           "latitude",
-          "longitude",
-          "level"
+          "longitude"
         ],
         "type": "data",
         "data_type": "float32"
