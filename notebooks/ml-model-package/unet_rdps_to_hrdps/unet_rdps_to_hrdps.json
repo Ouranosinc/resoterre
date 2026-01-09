@@ -17,6 +17,8 @@
         "out_channels": 2,
         "depth": 3,
         "initial_nb_of_hidden_channels": 36,
+        "h_in": 64,
+        "w_in": 64,
         "resolution_increase_layers": 2
       }
     },
