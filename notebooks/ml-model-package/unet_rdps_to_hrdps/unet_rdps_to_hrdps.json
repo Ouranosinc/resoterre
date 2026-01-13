@@ -303,7 +303,7 @@
       "href": "https://github.com/Ouranosinc/resoterre",
       "type": "text/html",
       "title": "Source code for UNet",
-      "description": "GitHub repo of the PyTorch model",
+      "description": "GitHub repository containing the PyTorch model and the preprocessing function needed for inference",
       "roles": [
         "mlm:source_code",
         "code"
