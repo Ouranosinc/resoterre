@@ -4,6 +4,8 @@ path_ml_data: /path/to/ml_data
 path_figures: /path/to/figures
 path_output: /path/to/output
 
+path_preprocessed_batch: /path/to/preprocessed_batch.nc
+
 experiment_name: experiment_name
 
 # Hardware specifications
