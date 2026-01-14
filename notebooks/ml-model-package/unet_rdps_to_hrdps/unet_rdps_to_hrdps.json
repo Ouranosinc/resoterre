@@ -2,7 +2,7 @@
   "type": "Feature",
   "stac_version": "1.1.0",
   "stac_extensions": [
-    "https://stac-extensions.github.io/mlm/v1.5.0/schema.json",
+    "https://stac-extensions.github.io/mlm/v1.5.1/schema.json",
     "https://stac-extensions.github.io/datacube/v2.2.0/schema.json"
   ],
   "id": "unet_rdps_to_hrdps",
@@ -111,7 +111,8 @@
         },
         "pre_processing_function": {
           "format": "snakemake",
-          "expression": "snakemake -s scripts/hybrid_data_loaders/rdps_to_hrdps_on_disk.smk --config config_yaml=/path/to/downscaling_preprocessing_rdps_to_hrdps.yaml -j1 --directory=/path/to/workflow/outputs"
+          "expression": "snakemake -s scripts/hybrid_data_loaders/rdps_to_hrdps_on_disk.smk --config config_yaml=/path/to/downscaling_preprocessing_rdps_to_hrdps.yaml -j1 --directory=/path/to/workflow/outputs",
+          "description": "Snakemake workflow that regrid RDPS data to 8km resolution, extracts variables, applies normalization, and prepares patches for UNet inference."
         }
       }
     ],
@@ -303,7 +304,7 @@
       "href": "https://github.com/Ouranosinc/resoterre",
       "type": "text/html",
       "title": "Source code for UNet",
-      "description": "GitHub repository containing the PyTorch model and the preprocessing function needed for inference",
+      "description": "GitHub repository containing the PyTorch model and the preprocessing function needed for inference.",
       "roles": [
         "mlm:source_code",
         "code"
