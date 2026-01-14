@@ -21,6 +21,9 @@ class TemplateStore:
         Whether to automatically substitute the current process ID.
     """
 
+    templates: dict[str, Template]
+    substitutes: dict[str, str]
+
     def __init__(
         self,
         templates: dict[str, str | Template] | None = None,
@@ -28,19 +31,14 @@ class TemplateStore:
         substitute_timestamp: bool = True,
         substitute_pid: bool = True,
     ) -> None:
-        if templates is None:
-            self.templates = {}
-        else:
-            d = {}
+        self.templates = {}
+        if templates is not None:
+            d: dict[str, Template] = {}
             for key, value in templates.items():
-                if not isinstance(value, Template):
-                    if not isinstance(value, str):
-                        raise ValueError("TemplateStore: value must be a string or a Template.")
-                    d[key] = Template(value)
-                else:
-                    if not isinstance(value.template, str):
-                        raise ValueError("TemplateStore: value.template must be a string.")
+                if isinstance(value, Template):
                     d[key] = value
+                else:
+                    d[key] = Template(value)
             self.templates = d
         if substitutes is None:
             self.substitutes = {}
@@ -58,19 +56,12 @@ class TemplateStore:
         TemplateStore
             A copy of the current TemplateStore.
         """
-        templates = {}
+        templates_copy: dict[str, str | Template] = {}
         for key, value in self.templates.items():
-            if not isinstance(value.template, str):
-                raise ValueError("TemplateStore: value.template must be a string for copy operation.")
-            templates[key] = Template(value.template)
-        substitutes = {}
-        for key, value in self.substitutes.items():
-            if not isinstance(value, str):
-                raise ValueError("TemplateStore: substitute value must be a string for copy operation.")
-            substitutes[key] = value
+            templates_copy[key] = Template(value.template)
         return TemplateStore(
-            templates=templates,
-            substitutes=substitutes,
+            templates=templates_copy,
+            substitutes=self.substitutes.copy(),
             substitute_timestamp=self.substitute_timestamp,
             substitute_pid=self.substitute_pid,
         )
@@ -156,7 +147,7 @@ class TemplateStore:
         else:
             self.templates[key] = value
 
-    def add_substitutes(self, **kwargs) -> None:
+    def add_substitutes(self, **kwargs: str) -> None:
         """
         Add new substitution values.
 

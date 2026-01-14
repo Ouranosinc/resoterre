@@ -26,12 +26,18 @@ def post_process_model_output(output: torch.Tensor, variable_names: list[str]) -
     output_variables = {}
     for i in range(output.shape[1]):
         variable_name = str(variable_names[i])
-        if hrdps_variables[variable_name].normalize_min is None or hrdps_variables[variable_name].normalize_max is None:
+        normalize_min_local = hrdps_variables[variable_name].normalize_min
+        if normalize_min_local is None:
             raise ValueError(f"Variable {variable_name} does not have normalization parameters defined.")
+        normalize_min: float = normalize_min_local
+        normalize_max_local = hrdps_variables[variable_name].normalize_max
+        if normalize_max_local is None:
+            raise ValueError(f"Variable {variable_name} does not have normalization parameters defined.")
+        normalize_max: float = normalize_max_local
         output_variables[variable_name] = inverse_normalize(
             output[:, i : i + 1, :, :].cpu().detach().numpy(),
-            known_min=hrdps_variables[variable_name].normalize_min,
-            known_max=hrdps_variables[variable_name].normalize_max,
+            known_min=normalize_min,
+            known_max=normalize_max,
             mode=(-1, 1),
             log_normalize=hrdps_variables[variable_name].log_normalize,
             log_offset=hrdps_variables[variable_name].normalize_log_offset,

@@ -1,15 +1,22 @@
 """Neural network manager module."""
 
-from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Self
+from typing import Any
+
+
+# ToDo: remove typing_extensions when phasing out Python < 3.11
+try:
+    from typing import Self  # type: ignore[attr-defined]
+except ImportError:
+    from typing_extensions import Self
 
 import torch
 from torch import nn
 
 from resoterre.config_utils import register_config
 from resoterre.io_utils import purge_files
+from resoterre.utils import TemplateStore
 
 
 save_defaults = [
@@ -135,9 +142,7 @@ def nb_of_parameters(model: nn.Module, only_trainable: bool = True) -> int:
     return sum(p.numel() for p in model.parameters())
 
 
-def neural_networks_pth_file_from_path(
-    path_models: Path | str, experiment_name: str | None = None
-) -> dict[str, str] | None:
+def neural_networks_pth_file_from_path(path_models: Path | str, experiment_name: str | None = None) -> dict[str, str]:
     """
     Find the latest neural network .pth files in a given directory.
 
@@ -150,8 +155,8 @@ def neural_networks_pth_file_from_path(
 
     Returns
     -------
-    dict[str, str] | None
-        A dictionary mapping network names to their latest .pth file paths, or None if no files are found.
+    dict[str, str]
+        A dictionary mapping network names to their latest .pth file paths.
     """
     # Get the latest pth file in the directory, if it has info about other networks saved at the same time, include them
     if experiment_name is None:
@@ -160,7 +165,7 @@ def neural_networks_pth_file_from_path(
         pattern = f"*{experiment_name}*.pth"
     pth_files = list(Path(path_models).glob(pattern))
     if not pth_files:
-        return None
+        return {}
     latest_file = max(pth_files, key=lambda x: x.stat().st_mtime)
     save_state = torch.load(latest_file, weights_only=False)
     last_saved_networks = save_state.get(
@@ -174,7 +179,7 @@ class NeuralNetworksManager:
     """
     Neural Networks Manager class to handle multiple neural networks, their optimizers, and learning rate schedulers.
 
-    Attributes
+    Parameters
     ----------
     networks : dict[str, nn.Module], optional
         A dictionary of neural network instances.
@@ -193,19 +198,19 @@ class NeuralNetworksManager:
         networks: dict[str, nn.Module] | None = None,
         optimizers: dict[str, torch.optim.Optimizer] | None = None,
         schedulers: dict[str, torch.optim.lr_scheduler._LRScheduler] | None = None,
-        neural_networks_classes: dict[str, type[nn.Module]] | None = None,
+        neural_network_classes: dict[str, type[nn.Module]] | None = None,
         config: NeuralNetworksManagerConfig | None = None,
     ):
         self.config = config or NeuralNetworksManagerConfig()
         self.networks = {} if networks is None else networks
         self.optimizers = {} if optimizers is None else optimizers
         self.lr_schedulers = {} if schedulers is None else schedulers
-        self.neural_network_classes = {} if neural_networks_classes is None else neural_networks_classes
-        self.pth_files_history = {}
+        self.neural_network_classes = {} if neural_network_classes is None else neural_network_classes
+        self.pth_files_history: dict[str, list[str]] = {}
         self.to_device(self.config.device)
 
     @classmethod
-    def from_neural_networks_info(cls: type[Self], neural_networks_info: dict[str, dict], runner_config: any) -> Self:
+    def from_neural_networks_info(cls: type[Self], neural_networks_info: dict[str, Any], runner_config: Any) -> Self:
         """
         Create a NeuralNetworksManager instance from neural network information and runner configuration.
 
@@ -246,7 +251,7 @@ class NeuralNetworksManager:
         neural_networks_classes: dict[str, type[nn.Module]],
         experiment_name: str | None = None,
         config: NeuralNetworksManagerConfig | None = None,
-    ) -> tuple[Self, dict[str, dict]]:
+    ) -> tuple[Self, dict[str, Any]]:
         """
         Create a NeuralNetworksManager instance by loading neural networks from saved .pth files.
 
@@ -265,7 +270,7 @@ class NeuralNetworksManager:
         -------
         Self
             An instance of NeuralNetworksManager.
-        dict[str, dict]
+        dict[str, Any]
             A dictionary containing supplemental information for each network.
         """
         # ToDo: clarify what is a manager config and a runner config, perhaps rename things a little?
@@ -295,15 +300,15 @@ class NeuralNetworksManager:
         return networks_manager_obj, networks_supplemental_info_dict
 
     @staticmethod
-    def optimizer_setup(network_parameters: Iterable, config: any) -> torch.optim.Optimizer:
+    def optimizer_setup(network_parameters: Any, config: Any) -> torch.optim.Optimizer:
         """
         Set up an optimizer for the neural network.
 
         Parameters
         ----------
-        network_parameters : iterable
+        network_parameters : Any
             The parameters of the neural network to optimize.
-        config : any
+        config : Any
             The configuration for the optimizer.
 
         Returns
@@ -319,7 +324,7 @@ class NeuralNetworksManager:
 
     @staticmethod
     def lr_scheduler_setup(
-        optimizer: torch.optim.Optimizer, config: any
+        optimizer: torch.optim.Optimizer, config: Any
     ) -> torch.optim.lr_scheduler._LRScheduler | None:
         """
         Set up a learning rate scheduler for the optimizer.
@@ -328,7 +333,7 @@ class NeuralNetworksManager:
         ----------
         optimizer : torch.optim.Optimizer
             The optimizer for which to set up the learning rate scheduler.
-        config : any
+        config : Any
             The configuration for the learning rate scheduler.
 
         Returns
@@ -342,7 +347,7 @@ class NeuralNetworksManager:
         scheduler = getattr(torch.optim.lr_scheduler, config.scheduler_name)(optimizer, **kwargs)
         return scheduler
 
-    def init_network_weights(self, network_name: str, **kwargs) -> None:
+    def init_network_weights(self, network_name: str, **kwargs: Any) -> None:
         """
         Initialize the weights of a neural network.
 
@@ -365,7 +370,7 @@ class NeuralNetworksManager:
         path: str,
         experiment_name: str | None = None,
         pth_files_last_network_manager_save: dict[str, str] | None = None,
-        supplemental_info_dict: dict | None = None,
+        supplemental_info_dict: dict[str, Any] | None = None,
     ) -> None:
         """
         Save the state of a neural network to a .pth file.
@@ -380,7 +385,7 @@ class NeuralNetworksManager:
             The experiment name associated with the network.
         pth_files_last_network_manager_save : dict[str, str], optional
             A dictionary of the last saved .pth files for each network.
-        supplemental_info_dict : dict, optional
+        supplemental_info_dict : dict[str, Any], optional
             Additional information to include in the saved state.
         """
         supplemental_info_dict = {} if supplemental_info_dict is None else supplemental_info_dict
@@ -415,11 +420,11 @@ class NeuralNetworksManager:
     def load_network(
         self,
         network_name: str,
-        save_state: dict | None = None,
+        save_state: dict[str, Any] | None = None,
         pth_file: str | None = None,
         return_state_dict: bool = False,
         device: str | None = None,
-    ) -> dict | None:
+    ) -> dict[str, Any] | None:
         """
         Load a network.
 
@@ -427,7 +432,7 @@ class NeuralNetworksManager:
         ----------
         network_name : str
             The name of the neural network to load.
-        save_state : dict, optional
+        save_state : dict[str, Any], optional
             The state dictionary to load. If None, it will be loaded from the specified .pth file.
         pth_file : str, optional
             The file path from which to load the network state if save_state is not provided.
@@ -438,7 +443,7 @@ class NeuralNetworksManager:
 
         Returns
         -------
-        dict | None
+        dict[str, Any] | None
             The loaded state dictionary if return_state_dict is True; otherwise, None.
         """
         if device is None:
@@ -456,7 +461,7 @@ class NeuralNetworksManager:
             del save_state["optimizer_state_dict"]
         return save_state
 
-    def init_weights(self, **kwargs) -> None:
+    def init_weights(self, **kwargs: Any) -> None:
         """
         Initialize the weights of all networks.
 
@@ -485,11 +490,6 @@ class NeuralNetworksManager:
         """
         for network_specific in self.networks.values():
             network_specific.to(device)
-
-    def eval(self) -> None:
-        """Perform evaluation mode for all networks."""
-        for network_specific in self.networks.values():
-            network_specific.eval()
 
     def train(self, mode: bool = True) -> None:
         """
@@ -537,9 +537,9 @@ class NeuralNetworksManager:
         self,
         path: str | None = None,
         experiment_name: str | None = None,
-        supplemental_info_dict: dict | None = None,
+        supplemental_info_dict: dict[str, Any] | None = None,
         save_supplemental_info_dict_only_once: bool = False,
-        templates: dict | None = None,
+        templates: TemplateStore | None = None,
     ) -> dict[str, str]:
         """
         Save all networks.
@@ -603,7 +603,7 @@ class NeuralNetworksManager:
         """
         return [x[-1] for x in self.pth_files_history.values() if x]
 
-    def purge_model_files(self, protected_files: list[str] | None = None) -> list[Path]:
+    def purge_model_files(self, protected_files: list[str] | None = None) -> list[str]:
         """
         Purge old model files based on the configuration.
 
@@ -614,10 +614,13 @@ class NeuralNetworksManager:
 
         Returns
         -------
-        list[Path]
+        list[str]
             A list of paths to the purged model files.
         """
-        protected_files = [] if protected_files is None else protected_files
+        if protected_files is None:
+            protected_files = []
+        if self.config.purge_model_files.protected_files is not None:
+            protected_files += self.config.purge_model_files.protected_files
         path = self.config.purge_model_files.path
         if path is None:
             for list_of_pth_files in self.pth_files_history.values():
@@ -636,6 +639,6 @@ class NeuralNetworksManager:
                 must_both_be_true=self.config.purge_model_files.must_both_be_true,
                 recursive=False,
                 safe=True,
-                excludes=self.config.purge_model_files.protected_files + protected_files,
+                excludes=protected_files,
             )
         return []

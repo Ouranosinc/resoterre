@@ -3,6 +3,7 @@
 import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -180,6 +181,8 @@ def save_model_output(
     output_variables : dict[str, np.ndarray]
         The output variables from the model, keyed by variable name.
     """
+    if config.path_output is None:
+        raise ValueError("config.path_output must be specified to save model output.")
     for i in range(data_sample.dims["sample"]):
         for j in range(data_sample.dims["target_channel"]):
             variable_name = str(data_sample["output_variables"].values[j])
@@ -223,16 +226,20 @@ def save_model_output(
             ds_out.to_netcdf(path_output, engine="netcdf4", encoding=encoding)
 
 
-def inference_from_preprocessed_data(config: dict | Path | str) -> None:
+def inference_from_preprocessed_data(config: dict[str, Any] | Path | str) -> None:
     """
     Workflow for performing inference from preprocessed RDPS data to HRDPS data.
 
     Parameters
     ----------
-    config : dict | Path | str
+    config : dict[str, Any] | Path | str
         Configuration for the inference process, either as a dictionary or a path to a YAML file.
     """
-    config_obj = config_from_yaml(RDPSToHRDPSInference, config, known_custom_config_dict=known_configs)
+    config_obj: RDPSToHRDPSInference = config_from_yaml(
+        RDPSToHRDPSInference, config, known_custom_config_dict=known_configs
+    )
+    if config_obj.path_logs is None:
+        raise ValueError("path_logs must be specified in the config.")
     if config_obj.path_models is None:
         raise ValueError("path_models must be specified in the config.")
     if config_obj.path_output is None:
@@ -241,7 +248,7 @@ def inference_from_preprocessed_data(config: dict | Path | str) -> None:
         raise NotImplementedError("Inference from something other than a preprocessed batch is not implemented.")
 
     templates = TemplateStore({"log_file": "${path_logs}/${timestamp}_inference.log"})
-    templates.add_substitutes(path_logs=config_obj.path_logs)
+    templates.add_substitutes(path_logs=str(config_obj.path_logs))
     if config_obj.path_logs is not None:
         _ = start_root_logger(
             templates=templates,
@@ -264,7 +271,7 @@ def inference_from_preprocessed_data(config: dict | Path | str) -> None:
     # Load preprocessed data
     data_sample = xarray.open_dataset(config_obj.path_preprocessed_batch)
     x = torch.tensor(data_sample["input_first_block"].values).to(config_obj.device)
-    x_last_layer = torch.tensor(data_sample["input_last_layer"].values).to(config.device)
+    x_last_layer = torch.tensor(data_sample["input_last_layer"].values).to(config_obj.device)
     output = network_manager.networks["UNet"](x=x, x_linear=None, x_last_layer=x_last_layer)
 
     # Denormalize and revert climatology removal

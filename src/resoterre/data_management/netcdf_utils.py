@@ -7,7 +7,7 @@ import xarray
 _notset = object()
 
 
-class CFVariables(dict):
+class CFVariables(dict[str, xarray.Variable]):
     """Shortcut for creating and adding variables to an xarray Dataset."""
 
     def add(
@@ -29,9 +29,9 @@ class CFVariables(dict):
             Name of the variable.
         data : np.ndarray
             Data for the variable.
-        dims : tuple[str, ...] | None
+        dims : tuple[str, ...], optional
             Dimensions of the variable. If None, use the variable name as dimension.
-        attributes : dict | None
+        attributes : dict[str, str], optional
             Attributes for the variable. If None, use an empty dictionary.
         dtype : object
             Data type for the variable. If not set, use the default data type.
@@ -40,7 +40,7 @@ class CFVariables(dict):
         complevel : int | object
             Compression level (1-9). If not set, do not specify.
         """
-        dims = dims or name
+        dims = dims or (name,)
         attributes = attributes or {}
 
         encoding = {}
