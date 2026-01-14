@@ -138,7 +138,7 @@ class RDPSToHRDPSOnDiskConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class RDPSToHRDPSInference:
+class RDPSToHRDPSInferenceConfig:
     """
     Configuration for RDPS to HRDPS inference.
 
@@ -167,14 +167,14 @@ class RDPSToHRDPSInference:
 
 
 def save_model_output(
-    config: RDPSToHRDPSInference, data_sample: xarray.Dataset, output_variables: dict[str, np.ndarray]
+    config: RDPSToHRDPSInferenceConfig, data_sample: xarray.Dataset, output_variables: dict[str, np.ndarray]
 ) -> None:
     """
     Save the model output to NetCDF files.
 
     Parameters
     ----------
-    config : RDPSToHRDPSInference
+    config : RDPSToHRDPSInferenceConfig
         Configuration for the inference process.
     data_sample : xarray.Dataset
         The input data sample used for inference.
@@ -235,8 +235,8 @@ def inference_from_preprocessed_data(config: dict[str, Any] | Path | str) -> Non
     config : dict[str, Any] | Path | str
         Configuration for the inference process, either as a dictionary or a path to a YAML file.
     """
-    config_obj: RDPSToHRDPSInference = config_from_yaml(
-        RDPSToHRDPSInference, config, known_custom_config_dict=known_configs
+    config_obj: RDPSToHRDPSInferenceConfig = config_from_yaml(
+        RDPSToHRDPSInferenceConfig, config, known_custom_config_dict=known_configs
     )
     if config_obj.path_logs is None:
         raise ValueError("path_logs must be specified in the config.")

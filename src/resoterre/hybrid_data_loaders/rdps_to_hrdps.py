@@ -34,6 +34,7 @@ def post_process_model_output(output: torch.Tensor, variable_names: list[str]) -
         if normalize_max_local is None:
             raise ValueError(f"Variable {variable_name} does not have normalization parameters defined.")
         normalize_max: float = normalize_max_local
+        # ToDo: guarantee positive precipitation after inverse normalization?
         output_variables[variable_name] = inverse_normalize(
             output[:, i : i + 1, :, :].cpu().detach().numpy(),
             known_min=normalize_min,
