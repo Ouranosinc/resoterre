@@ -168,6 +168,7 @@ def neural_networks_pth_file_from_path(path_models: Path | str, experiment_name:
         return {}
     latest_file = max(pth_files, key=lambda x: x.stat().st_mtime)
     save_state = torch.load(latest_file, weights_only=False)
+    # ToDo: review this use of last_saved_networks
     last_saved_networks = save_state.get(
         "pth_files_last_network_manager_save", [(save_state.get("network_name", ""), latest_file)]
     )
