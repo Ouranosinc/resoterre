@@ -195,7 +195,7 @@ def test_inference_from_preprocessed_data():
         )
         cf_attrs = {"Conventions": "CF-1.6"}
         ds = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs=cf_attrs)
-        ds.to_netcdf(Path(tmp_dir, "preprocessed_data.nc"), engine="netcdf4")
+        ds.to_netcdf(Path(tmp_dir, "preprocessed_data.nc"), engine="h5netcdf")
 
         # Create dummy model
         config = CustomConfig(
