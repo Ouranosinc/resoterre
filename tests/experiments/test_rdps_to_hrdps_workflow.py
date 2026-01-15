@@ -43,12 +43,12 @@ def test_save_model_output():
             attributes={"units": "degrees_east", "standard_name": "longitude"},
         )
         cf_coordinates.add(
-            "year", dims=("sample",), data=np.random.randint(2000, 2025, size=4, dtype=np.int16), dtype=np.int16
+            "year", dims=("sample",), data=np.array([2000, 2001, 2002, 2003], dtype=np.int16), dtype=np.int16
         )
         cf_coordinates.add(
             "month", dims=("sample",), data=np.random.randint(1, 13, size=4, dtype=np.int8), dtype=np.int8
         )
-        cf_coordinates.add("day", dims=("sample",), data=np.random.randint(1, 29, size=4, dtype=np.int8), dtype=np.int8)
+        cf_coordinates.add("day", dims=("sample",), data=np.random.randint(1, 28, size=4, dtype=np.int8), dtype=np.int8)
         cf_coordinates.add(
             "hour", dims=("sample",), data=np.random.randint(0, 24, size=4, dtype=np.int8), dtype=np.int8
         )
@@ -155,7 +155,7 @@ def test_inference_from_preprocessed_data():
         cf_coordinates.add(
             "month", dims=("sample",), data=np.random.randint(1, 13, size=4, dtype=np.int8), dtype=np.int8
         )
-        cf_coordinates.add("day", dims=("sample",), data=np.random.randint(1, 32, size=4, dtype=np.int8), dtype=np.int8)
+        cf_coordinates.add("day", dims=("sample",), data=np.random.randint(1, 28, size=4, dtype=np.int8), dtype=np.int8)
         cf_coordinates.add(
             "hour", dims=("sample",), data=np.random.randint(0, 24, size=4, dtype=np.int8), dtype=np.int8
         )
