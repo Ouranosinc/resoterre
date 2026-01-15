@@ -46,9 +46,17 @@ overlap_factor: null  # preferably a divisor of rdps_window_size
 hrdps_required_unmasked_fraction: null  # e.g., 0.8 means at least 80% of HRDPS pixels in the patch must be unmasked
 
 temporal_window: null  # 1 means +/- 1 time step around the target time step
-# variables_with_temporal_context:
+variables_with_temporal_context:
+  - PR
+  - HU850
+  - PC
+  - HRDPS_P_PR_SFC
 
-# anomaly_variables:
+anomaly_variables:
+  - PN
+  - GZ500
+  - UU850
+  - VV850
 
 normalize: true
 
