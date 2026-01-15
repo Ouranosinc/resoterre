@@ -1,0 +1,69 @@
+path_logs: /path/to/logs
+path_models: /path/to/models
+path_ml_data: &path_ml_data /path/to/ml_data
+path_figures: /path/to/figures
+
+# Dataset specifications
+train_dataset:
+  type: RDPSToHRDPS
+  integrity_rdps_directory: /path/to/rdps_integrity_check
+  integrity_hrdps_directory: /path/to/hrdps_integrity_check
+  rdps_hrdps_intersection_lz4_path: /path/to/rdps_hrdps_intersection.lz4
+  path_ml_data: *path_ml_data
+  path_grids: /path/to/grids
+  grid_input_for_ml: 8km_north_america_ml
+  grid_output_for_ml: 2km_north_america_ml
+  start_datetime: "2017-05-22 00:00:00"
+  end_datetime: "2024-05-30 18:00:00"
+  rdps_variables:
+    - TT_model_levels
+    - PR
+    - HU850
+    - GZ500
+    - PC
+  hrdps_variables:
+    - HRDPS_P_TT_10000
+    - HRDPS_P_PR_SFC
+  save_batch_size: 16
+  only_from_ml_data: true
+  dataset_manager: RDPSToHRDPS
+
+data_loader:
+  batch_size: 16
+  num_workers: 6
+  multiprocessing_context: spawn
+
+#output_channel_sub_selection:
+#  - 1
+
+networks:
+  UNet:
+    type: UNet
+    in_channels: 5
+    out_channels: 2  # If different from in_channels, need to set matching_input_output_channels to false
+    depth: 3
+    initial_nb_of_hidden_channels: 36
+    h_in: 64
+    w_in: 64
+    resolution_increase_layers: 2
+    # reduction_ratio: 2  # Used to put in Squeeze-and-Excitation blocks, if not specified, no SE blocks are used
+
+matching_input_output_channels: false
+
+optimizers:
+  UNet:
+    type: Adam
+    lr: 0.002
+    weight_decay: 0.00001
+
+# Training specifications
+#restart: false  # Set to false for experiment continuation
+#experiment_name: azeleq  # Required when continuing a previous experiment (restart: false)
+nb_of_new_epochs: 5
+
+# Hardware specifications
+device: cuda
+num_threads: 16
+
+framework: pytorch
+framework_version: '2.9.0+cu130'

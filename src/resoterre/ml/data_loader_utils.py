@@ -2,6 +2,7 @@
 
 import random
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from typing import Any, TypeAlias
 
 import numpy as np
@@ -10,6 +11,36 @@ from sklearn.model_selection import train_test_split
 
 
 Nested: TypeAlias = torch.Tensor | dict[Any, "Nested"] | list["Nested"] | tuple["Nested", ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DatasetConfig:
+    """Configuration specific to a dataset. Used as parent class for type hinting."""
+
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class DataLoaderConfig:
+    """
+    Configuration for a PyTorch DataLoader.
+
+    Attributes
+    ----------
+    batch_size : int
+        Number of samples per batch to load. Default is 1.
+    shuffle : bool
+        Whether to shuffle the data at every epoch. Default is False.
+    num_workers : int
+        Number of subprocesses to use for data loading. Default is 0 (data will be loaded in the main process).
+    multiprocessing_context : str, optional
+        The multiprocessing context to use. If None, the default context is used. Default is None.
+    """
+
+    batch_size: int = field(default=1, metadata={"is_hyperparameter": True})
+    shuffle: bool = False
+    num_workers: int = 0
+    multiprocessing_context: str | None = None
 
 
 def index_train_validation_test_split(
@@ -32,7 +63,7 @@ def index_train_validation_test_split(
     test_fraction_from_validation_set : float
         Fraction of the remaining samples (after training) to use for testing.
         The remaining samples will be used for validation.
-    random_seed : int
+    random_seed : int, optional
         Random seed for reproducibility, by default None.
     shuffle : bool
         Whether to shuffle the indices before splitting.
@@ -114,9 +145,9 @@ def normalize(
         Input data to normalize.
     mode : tuple[int]
         The range to normalize the data to.
-    valid_min : float
+    valid_min : float, optional
         Minimum value for normalization. If None, the minimum of the data is used.
-    valid_max : float
+    valid_max : float, optional
         Maximum value for normalization. If None, the maximum of the data is used.
     log_normalize : bool
         Whether to apply logarithmic normalization.
