@@ -3,7 +3,8 @@ import time
 from pathlib import Path
 
 import pytest
-from pack_dev import io_utils
+
+from resoterre import io_utils
 
 
 def test_file_purge_safe_mode():
