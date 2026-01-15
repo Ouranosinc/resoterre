@@ -2,7 +2,7 @@
   "type": "Feature",
   "stac_version": "1.1.0",
   "stac_extensions": [
-    "https://stac-extensions.github.io/mlm/v1.5.0/schema.json",
+    "https://stac-extensions.github.io/mlm/v1.5.1/schema.json",
     "https://stac-extensions.github.io/datacube/v2.2.0/schema.json"
   ],
   "id": "unet_rdps_to_hrdps",
@@ -17,6 +17,8 @@
         "out_channels": 2,
         "depth": 3,
         "initial_nb_of_hidden_channels": 36,
+        "h_in": 64,
+        "w_in": 64,
         "resolution_increase_layers": 2
       }
     },
@@ -78,8 +80,8 @@
     "mlm:name": "UNet RDPS HRDPS Downscaling",
     "mlm:architecture": "resoterre.ml.neural_networks_unet.UNet",
     "mlm:tasks": [
-      "super-resolution",
-      "downscaling"
+      "downscaling",
+      "super-resolution"
     ],
     "mlm:input": [
       {
@@ -107,7 +109,11 @@
           ],
           "data_type": "float32"
         },
-        "pre_processing_function": null
+        "pre_processing_function": {
+          "format": "snakemake",
+          "expression": "snakemake -s scripts/hybrid_data_loaders/rdps_to_hrdps_on_disk.smk --config config_yaml=/path/to/downscaling_preprocessing_rdps_to_hrdps.yaml -j1 --directory=/path/to/workflow/outputs",
+          "description": "Snakemake workflow that regrid RDPS data to 8km resolution, extracts variables, applies normalization, and prepares patches for UNet inference."
+        }
       }
     ],
     "mlm:output": [
@@ -119,8 +125,8 @@
         ],
         "name": "hrdps_outputs",
         "tasks": [
-          "super-resolution",
-          "downscaling"
+          "downscaling",
+          "super-resolution"
         ],
         "result": {
           "shape": [
@@ -236,8 +242,7 @@
         "dimensions": [
           "time",
           "latitude",
-          "longitude",
-          "level"
+          "longitude"
         ],
         "type": "data",
         "data_type": "float32"
@@ -299,7 +304,7 @@
       "href": "https://github.com/Ouranosinc/resoterre",
       "type": "text/html",
       "title": "Source code for UNet",
-      "description": "GitHub repo of the PyTorch model",
+      "description": "GitHub repository containing the PyTorch model and the preprocessing function needed for inference.",
       "roles": [
         "mlm:source_code",
         "code"
