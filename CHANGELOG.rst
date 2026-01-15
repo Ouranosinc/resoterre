@@ -5,12 +5,21 @@ Changelog
 `Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
 ----------------------------------------------------------------
 
-Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:user:`Zeitsperre`).
+Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:user:`Zeitsperre`), Nazim Azeli (:user:`Nazim-crim`).
 
 Changes
 ^^^^^^^
-* Add UNet option to go to a linear layer at the bottom for 1D inputs.
-* Add UNet option to use inputs in the last layer for static features.
+* Add notebooks/unetToMLM.ipynb to describe the UNet downscaling model by generating a STAC Item and Collection validated with the STAC MLM and Datacube extensions. (:pull:`21`).
+* Add UNet option to go to a linear layer at the bottom for 1D inputs. (:pull:`23`).
+* Add UNet option to use inputs in the last layer for static features. (:pull:`23`).
+* Add ``config_utils`` module. (:pull:`23`).
+* Add ``variables`` module. (:pull:`23`).
+* Add ``hrdps_variables`` module. (:pull:`23`).
+* Add ``rdps_variables`` module. (:pull:`23`).
+* Add ``rdps_to_hrdps_workflow`` module. (:pull:`23`).
+* Add ``io_utils`` module. (:pull:`23`).
+* Add ``runner_unet`` module. (:pull:`23`).
+* Add ``snakemake_utils`` module. (:pull:`23`).
 
 Fixes
 ^^^^^

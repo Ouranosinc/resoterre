@@ -43,6 +43,8 @@ networks:
     out_channels: 2  # If different from in_channels, need to set matching_input_output_channels to false
     depth: 3
     initial_nb_of_hidden_channels: 36
+    h_in: 64
+    w_in: 64
     resolution_increase_layers: 2
     # reduction_ratio: 2  # Used to put in Squeeze-and-Excitation blocks, if not specified, no SE blocks are used
 
