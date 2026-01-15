@@ -146,6 +146,10 @@ def split_period(
     -------
     list[str]
         List of period strings.
+
+    Notes
+    -----
+    Current implementation can overshoot the end_datetime by a single time step.
     """
     period_strings = []
     current_datetime = start_datetime
