@@ -184,7 +184,7 @@ def inverse_normalize(
     known_max: float,
     mode: tuple[int, int] = (-1, 1),
     log_normalize: bool = False,
-    log_offset: float = 1.0,
+    log_offset: float | None = 1.0,
 ) -> np.array:
     """
     Inverse normalize data from a specified range, optionally applying logarithmic normalization.
@@ -201,7 +201,7 @@ def inverse_normalize(
         The range to inverse normalize the data from.
     log_normalize : bool
         Whether the data was logarithmically normalized.
-    log_offset : float
+    log_offset : float, optional
         Offset for logarithmic normalization to avoid log(0).
 
     Returns
@@ -211,6 +211,8 @@ def inverse_normalize(
     """
     if isinstance(mode, tuple):
         if log_normalize:
+            if log_offset is None:
+                raise ValueError("log_offset must be provided when log_normalize is True.")
             known_min_log = np.log(log_offset)
             known_max_log = np.log(known_max - known_min + log_offset)
             data = (data - mode[0]) * (known_max_log - known_min_log) / (mode[1] - mode[0]) + known_min_log
