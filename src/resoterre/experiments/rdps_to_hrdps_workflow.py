@@ -223,7 +223,7 @@ def save_model_output(
             save_file = f"{variable_name}/{data['year']}{data['month']:02d}{data['day']:02d}{data['hour']:02d}.nc"
             path_output = Path(config.path_output, save_file)
             path_output.parent.mkdir(parents=True, exist_ok=True)
-            ds_out.to_netcdf(path_output, engine="netcdf4", encoding=encoding)
+            ds_out.to_netcdf(path_output, engine="h5netcdf", encoding=encoding)
 
 
 def inference_from_preprocessed_data(config: dict[str, Any] | Path | str) -> None:
