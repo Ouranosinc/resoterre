@@ -1,0 +1,26 @@
+# Inference Dockerfile for resoterre
+# This image is built on top of the base image and configured for running inference
+
+FROM resoterre-base:latest
+
+# Build argument for model path (can be overridden at build time)
+ARG MODEL_PATH=model/model.pth
+
+# Set working directory
+WORKDIR /app
+
+# Copy the trained model
+COPY ${MODEL_PATH} /app/model/
+
+# Copy the inference script
+COPY scripts/inference/downscaling_inference_rdps_to_hrdps.py /app/scripts/inference/
+
+# Set environment variables for inference
+ENV MODEL_PATH=/app/model/model.pth
+ENV PYTHONPATH=/app:$PYTHONPATH
+
+# The entrypoint expects a config file path as an argument
+ENTRYPOINT ["python3", "/app/scripts/inference/downscaling_inference_rdps_to_hrdps.py"]
+
+# Default config (can be overridden at runtime)
+CMD ["/app/configs/downscaling_inference_rdps_to_hrdps.yaml"]
