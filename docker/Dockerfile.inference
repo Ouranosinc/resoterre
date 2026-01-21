@@ -16,7 +16,6 @@ COPY ${MODEL_PATH} /app/model/
 COPY scripts/inference/downscaling_inference_rdps_to_hrdps.py /app/scripts/inference/
 
 # Set environment variables for inference
-ENV MODEL_PATH=/app/model/model.pth
 ENV PYTHONPATH=/app:$PYTHONPATH
 
 # The entrypoint expects a config file path as an argument

@@ -11,6 +11,19 @@ This directory contains Docker configurations for running **Resoterre inference*
 
 ---
 
+## Configuration & Notes
+
+* `path_models` must point to `/model` inside the container (baked during build).
+* `experiment_name` must match the **filename of your `.pth` file**, e.g.:
+  `2025-12-18T07-31-55_inecor_UNet_EpochNb_5`
+* `path_preprocessed_batch` must be a **preprocessed NetCDF file** (not raw RDPS data), e.g.:
+  `inputs/test_00000494.nc`
+* `path_output` must match the mounted output directory (`outputs` inside the container).
+* `path_logs` and `path_figures` must match mounted directories (`/tmp/logs`, `/tmp/figures`).
+* To change the model, rebuild the inference image with a new `MODEL_PATH`.
+
+---
+
 ## Building the Images
 
 ### 1. Build the Base Image
@@ -23,13 +36,18 @@ docker build -f docker/Dockerfile.base -t resoterre-base:latest .
 
 ### 2. Build the Inference Image
 
-Assuming your trained model is at:
+
+#### Build Arguments
+
+The inference image uses a build argument, `MODEL_PATH`, to specify which trained model file to include in the image. By default, this is set to `model/model.pth`, but you should override it to point to your actual model file.
+
+For example, if your trained model is at:
 
 ```
 model/2025-12-18T07-31-55_inecor_UNet_EpochNb_5.pth
 ```
 
-Build the inference image with the model baked in:
+Build the inference image with the model baked in by passing the build argument:
 
 ```bash
 docker build -f docker/Dockerfile.inference \
@@ -37,22 +55,27 @@ docker build -f docker/Dockerfile.inference \
   -t resoterre-inference:2025-12-18 .
 ```
 
+This will copy the specified model file into the image at build time. If you want to use a different model, rebuild the image with a new `MODEL_PATH` value.
+
 ---
 
-## Running Inference
+## Running Inference locally
 
-Locally, the command is:
+
+Locally, you can run inference by executing:
 
 ```bash
 python3 scripts/inference/downscaling_inference_rdps_to_hrdps.py \
   configs/downscaling/downscaling_inference_rdps_to_hrdps.yaml
 ```
 
-Inside Docker, this is handled automatically via the `ENTRYPOINT`.
+To use a different model or data locally, simply modify the relevant paths in your inference YAML config file.
+
+Inside Docker, inference is handled automatically via the `ENTRYPOINT`. See below for more instructions
 
 ---
 
-### Run Inference (CPU or GPU)
+### Run Inference with docker (CPU or GPU)
 
 Mount your config, inputs and outputs folders:
 
@@ -73,22 +96,30 @@ docker run --rm \
   -v $(pwd)/outputs:/outputs \
   -v $(pwd)/logs:/tmp/logs \
   -v $(pwd)/figures:/tmp/figures \
-  resoterre-inference:2025-12-18 \
+  resoterre-inference:2025-12-18
 ```
 
 > Notes: If you want to use a different config, you can override it by adding the path to the config at the end of the run command , [/path/to/config]
 
 ---
 
-## Configuration & Notes
+#### GPU (NVIDIA GPU available)
 
-* `path_models` must point to `/model` inside the container (baked during build).
-* `experiment_name` must match the **filename of your `.pth` file**, e.g.:
-  `2025-12-18T07-31-55_inecor_UNet_EpochNb_5`
-* `path_preprocessed_batch` must be a **preprocessed NetCDF file** (not raw RDPS data), e.g.:
-  `inputs/test_00000494.nc`
-* `path_output` must match the mounted output directory (`outputs` inside the container).
-* `path_logs` and `path_figures` must match mounted directories (`/tmp/logs`, `/tmp/figures`).
-* To change the model, rebuild the inference image with a new `MODEL_PATH`.
+If you are running on a machine **with an NVIDIA GPU**, make sure your YAML sets:
 
+```yaml
+device: cuda
+```
+
+Then run (requires NVIDIA Container Toolkit):
+
+```bash
+docker run --rm --gpus all \
+  -v $(pwd)/configs:/app/configs:ro \
+  -v $(pwd)/inputs:/inputs:ro \
+  -v $(pwd)/outputs:/outputs \
+  -v $(pwd)/logs:/tmp/logs \
+  -v $(pwd)/figures:/tmp/figures \
+  resoterre-inference:2025-12-18
+```
 ---
