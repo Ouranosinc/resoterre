@@ -1,8 +1,10 @@
 """General utilities."""
 
 import datetime
+import hashlib
 import os
 from string import Template
+from typing import Any
 
 
 class TemplateStore:
@@ -158,3 +160,22 @@ class TemplateStore:
         """
         for key, value in kwargs.items():
             self.substitutes[key] = value
+
+
+def unique_hex_digest(unique_elements: Any, length: int = 8) -> str:
+    """
+    Generate a unique hexadecimal digest based on the input elements.
+
+    Parameters
+    ----------
+    unique_elements : Any
+        The elements to generate a unique digest for. They must have a unique string representation.
+    length : int
+        The length of the hexadecimal digest truncation to return.
+
+    Returns
+    -------
+    str
+        A hexadecimal digest string of the specified length.
+    """
+    return hashlib.sha256(str(unique_elements).encode()).hexdigest()[0:length]
