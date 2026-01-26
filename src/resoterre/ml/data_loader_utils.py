@@ -6,7 +6,7 @@ import random
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, cast
 
 import numpy as np
 import torch
@@ -258,7 +258,7 @@ class DatasetWithSplits(td.Dataset):  # type: ignore[misc]
         # If the dataset (its retrieve_key_data method) returns pre-batched samples, set built_in_batch_size > 1
         self.built_in_batch_size = built_in_batch_size
         self.effective_built_in_batch_size = self.built_in_batch_size if self.built_in_batch_size > 1 else 1
-        self.fixed_data_cache: dict[str, np.array] = {}
+        self.cache: dict[str, Any] = {}
         # Need self.train_idx_to_key, self.validation_idx_to_key, self.test_idx_to_key in subclass
         #     (or whatever the defined splits are)
 
@@ -288,9 +288,9 @@ class DatasetWithSplits(td.Dataset):  # type: ignore[misc]
 
     def compute_fixed_data_cache(self) -> None:
         """Compute and cache fixed data that does not change across samples."""
-        pass  # To be overwritten in subclass if there is fixed data, using the cache to avoid recomputing
+        pass  # To be overwritten in subclass if fixed data exists, using self.cache["fixed_data"] to avoid recomputing
 
-    def fixed_data(self, to_torch: bool = False) -> dict[str, np.array | torch.Tensor]:
+    def fixed_data(self, to_torch: bool = False) -> dict[str, np.ndarray | torch.Tensor]:
         """
         Retrieve fixed data, computing it if not already cached.
 
@@ -305,9 +305,12 @@ class DatasetWithSplits(td.Dataset):  # type: ignore[misc]
             Fixed data dictionary.
         """
         self.compute_fixed_data_cache()
-        if to_torch:
-            return {k: torch.from_numpy(v) for k, v in self.fixed_data_cache.items()}
-        return self.fixed_data_cache
+        if "fixed_data" in self.cache:
+            if to_torch:
+                return {k: torch.from_numpy(v) for k, v in self.cache["fixed_data"].items()}
+        else:
+            fixed_data = cast(dict[str, np.ndarray], self.cache.get("fixed_data", {}))
+        return fixed_data
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         """
@@ -331,7 +334,7 @@ class DatasetWithSplits(td.Dataset):  # type: ignore[misc]
             dynamic_data[dynamic_dataset_key] = getattr(self, f"retrieve_{dynamic_dataset_key}_data")(key)
         return {key: torch.from_numpy(value) for key, value in dynamic_data.items()}
 
-    def get_with_fixed_data(self, idx: int, to_torch: bool = False) -> dict[str, np.array | torch.Tensor]:
+    def get_with_fixed_data(self, idx: int, to_torch: bool = False) -> dict[str, np.ndarray | torch.Tensor]:
         """
         Retrieve data for a given index, including fixed data.
 
@@ -393,8 +396,6 @@ class DatasetWithSave(DatasetWithSplits):
         if (self.built_in_batch_size > 1) and (save_batch_size % self.built_in_batch_size != 0):
             raise ValueError("save_batch_size must be a multiple of built_in_batch_size")
         self.save_batch_size = save_batch_size  # To save multiple samples together
-        self.cached_file: Path | str | None = None
-        self.cached_data: Any = {}
         self.skip_load = skip_load  # Used when explicitly saving a data loader to disk to completely skip loading
         # Need self.train_idx_to_key, self.validation_idx_to_key, self.test_idx_to_key in subclass
         #     (or whatever the defined splits are)
@@ -490,9 +491,9 @@ class DatasetWithSave(DatasetWithSplits):
     def set_fixed_data_cache_from_save(self) -> None:
         """Load fixed data from saved file into cache if not already cached."""
         fixed_npz_file = self.saved_fixed_path()
-        if (not self.fixed_data_cache) and fixed_npz_file.is_file():
-            self.fixed_data_cache = np.load(fixed_npz_file)
-            self.fixed_data_cache = {key: value for key, value in self.fixed_data_cache.items()}
+        if ("fixed_data" not in self.cache) and fixed_npz_file.is_file():
+            self.cache["fixed_data"] = np.load(fixed_npz_file)
+            self.cache["fixed_data"] = {key: value for key, value in self.cache["fixed_data"].items()}
 
     def save_idx_data(self, idx: int, data_dict: dict[str, Any]) -> None:
         """
@@ -505,8 +506,8 @@ class DatasetWithSave(DatasetWithSplits):
         data_dict : dict[str, Any]
             Dictionary containing the data to save.
         """
-        self.cached_data = data_dict
-        self.cached_file = self.saved_batch_path(idx)
+        self.cache["last_idx_data"] = data_dict
+        self.cache["last_idx_file"] = self.saved_batch_path(idx)
         logger.debug("Saving batch: %s", idx, identifier="save", block_short_repetition_delay=10)
         Path(self.path_ml_data).mkdir(parents=True, exist_ok=True)
         np.savez(self.saved_batch_path(idx), **data_dict)
@@ -534,12 +535,12 @@ class DatasetWithSave(DatasetWithSplits):
             Loaded data for the given index.
         """
         logger.debug("Loading: %s", idx, identifier="load", block_short_repetition_delay=10)
-        if saved_batch_npz_file == self.cached_file:
-            loaded_data = self.cached_data
+        if saved_batch_npz_file == self.cache.get("last_idx_file", None):
+            loaded_data = self.cache["last_idx_data"]
         else:
             loaded_data = np.load(saved_batch_npz_file)
-            self.cached_data = loaded_data
-            self.cached_file = saved_batch_npz_file
+            self.cache["last_idx_data"] = loaded_data
+            self.cache["last_idx_file"] = saved_batch_npz_file
         built_in_ratio = self.save_batch_size // self.effective_built_in_batch_size
         d = {}
         for key in loaded_data.keys():
@@ -576,14 +577,14 @@ class DatasetWithSave(DatasetWithSplits):
         """
         logger.debug("Loading: %s", idx, identifier="load", block_short_repetition_delay=10)
         # Reusing cached_file and cached_data for netcdf as well
-        if saved_batch_netcdf_file == self.cached_file:
-            loaded_dataset = self.cached_data
+        if saved_batch_netcdf_file == self.cache.get("last_idx_netcdf_file", None):
+            loaded_dataset = self.cache["last_idx_dataset"]
         else:
-            if self.cached_data is not None:
-                self.cached_data.close()
+            if "last_idx_dataset" in self.cache:
+                self.cache["last_idx_dataset"].close()
             loaded_dataset = xarray.open_dataset(saved_batch_netcdf_file)
-            self.cached_data = loaded_dataset
-            self.cached_file = saved_batch_netcdf_file
+            self.cache["last_idx_dataset"] = loaded_dataset
+            self.cache["last_idx_netcdf_file"] = saved_batch_netcdf_file
         built_in_ratio = self.save_batch_size // self.effective_built_in_batch_size
         d = {}
         data_variables = list(loaded_dataset.data_vars.keys())

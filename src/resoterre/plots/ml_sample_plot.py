@@ -11,7 +11,7 @@ class MachineLearningDataPlotConfig:
 
     Attributes
     ----------
-    dimensions_selected_index : dict[str, int]
+    dimensions_selected_index : dict[str, int | str]
         Dictionary specifying the selected index for each dimension.
     zoom_collection : dict[str, Any]
         Dictionary representation of a zoom collection.
@@ -21,7 +21,7 @@ class MachineLearningDataPlotConfig:
         Scale factor for the figure size.
     """
 
-    dimensions_selected_index: dict[str, int] = field(default_factory=dict)
+    dimensions_selected_index: dict[str, int | str] = field(default_factory=dict)
     zoom_collection: dict[str, Any] = field(default_factory=dict)
     local_variance_max_sample_kwargs: dict[str, Any] = field(default_factory=dict)
     figure_size_scale_factor: int = 1
