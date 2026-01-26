@@ -118,7 +118,7 @@ class CustomLogging:
         expected_nb_of_calls: int = 1,
         add_eta: bool = False,
     ) -> bool:
-        """
+        r"""
         Log a message with repetition overload protection.
 
         Parameters
@@ -127,7 +127,7 @@ class CustomLogging:
             The logging method to use (e.g., logger.info).
         message : str
             The message to log.
-        *args : Any
+        \*args : Any
             Additional arguments for the logging method.
         block_short_repetition_delay : int
             Time in seconds to block repeated messages.
@@ -193,14 +193,14 @@ class CustomLogging:
         expected_nb_of_calls: int = 1,
         add_eta: bool = False,
     ) -> bool:
-        """
+        r"""
         Log a debug message.
 
         Parameters
         ----------
         message : str
             The message to log.
-        *args : Any
+        \*args : Any
             Additional arguments for the logging method.
         block_short_repetition_delay : int
             Time in seconds to block repeated messages.
@@ -239,14 +239,14 @@ class CustomLogging:
         expected_nb_of_calls: int = 1,
         add_eta: bool = False,
     ) -> bool:
-        """
+        r"""
         Log an info message.
 
         Parameters
         ----------
         message : str
             The message to log.
-        *args : Any
+        \*args : Any
             Additional arguments for the logging method.
         block_short_repetition_delay : int
             Time in seconds to block repeated messages.
@@ -285,14 +285,14 @@ class CustomLogging:
         expected_nb_of_calls: int = 1,
         add_eta: bool = False,
     ) -> bool:
-        """
+        r"""
         Log a warning message.
 
         Parameters
         ----------
         message : str
             The message to log.
-        *args : Any
+        \*args : Any
             Additional arguments for the logging method.
         block_short_repetition_delay : int
             Time in seconds to block repeated messages.
@@ -331,14 +331,14 @@ class CustomLogging:
         expected_nb_of_calls: int = 1,
         add_eta: bool = False,
     ) -> bool:
-        """
+        r"""
         Log an error message.
 
         Parameters
         ----------
         message : str
             The message to log.
-        *args : Any
+        \*args : Any
             Additional arguments for the logging method.
         block_short_repetition_delay : int
             Time in seconds to block repeated messages.
@@ -377,14 +377,14 @@ class CustomLogging:
         expected_nb_of_calls: int = 1,
         add_eta: bool = False,
     ) -> bool:
-        """
+        r"""
         Log a critical message.
 
         Parameters
         ----------
         message : str
             The message to log.
-        *args : Any
+        \*args : Any
             Additional arguments for the logging method.
         block_short_repetition_delay : int
             Time in seconds to block repeated messages.
