@@ -15,9 +15,9 @@ This directory contains Docker configurations for running **Resoterre inference*
 
 * `path_models` must point to `/model` inside the container (baked during build).
 * `experiment_name` must match the **filename of your `.pth` file**, e.g.:
-  `2025-12-18T07-31-55_inecor_UNet_EpochNb_5`
+  `2026-01-26T11-06-33_rabahe_UNet_EpochNb_2`
 * `path_preprocessed_batch` must be a **preprocessed NetCDF file** (not raw RDPS data), e.g.:
-  `inputs/test_00000494.nc`
+  `inputs/test_00000000.nc`
 * `path_output` must match the mounted output directory (`outputs` inside the container).
 * `path_logs` and `path_figures` must match mounted directories (`/tmp/logs`, `/tmp/figures`).
 * To change the model, rebuild the inference image with a new `MODEL_PATH`.
@@ -44,15 +44,15 @@ The inference image uses a build argument, `MODEL_PATH`, to specify which traine
 For example, if your trained model is at:
 
 ```
-model/2025-12-18T07-31-55_inecor_UNet_EpochNb_5.pth
+model/2026-01-26T11-06-33_rabahe_UNet_EpochNb_2.pth
 ```
 
 Build the inference image with the model baked in by passing the build argument:
 
 ```bash
 docker build -f docker/Dockerfile.inference \
-  --build-arg MODEL_PATH=model/2025-12-18T07-31-55_inecor_UNet_EpochNb_5.pth \
-  -t resoterre-inference:2025-12-18 .
+  --build-arg MODEL_PATH=model/2026-01-26T11-06-33_rabahe_UNet_EpochNb_2.pth \
+  -t resoterre-inference:2026-01-26 .
 ```
 
 This will copy the specified model file into the image at build time. If you want to use a different model, rebuild the image with a new `MODEL_PATH` value.
@@ -92,11 +92,11 @@ Then run:
 ```bash
 docker run --rm \
   -v $(pwd)/configs:/app/configs:ro \
-  -v $(pwd)/inputs:/inputs:ro \
-  -v $(pwd)/outputs:/outputs \
+  -v $(pwd)/inputs:/app/inputs:ro \
+  -v $(pwd)/outputs:/app/outputs \
   -v $(pwd)/logs:/tmp/logs \
   -v $(pwd)/figures:/tmp/figures \
-  resoterre-inference:2025-12-18
+  resoterre-inference:2026-01-26
 ```
 
 > Notes: If you want to use a different config, you can override it by adding the path to the config at the end of the run command , [/path/to/config]
@@ -116,10 +116,10 @@ Then run (requires NVIDIA Container Toolkit):
 ```bash
 docker run --rm --gpus all \
   -v $(pwd)/configs:/app/configs:ro \
-  -v $(pwd)/inputs:/inputs:ro \
-  -v $(pwd)/outputs:/outputs \
+  -v $(pwd)/inputs:/app/inputs:ro \
+  -v $(pwd)/outputs:/app/outputs \
   -v $(pwd)/logs:/tmp/logs \
   -v $(pwd)/figures:/tmp/figures \
-  resoterre-inference:2025-12-18
+  resoterre-inference:2026-01-26
 ```
 ---
