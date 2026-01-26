@@ -11,6 +11,7 @@ WORKDIR /app
 
 # Copy the trained model
 COPY ${MODEL_PATH} /app/model/
+RUN chmod -R a+r /app/model
 
 # Copy the inference script
 COPY scripts/inference/downscaling_inference_rdps_to_hrdps.py /app/scripts/inference/
