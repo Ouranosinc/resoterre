@@ -150,12 +150,12 @@ class TemplateStore:
             self.templates[key] = value
 
     def add_substitutes(self, **kwargs: str) -> None:
-        """
+        r"""
         Add new substitution values.
 
         Parameters
         ----------
-        **kwargs
+        \*\*kwargs : dict[str, str]
             Key-value pairs for substitution.
         """
         for key, value in kwargs.items():
