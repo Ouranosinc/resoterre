@@ -168,11 +168,11 @@ def neural_networks_pth_file_from_path(path_models: Path | str, experiment_name:
         return {}
     latest_file = max(pth_files, key=lambda x: x.stat().st_mtime)
     save_state = torch.load(latest_file, weights_only=False)
-    # ToDo: review this use of last_saved_networks
+    # ToDo: review this use of last_saved_networks, absolute paths from local executions should not be here?
     last_saved_networks = save_state.get(
-        "pth_files_last_network_manager_save", [(save_state.get("network_name", ""), latest_file)]
+        "pth_files_last_network_manager_save", {save_state.get("network_name", ""): latest_file}
     )
-    neural_networks_pth_file = {k: v for k, v in last_saved_networks.items()}
+    neural_networks_pth_file = {k: str(Path(path_models, Path(v).name)) for k, v in last_saved_networks.items()}
     return neural_networks_pth_file
 
 
