@@ -238,6 +238,7 @@ def inference_from_preprocessed_data(config: dict[str, Any] | Path | str) -> Non
     config_obj: RDPSToHRDPSInferenceConfig = config_from_yaml(
         RDPSToHRDPSInferenceConfig, config, known_custom_config_dict=known_configs
     )
+
     if config_obj.path_logs is None:
         raise ValueError("path_logs must be specified in the config.")
     if config_obj.path_models is None:
