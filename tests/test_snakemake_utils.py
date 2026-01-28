@@ -1,4 +1,5 @@
 import datetime
+import json
 import tempfile
 from pathlib import Path
 
@@ -32,6 +33,30 @@ def test_merge_logs():
             output=output_manifest,
             search_patterns=["[WARNING]"],
             purge=True,
+        )
+        with Path(output_manifest).open() as f:
+            lines = f.read().splitlines()
+        assert not Path(tmp_dir, "log2.txt").exists()
+        assert lines[2] == "[WARNING] (something) message"
+
+
+def test_merge_logs_from_json_manifest():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        with Path(tmp_dir, "log1.txt").open("w") as f:
+            f.write("[DEBUG] (something) message\n[INFO] (something) message\n[WARNING] (something) message\n")
+        with Path(tmp_dir, "log2.txt").open("w") as f:
+            f.write("[DEBUG] (something else) message\n[INFO] (something else) message\n")
+        with Path(tmp_dir, "manifest_log1.json").open("w") as f:
+            json.dump({"log_file": str(Path(tmp_dir, "log1.txt"))}, f)
+        with Path(tmp_dir, "manifest_log2.json").open("w") as f:
+            json.dump({"log_file": str(Path(tmp_dir, "log2.txt"))}, f)
+        output_manifest = Path(tmp_dir, "merged_manifest.txt")
+        snakemake_utils.merge_logs(
+            inputs=[Path(tmp_dir, "manifest_log1.json"), Path(tmp_dir, "manifest_log2.json")],
+            output=output_manifest,
+            search_patterns=["[WARNING]"],
+            purge=True,
+            from_json_manifest=True,
         )
         with Path(output_manifest).open() as f:
             lines = f.read().splitlines()

@@ -297,7 +297,11 @@ class NeuralNetworksManager:
             networks_manager_obj.load_network(
                 key, save_state=save_state, return_state_dict=False, device=networks_manager_obj.config.device
             )
-        networks_manager_obj.to_device(networks_manager_obj.config.device)
+        # ToDo: review device management here
+        if config is None:
+            networks_manager_obj.to_device(networks_manager_obj.config.device)
+        else:
+            networks_manager_obj.to_device(config.device)
         return networks_manager_obj, networks_supplemental_info_dict
 
     @staticmethod

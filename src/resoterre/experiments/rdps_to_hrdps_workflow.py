@@ -14,7 +14,7 @@ from resoterre.data_management.netcdf_utils import CFVariables
 from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables
 from resoterre.hybrid_data_loaders.rdps_to_hrdps import post_process_model_output
 from resoterre.logging_utils import start_root_logger
-from resoterre.ml.network_manager import NeuralNetworksManager
+from resoterre.ml.network_manager import NeuralNetworksManager, NeuralNetworksManagerConfig
 from resoterre.ml.neural_networks_unet import UNet
 from resoterre.utils import TemplateStore
 
@@ -266,6 +266,7 @@ def inference_from_preprocessed_data(config: dict[str, Any] | Path | str) -> Non
         path_models=config_obj.path_models,
         neural_networks_classes={"UNet": UNet},
         experiment_name=config_obj.experiment_name,
+        config=NeuralNetworksManagerConfig(device=config_obj.device),
     )
 
     # Load preprocessed data
