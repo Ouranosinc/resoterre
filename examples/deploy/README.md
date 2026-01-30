@@ -1,0 +1,100 @@
+## Prepare Inference Configuration
+
+Before running the UNet process, you should update the configuration file at `configs/downscaling/downscaling_inference_rdps_to_hrdps.yaml` to match your environment and data locations.
+
+Below is an example of a working configuration:
+
+```yaml
+path_logs: /tmp/logs
+path_models: /app/model
+path_figures: /tmp/figures
+path_output: outputs
+
+path_preprocessed_batch: inputs/test_00000000.nc
+
+experiment_name: 2026-01-26T11-06-33_rabahe_UNet_EpochNb_2
+
+# Hardware specifications
+device: cuda
+num_threads: 16
+
+framework: pytorch
+framework_version: '2.9.0+cu130'
+```
+
+Adjust the paths and parameters as needed for your setup. This file is referenced as the `config` input in the CWL tool and should be provided in your input YAML for execution.
+# Using Weaver and CWL Tool for UNet Deployment and Execution
+
+## About `unet.cwl`
+
+The `unet.cwl` file describes a Common Workflow Language (CWL) CommandLineTool for running a UNet-based inference process. It is designed to be portable and reproducible, supporting both local and containerized execution (e.g., with Docker and CUDA for GPU acceleration).
+
+### Key Components
+
+- **Inputs:**
+	- `config` (File): Inference configuration YAML file.
+	- `inputs_dir` (Directory): Directory containing input NetCDF files.
+	- `logs_dir` (Directory): Directory for log outputs.
+	- `figures_dir` (Directory): Directory for generated figures.
+
+- **Outputs:**
+	- `outputs_dir` (Directory): Output directory containing the results of the inference.
+
+- **Requirements:**
+	- **DockerRequirement:** Runs the process in a specified Docker image (update the image name as needed).
+	- **CUDARequirement:** Specifies GPU requirements for CUDA-enabled execution.
+	- **EnvVarRequirement:** Sets environment variables for compatibility (e.g., PyTorch caching).
+	- **InitialWorkDirRequirement:** Prepares the working directory structure for inputs, logs, and figures.
+
+### Usage
+
+This tool can be executed using a workflow engine like Weaver or directly with `cwltool`.
+
+---
+# Using Weaver and CWL Tool for UNet Deployment and Execution
+
+This guide explains how to deploy and execute a UNet process using [Weaver](https://github.com/crim-ca/weaver) and [cwltool](https://github.com/common-workflow-language/cwltool) with the provided CWL files.
+
+## Prerequisites
+
+- [Weaver](https://github.com/crim-ca/weaver) installed and running (with a reachable URL, e.g., `http://localhost:4001/`)
+- [cwltool](https://github.com/common-workflow-language/cwltool) installed
+- Access to the CWL files and input YAML in this directory
+
+## Files
+
+- `unet.cwl`: CWL description of the UNet process
+- `Execute_unet_cwl_schema.yml`: Example input file for the UNet process
+
+## Deploying the Process with Weaver
+
+To deploy the UNet process to a running Weaver instance:
+
+```bash
+weaver deploy -u <WEAVER_URL> --cwl <PATH_TO>/unet.cwl --id unet
+```
+
+Replace `<WEAVER_URL>` with your Weaver instance URL (e.g., `http://localhost:4001/`), and `<PATH_TO>` with the path to your CWL file.
+
+## Executing the Process with Weaver
+
+To execute the deployed UNet process using Weaver:
+
+```bash
+weaver execute -u <WEAVER_URL> --id unet -I <PATH_TO>/Execute_unet_cwl_schema.yml
+```
+
+Replace `<WEAVER_URL>` and `<PATH_TO>` as appropriate for your environment.
+
+## Running the Process Locally with cwltool
+
+To run the UNet process locally using cwltool:
+
+```bash
+cwltool --enable-ext --outdir results <PATH_TO>/unet.cwl <PATH_TO>/Execute_unet_cwl_schema.yml
+```
+
+This will execute the workflow and store the results in the `results/` directory.
+
+---
+For more information, refer to the [Weaver documentation](https://crim-ca.github.io/weaver/).
