@@ -152,6 +152,10 @@ class RDPSToHRDPSInferenceConfig:
         Path to the output directory where results will be saved.
     path_preprocessed_batch : Path, optional
         Path to the preprocessed data batch for inference.
+    search_path: Path, optional
+        Path to the directory containing preprocessed data files for inference.
+    glob_pattern: str, optional
+        Glob pattern to match multiple preprocessed data files for inference.
     experiment_name : str
         Name of the experiment.
     device : str
@@ -162,13 +166,15 @@ class RDPSToHRDPSInferenceConfig:
     path_models: Path | None = None
     path_output: Path | None = None
     path_preprocessed_batch: Path | None = None
+    search_path: Path | None = None
+    glob_pattern: str | None = None
     experiment_name: str = "test"
     device: str = "cpu"
 
 
 def save_model_output(
     config: RDPSToHRDPSInferenceConfig, data_sample: xarray.Dataset, output_variables: dict[str, np.ndarray]
-) -> None:
+) -> list[str]:
     """
     Save the model output to NetCDF files.
 
@@ -180,35 +186,49 @@ def save_model_output(
         The input data sample used for inference.
     output_variables : dict[str, np.ndarray]
         The output variables from the model, keyed by variable name.
+
+    Returns
+    -------
+    list[str]
+        List of paths to the saved output files.
     """
     if config.path_output is None:
         raise ValueError("config.path_output must be specified to save model output.")
+    list_of_saved_files = []
     for i in range(data_sample.dims["sample"]):
         for j in range(data_sample.dims["target_channel"]):
             variable_name = str(data_sample["output_variables"].values[j])
             data = {}
-            for key in ["year", "month", "day", "hour"]:
-                data[key] = int(data_sample[key].values[i])
+            year = int(data_sample["year"].values[i])
+            month = int(data_sample["month"].values[i])
+            day = int(data_sample["day"].values[i])
+            hour = int(data_sample["hour"].values[i])
             for key in ["height_out_idx", "width_out_idx", "lat", "lon"]:
                 data[key] = data_sample[key].values[i, :]
 
             cf_coordinates = CFVariables()
             for key in ["lat", "lon", "height_out_idx", "width_out_idx"]:
+                if key in ["lat", "height_out_idx"]:
+                    dims = ("lat",)
+                elif key in ["lon", "width_out_idx"]:
+                    dims = ("lon",)
+                else:
+                    raise ValueError(f"Unexpected coordinate key: {key}")
                 cf_coordinates.add(
                     key,
-                    dims=data_sample[key].dims[1:],
+                    dims=dims,
                     data=data[key],
                     dtype=data_sample[key].dtype,
                     attributes=data_sample[key].attrs,
                 )
-            datetime_str = f"{data['year']}-{data['month']:02d}-{data['day']:02d}T{data['hour']:02d}:00:00"
+            datetime_str = f"{year}-{month:02d}-{day:02d}T{hour:02d}:00:00"
             cf_coordinates.add("time", dims=(), data=np.array([datetime_str], dtype="datetime64[ns]"))
             cf_variables = CFVariables()
             # ToDo: add standard_name and long_name mapping to hrdps_variables and add it to attributes
             #       careful, this is post accumulation to quantity
             cf_variables.add(
                 variable_name,
-                dims=(data_sample["height_out_idx"].dims[1], data_sample["width_out_idx"].dims[1]),
+                dims=("lat", "lon"),
                 attributes={"units": hrdps_variables[variable_name].units},
                 data=output_variables[variable_name][i, 0, :, :],  # channel index was already extracted
                 dtype=np.float32,
@@ -220,27 +240,34 @@ def save_model_output(
             encoding = {"time": {"dtype": "int64", "calendar": "standard", "units": "hours since 1970-01-01 00:00:00"}}
 
             # ToDo: different tiles would have the same name, need to add tile indices to the path
-            save_file = f"{variable_name}/{data['year']}{data['month']:02d}{data['day']:02d}{data['hour']:02d}.nc"
+            date_str = f"{year}{month:02d}{day:02d}{hour:02d}"
+            save_file = f"{variable_name}/{date_str}_{data['height_out_idx'][0]}_{data['width_out_idx'][0]}.nc"
             path_output = Path(config.path_output, save_file)
             path_output.parent.mkdir(parents=True, exist_ok=True)
             ds_out.to_netcdf(path_output, engine="h5netcdf", encoding=encoding)
+            list_of_saved_files.append(str(path_output))
+    return list_of_saved_files
 
 
-def inference_from_preprocessed_data(config: dict[str, Any] | Path | str) -> None:
+def inference_from_preprocessed_data(config: RDPSToHRDPSInferenceConfig | dict[str, Any] | Path | str) -> list[str]:
     """
     Workflow for performing inference from preprocessed RDPS data to HRDPS data.
 
     Parameters
     ----------
-    config : dict[str, Any] | Path | str
-        Configuration for the inference process, either as a dictionary or a path to a YAML file.
-    """
-    config_obj: RDPSToHRDPSInferenceConfig = config_from_yaml(
-        RDPSToHRDPSInferenceConfig, config, known_custom_config_dict=known_configs
-    )
+    config : RDPSToHRDPSInferenceConfig | dict[str, Any] | Path | str
+        Configuration for the inference process, including as a dictionary or a path to a YAML file.
 
-    if config_obj.path_logs is None:
-        raise ValueError("path_logs must be specified in the config.")
+    Returns
+    -------
+    list[str]
+        List of paths to the saved output files.
+    """
+    if isinstance(config, RDPSToHRDPSInferenceConfig):
+        config_obj = config
+    else:
+        config_obj = config_from_yaml(RDPSToHRDPSInferenceConfig, config, known_custom_config_dict=known_configs)
+
     if config_obj.path_models is None:
         raise ValueError("path_models must be specified in the config.")
     if config_obj.path_output is None:
@@ -263,7 +290,7 @@ def inference_from_preprocessed_data(config: dict[str, Any] | Path | str) -> Non
         )
 
     # Load UNet
-    network_manager, info_dict = NeuralNetworksManager.from_path_models(
+    network_manager, _ = NeuralNetworksManager.from_path_models(
         path_models=config_obj.path_models,
         neural_networks_classes={"UNet": UNet},
         experiment_name=config_obj.experiment_name,
@@ -282,4 +309,6 @@ def inference_from_preprocessed_data(config: dict[str, Any] | Path | str) -> Non
     )
 
     # Save output
-    save_model_output(config_obj, data_sample, output_variables)
+    list_of_saved_files = save_model_output(config_obj, data_sample, output_variables)
+
+    return list_of_saved_files

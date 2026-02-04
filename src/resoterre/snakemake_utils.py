@@ -191,3 +191,42 @@ def split_period(
             weeks=weeks,
         )
     return period_strings
+
+
+def split_glob(
+    search_path: str | Path,
+    glob_pattern: str,
+    batch_size: int = 1,
+    output_directory: str | Path | None = None,
+    manifest_prefix: str | None = None,
+) -> list[list[Path]]:
+    """
+    Split files matching a glob pattern into batches.
+
+    Parameters
+    ----------
+    search_path : str | Path
+        Path to search for files.
+    glob_pattern : str
+        Glob pattern to match files.
+    batch_size : int
+        Number of files in each batch.
+    output_directory : str | Path
+        Directory to save manifest files. If None, no manifest files are saved.
+    manifest_prefix : str
+        Prefix for manifest file names. If None, no manifest files are saved.
+
+    Returns
+    -------
+    list[list[Path]]
+        List of batches, each batch is a list of Path objects.
+    """
+    all_files = sorted(Path(search_path).glob(glob_pattern))
+    batches = [all_files[i : i + batch_size] for i in range(0, len(all_files), batch_size)]
+    if (output_directory is not None) and (manifest_prefix is not None):
+        output_directory = Path(output_directory)
+        output_directory.mkdir(parents=True, exist_ok=True)
+        for i, batch in enumerate(batches):
+            manifest_path = Path(output_directory, f"{manifest_prefix}_{str(i).zfill(8)}.txt")
+            manifest_path.write_text("\n".join(str(p) for p in batch))
+    return batches
