@@ -1,12 +1,6 @@
 config:
   class: File
-  path: ../../configs/downscaling/downscaling_inference_rdps_to_hrdps.yaml
+  path: ../../configs/downscaling/downscaling_inference_rdps_to_hrdps.yaml # when using weaver use fileserver path
 inputs_dir:
   class: Directory
   path: ../../inputs/
-logs_dir:
-  class: Directory
-  path: ../../logs/
-figures_dir:
-  class: Directory
-  path: ../../figures/

@@ -2,7 +2,7 @@ cwlVersion: v1.2
 class: CommandLineTool
 $namespaces:
   cwltool: "http://commonwl.org/cwltool#"
-
+  ogc: "http://www.opengis.net/def/media-type/ogc/1.0/"
 
 requirements:
   EnvVarRequirement:
@@ -29,14 +29,6 @@ requirements:
         entryname: inputs
         writable: false
 
-      - entry: $(inputs.logs_dir)
-        entryname: tmp/logs
-        writable: true
-
-      - entry: $(inputs.figures_dir)
-        entryname: tmp/figures
-        writable: true
-
 arguments:
   - $(inputs.config.path)
 
@@ -49,16 +41,24 @@ inputs:
     type: Directory
     doc: Input NetCDF files
 
-  logs_dir:
-    type: Directory
-    doc: Logs directory
-
-  figures_dir:
-    type: Directory
-    doc: Figures directory
-
 outputs:
-  outputs_dir:
-    type: Directory
+  HRDPS_P_PR_SFC:
+    type: File[]
+    format: "ogc:netcdf"
     outputBinding:
-      glob: .
+      glob: outputs/HRDPS_P_PR_SFC/*.nc
+  HRDPS_P_TT_10000:
+    type: File[]
+    format: "ogc:netcdf"
+    outputBinding:
+      glob: outputs/HRDPS_P_TT_10000/*.nc
+  HRDPS_P_UUC_10000:
+    type: File[]
+    format: "ogc:netcdf"
+    outputBinding:
+      glob: outputs/HRDPS_P_UUC_10000/*.nc
+  HRDPS_P_VVC_10000:
+    type: File[]
+    format: "ogc:netcdf"
+    outputBinding:
+      glob: outputs/HRDPS_P_VVC_10000/*.nc
