@@ -9,6 +9,13 @@ Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:us
 
 Changes
 ^^^^^^^
+* Add ``examples/deploy`` folder with example files for model deployment using Common Workflow Language and Weaver. (:pull:`47`).
+    * Add ``unet.cwl`` Common Workflow Language file for model inference.
+    * Add ``deploy_body.yml`` for deployment using weaver.
+    * Add ``execute_unet_cwl_schema.yml`` for deployment using weaver.
+* Add ``docker`` folder with Dockerfile for resoterre and model inference. (:pull:`47`).
+    * Add ``Dockerfile.base`` for resoterre package
+    * Add ``Dockerfile.inference`` for model inference using preprocess data.
 * Add notebooks/unetToMLM.ipynb to describe the UNet downscaling model by generating a STAC Item and Collection validated with the STAC MLM and Datacube extensions. (:pull:`21`).
 * Add UNet option to go to a linear layer at the bottom for 1D inputs. (:pull:`23`).
 * Add UNet option to use inputs in the last layer for static features. (:pull:`23`).
