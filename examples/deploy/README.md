@@ -14,7 +14,6 @@ This folder demonstrates how to deploy and execute a **UNet-based downscaling in
 
 - `unet.cwl`: CWL description of the UNet process
 - `execute_unet_cwl_schema.yml`: Example input file for the UNet process
-- `deploy_body.yaml`: Additional process description for weaver
 
 ## About `unet.cwl`
 
@@ -70,11 +69,11 @@ Adjust the paths and parameters as needed for your setup. This file is reference
 To deploy the UNet process to a running Weaver instance:
 
 ```bash
-weaver deploy -u `<WEAVER_URL>` --cwl `<PATH_TO>/unet.cwl` --id unet -b `<PATH_TO>/deploy_body.yaml`
+weaver deploy -u `<WEAVER_URL>` --cwl `<PATH_TO>/unet.cwl` --id unet
 ```
 
 
-Replace `<WEAVER_URL>` with your Weaver instance URL (e.g., `http://localhost:4001/`), and `<PATH_TO>` with the path to your CWL and yaml file.
+Replace `<WEAVER_URL>` with your Weaver instance URL (e.g., `http://localhost:4001/`), and `<PATH_TO>` with the path to your CWL and YAML file.
 
 ## Executing the Process with Weaver
 
