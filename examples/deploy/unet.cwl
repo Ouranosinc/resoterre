@@ -16,6 +16,7 @@ requirements:
     dockerPull: resoterre-inference:2026-01-26 # Change with image containing the model
     dockerOutputDirectory: /outputs
 
+hints:
   cwltool:CUDARequirement:
     cudaComputeCapability: '3.0'
     cudaDeviceCountMax: 8
