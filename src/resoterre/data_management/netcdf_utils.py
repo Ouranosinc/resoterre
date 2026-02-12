@@ -19,6 +19,7 @@ class CFVariables(dict[str, xarray.Variable]):
         dtype: object = _notset,
         zlib: bool | object = _notset,
         complevel: int | object = _notset,
+        fill_value: object = _notset,
     ) -> None:
         """
         Add a variable.
@@ -39,6 +40,8 @@ class CFVariables(dict[str, xarray.Variable]):
             Whether to use zlib compression. If not set, do not specify.
         complevel : int | object
             Compression level (1-9). If not set, do not specify.
+        fill_value : object
+            Fill value for missing data. If not set, do not specify.
         """
         dims = dims or (name,)
         attributes = attributes or {}
@@ -50,5 +53,7 @@ class CFVariables(dict[str, xarray.Variable]):
             encoding["zlib"] = zlib
         if complevel is not _notset:
             encoding["complevel"] = complevel
+        if fill_value is not _notset:
+            encoding["_FillValue"] = fill_value
 
         self[name] = xarray.Variable(dims=dims, data=data, attrs=attributes, encoding=encoding)
