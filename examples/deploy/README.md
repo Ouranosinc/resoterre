@@ -17,7 +17,7 @@ This folder demonstrates how to deploy and execute a **UNet-based downscaling in
 
 ## About `unet.cwl`
 
-The `unet.cwl` file describes a Common Workflow Language (CWL) CommandLineTool for running a UNet-based inference process. It is designed to be portable and reproducible, supporting both local and containerized execution (e.g., with Docker and CUDA for GPU acceleration).
+The `unet.cwl` file describes a Common Workflow Language (CWL) CommandLineTool for running a UNet-based inference process. It is designed to be portable and reproducible, supporting dockerized execution, both on local machine and remote server (e.g., with Docker and CUDA for GPU acceleration).
 
 ### Key Components
 
@@ -61,6 +61,7 @@ framework_version: '2.9.0+cu130'
 
 Adjust the paths and parameters as needed for your setup. This file is referenced as the `config` input in the CWL tool and should be provided in your input YAML for execution.
 
+When running without gpu, simply change `cuda` by `cpu`.
 ---
 
 

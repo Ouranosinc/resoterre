@@ -1,6 +1,7 @@
 config:
   class: File
   path: ../../configs/downscaling/downscaling_inference_rdps_to_hrdps.yaml # when using weaver use fileserver path
+  format: "https://www.iana.org/assignments/media-types/application/yaml"
 inputs_dir:
   class: Directory
   path: ../../inputs/

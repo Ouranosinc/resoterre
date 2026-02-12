@@ -3,6 +3,7 @@ class: CommandLineTool
 $namespaces:
   cwltool: "http://commonwl.org/cwltool#"
   ogc: "http://www.opengis.net/def/media-type/ogc/1.0/"
+  iana: "https://www.iana.org/assignments/media-types/"
 
 requirements:
   EnvVarRequirement:
@@ -36,6 +37,7 @@ arguments:
 inputs:
   config:
     type: File
+    format: "iana:application/yaml"
     doc: Inference configuration YAML
 
   inputs_dir:
