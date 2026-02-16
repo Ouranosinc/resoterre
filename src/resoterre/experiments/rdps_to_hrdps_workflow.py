@@ -203,8 +203,8 @@ def save_model_output(
     if config.path_output is None:
         raise ValueError("config.path_output must be specified to save model output.")
     list_of_saved_files = []
-    for i in range(data_sample.dims["sample"]):
-        for j in range(data_sample.dims["target_channel"]):
+    for i in range(data_sample.sizes["sample"]):
+        for j in range(data_sample.sizes["target_channel"]):
             variable_name = str(data_sample["output_variables"].values[j])
             data = {}
             year = int(data_sample["year"].values[i])
