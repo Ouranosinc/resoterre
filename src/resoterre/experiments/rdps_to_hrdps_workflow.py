@@ -81,6 +81,8 @@ class RDPSToHRDPSOnDiskConfig:
         Overlap factor for RDPS patches.
     hrdps_required_unmasked_fraction : float, optional
         Required unmasked fraction for HRDPS data.
+    input_mode : str, optional
+        Mode for input data, options: "rdps_only", "rdps_and_hrdps", "hrdps_upscale".
     temporal_window : int, optional
         Temporal window size for including context (1 = one timestep on each side of current timestep).
     variables_with_temporal_context : list[str]
@@ -127,6 +129,7 @@ class RDPSToHRDPSOnDiskConfig:
     rdps_window_size: int | None = None
     overlap_factor: int | None = None  # preferably a divisor of rdps_window_size
     hrdps_required_unmasked_fraction: float | None = None
+    input_mode: str | None = None
     temporal_window: int | None = None
     variables_with_temporal_context: list[str] = field(default_factory=list)
     anomaly_variables: list[str] = field(default_factory=list)
@@ -173,7 +176,10 @@ class RDPSToHRDPSInferenceConfig:
 
 
 def save_model_output(
-    config: RDPSToHRDPSInferenceConfig, data_sample: xarray.Dataset, output_variables: dict[str, np.ndarray]
+    config: RDPSToHRDPSInferenceConfig,
+    data_sample: xarray.Dataset,
+    output_variables: dict[str, np.ndarray],
+    mask: np.ndarray | None = None,
 ) -> list[str]:
     """
     Save the model output to NetCDF files.
@@ -186,6 +192,8 @@ def save_model_output(
         The input data sample used for inference.
     output_variables : dict[str, np.ndarray]
         The output variables from the model, keyed by variable name.
+    mask : np.ndarray, optional
+        The mask array indicating valid data points.
 
     Returns
     -------
@@ -195,8 +203,8 @@ def save_model_output(
     if config.path_output is None:
         raise ValueError("config.path_output must be specified to save model output.")
     list_of_saved_files = []
-    for i in range(data_sample.dims["sample"]):
-        for j in range(data_sample.dims["target_channel"]):
+    for i in range(data_sample.sizes["sample"]):
+        for j in range(data_sample.sizes["target_channel"]):
             variable_name = str(data_sample["output_variables"].values[j])
             data = {}
             year = int(data_sample["year"].values[i])
@@ -226,20 +234,39 @@ def save_model_output(
             cf_variables = CFVariables()
             # ToDo: add standard_name and long_name mapping to hrdps_variables and add it to attributes
             #       careful, this is post accumulation to quantity
+            variable_attributes = {"units": hrdps_variables[variable_name].units}
+            variable_data = output_variables[variable_name][i, 0, :, :]  # channel index was already extracted
+            if mask is not None:
+                variable_attributes["ancillary_variables"] = "mask"
+                # ToDo: this is a hack, mask should be present in data_sample to begin with.
+                mask_subset = mask[
+                    data["height_out_idx"][0] : data["height_out_idx"][0] + 512,
+                    data["width_out_idx"][0] : data["width_out_idx"][0] + 512,
+                ]
+                variable_data[mask_subset == 1] = np.nan
+                cf_variables.add(
+                    "mask",
+                    dims=("lat", "lon"),
+                    attributes={"long_name": "mask"},
+                    data=mask_subset,
+                    dtype=np.int8,
+                    zlib=True,
+                    complevel=4,
+                )
             cf_variables.add(
                 variable_name,
                 dims=("lat", "lon"),
-                attributes={"units": hrdps_variables[variable_name].units},
-                data=output_variables[variable_name][i, 0, :, :],  # channel index was already extracted
+                attributes=variable_attributes,
+                data=variable_data,
                 dtype=np.float32,
                 zlib=True,
                 complevel=4,
+                fill_value=np.float32(-9999),
             )
             cf_attrs = {"Conventions": "CF-1.6"}
             ds_out = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs=cf_attrs)
             encoding = {"time": {"dtype": "int64", "calendar": "standard", "units": "hours since 1970-01-01 00:00:00"}}
 
-            # ToDo: different tiles would have the same name, need to add tile indices to the path
             date_str = f"{year}{month:02d}{day:02d}{hour:02d}"
             save_file = f"{variable_name}/{date_str}_{data['height_out_idx'][0]}_{data['width_out_idx'][0]}.nc"
             path_output = Path(config.path_output, save_file)
