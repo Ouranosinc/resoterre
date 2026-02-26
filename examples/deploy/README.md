@@ -23,10 +23,13 @@ The `unet.cwl` file describes a Common Workflow Language (CWL) CommandLineTool f
 
 - **Inputs:**
 	- `config` (File): Inference configuration YAML file.
-	- `inputs_dir` (Directory): Directory containing input NetCDF files.
+	- `input` (File): Preprocessed input NetCDF file to be downscaled.
 
 - **Outputs:**
-	- `outputs_dir` (Directory): Output directory containing the results of the inference.
+	- `HRDPS_P_PR_SFC` (File[]): Output NetCDF files for surface precipitation.
+	- `HRDPS_P_TT_10000` (File[]): Output NetCDF files for temperature at 10,000 m.
+	- `HRDPS_P_UUC_10000` (File[]): Output NetCDF files for U wind component at 10,000 m.
+	- `HRDPS_P_VVC_10000` (File[]): Output NetCDF files for V wind component at 10,000 m.
 
 - **Requirements:**
 	- **DockerRequirement:** Runs the process in a specified Docker image (update the image name as needed).
@@ -39,17 +42,32 @@ The `unet.cwl` file describes a Common Workflow Language (CWL) CommandLineTool f
 
 Before running the UNet process, you should update the configuration file at `configs/downscaling/downscaling_inference_rdps_to_hrdps.yaml` to match your environment and data locations.
 
+> **Note:**
+> Some configuration values (such as `path_preprocessed_batch`, `path_models`, and `path_output`) will be overridden at runtime by CWL arguments. The config file serves as a template, but the actual values used for these keys are determined by the arguments specified in the CWL tool:
+>
+> ```
+> arguments:
+>   - $(inputs.config.path)
+>   - --preprocess_batch
+>   - inputs/$(inputs.input.basename)
+>   - --path_models
+>   - /app/model
+>   - --path_output
+>   - outputs
+> ```
+> Ensure that all files and directories referenced by these arguments are accessible at execution time.
+
 Below is an example of a working configuration:
 
 ```yaml
+path_models: /path/to/models
+path_output: /path/to/output
+path_preprocessed_batch: /path/to/preprocessed_batch.nc
+
 path_logs: /tmp/logs
-path_models: /app/model
 path_figures: /tmp/figures
-path_output: outputs
 
-path_preprocessed_batch: inputs/test_00000000.nc
-
-experiment_name: 2026-01-26T11-06-33_rabahe_UNet_EpochNb_2
+experiment_name: 2026-01-26T11-06-33_rabahe_UNet_EpochNb_2 # Name of the model packaged in inference image
 
 # Hardware specifications
 device: cuda
@@ -59,7 +77,7 @@ framework: pytorch
 framework_version: '2.9.0+cu130'
 ```
 
-Adjust the paths and parameters as needed for your setup. This file is referenced as the `config` input in the CWL tool and should be provided in your input YAML for execution.
+Adjust the paths and parameters as needed for your setup. This file is referenced as the `config` input in the CWL tool and should be provided using the execute YAML [file](execute_unet_cwl_schema.yml)
 
 When running without gpu, simply change `cuda` by `cpu`.
 ---
@@ -87,20 +105,27 @@ weaver execute -u `<WEAVER_URL>` --id unet -I `<PATH_TO>/execute_unet_cwl_schema
 Replace `<WEAVER_URL>` and `<PATH_TO>` as appropriate for your environment.
 
 
-> **Note**
-> When executing a process using Weaver, the paths specified in `execute_unet_cwl_schema.yml` must point to files or directories that are **publicly accessible for download**.
-> This means the referenced files must be hosted on a **file server (HTTP/HTTPS)**, since Weaver retrieves these resources at execution time.
+When executing a process using Weaver, the paths specified in `execute_unet_cwl_schema.yml` must point to files or directories that are **accessible for download** by the Weaver instance.
 
+Supported sources include:
 
-Here's how to start a simple file server
+- **HTTP(S) URLs**: Files hosted on a file server accessible to Weaver (e.g., via HTTP/HTTPS).
+- **AWS S3 Buckets**: Files referenced directly from S3 ([see Weaver docs](https://pavics-weaver.readthedocs.io/en/latest/processes.html#aws-s3-bucket-references)).
+- **Local Files**: If Weaver is running on the same machine, it can access local files directly.
+- **Vault Upload**: Weaver supports a temporary "Vault Upload" feature for File inputs ([see details](https://pavics-weaver.readthedocs.io/en/latest/processes.html#file-vault-inputs)).
+
+A local file server (such as Python's `http.server`) is only needed if you want to expose files via HTTP(S) and Weaver cannot access them locally or via S3. This is typically required when Weaver runs on a different machine or in a containerized/cloud environment without direct access to your files.
+
+**How to start a simple file server (if needed):**
 
 ```bash
-python3 -m http.server  4004 -b `<ip>` -d `<PATH_TO_FOLDER>/`
+python3 -m http.server  4004 -b <ip> -d <PATH_TO_FOLDER>/
 
 # Example using tmp folder
-python3 -m http.server  4004 -b `<ip>` -d /tmp/inference
+python3 -m http.server  4004 -b <ip> -d /tmp/inference
 ```
-where inference contains a folder `/config` with the `downscaling_inference_rdps_to_hrdps.yaml` and a folder `/inputs` with the netcdf file we want to run inference on. This file name should be the same as the one specified by the `path_preprocessed_batch` entry in the config.
+
+Here, `inference` contains a folder `/config` with the `downscaling_inference_rdps_to_hrdps.yaml` and a folder `/inputs` with the NetCDF file you want to run inference on. This file name should be the same as the one specified by the `input` in the [execute_unet_cwl_schema.yml](execute_unet_cwl_schema.yml)
 ```
 
 inference/
