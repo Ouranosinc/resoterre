@@ -103,29 +103,27 @@ def purge_files(
     return [str(f) for f in purged_files]
 
 
-def override_config_path(
+def override_config_paths(
     config: dict[str, Any] | Path | str,
-    path_key: str,
-    override_path: Path | str | None,
+    overrides: dict[str, Path | str | None],
 ) -> dict[str, Any]:
     """
-    Override a path in a configuration dictionary.
+    Override multiple paths in a configuration dictionary.
 
     Parameters
     ----------
     config : dict[str, Any] | Path | str
         A dictionary or a path to a YAML file.
-    path_key : str
-        The key in the config dictionary to override.
-    override_path : Path | str | None
-        The new path value to set. If None, no override is performed.
+    overrides : dict[str, Path | str | None]
+        Dictionary of key-value pairs to override. If a value is None, no override is performed for that key.
 
     Returns
     -------
     dict[str, Any]
-        The config dictionary with the overridden path.
+        The config dictionary with the overridden paths.
     """
     config_dict = get_yaml_dict(config)
-    if override_path is not None:
-        config_dict[path_key] = str(override_path)
+    for key, value in overrides.items():
+        if value is not None:
+            config_dict[key] = str(value)
     return config_dict

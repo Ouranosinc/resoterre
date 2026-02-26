@@ -2,6 +2,7 @@ config:
   class: File
   path: ../../configs/downscaling/downscaling_inference_rdps_to_hrdps.yaml # when using weaver use fileserver path
   format: "https://www.iana.org/assignments/media-types/application/yaml"
-inputs_dir:
-  class: Directory
-  path: ../../inputs/
+input:
+  class: File
+  path: ../../inputs/test_00000000.nc # change with your input file
+  format: "http://www.opengis.net/def/media-type/ogc/1.0/netcdf"

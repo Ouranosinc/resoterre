@@ -4,6 +4,7 @@ $namespaces:
   cwltool: "http://commonwl.org/cwltool#"
   ogc: "http://www.opengis.net/def/media-type/ogc/1.0/"
   iana: "https://www.iana.org/assignments/media-types/"
+  edam: "http://edamontology.org/"
 
 requirements:
   EnvVarRequirement:
@@ -15,7 +16,6 @@ requirements:
 
   DockerRequirement:
     dockerPull: resoterre-inference:2026-01-26 # Change with image containing the model
-    dockerOutputDirectory: /outputs
 
 hints:
   cwltool:CUDARequirement:
@@ -27,21 +27,32 @@ hints:
 
   InitialWorkDirRequirement:
     listing:
-      - entry: $(inputs.inputs_dir)
-        entryname: inputs
+      - entry: $(inputs.input)
+        entryname: inputs/$(inputs.input.basename)
         writable: false
 
 arguments:
   - $(inputs.config.path)
+  - --preprocess_batch
+  - inputs/$(inputs.input.basename)
+  - --path_models
+  - /app/model
+  - --path_output
+  - outputs
 
 inputs:
   config:
     type: File
-    format: "iana:application/yaml"
+    format:
+    - "iana:application/yaml"
+    - "edam:format_3750"
     doc: Inference configuration YAML
 
-  inputs_dir:
-    type: Directory
+  input:
+    type: File
+    format:
+    - "ogc:netcdf"
+    - "iana:application/netcdf"
     doc: Input NetCDF files
 
 outputs:
