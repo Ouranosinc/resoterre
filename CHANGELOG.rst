@@ -11,7 +11,6 @@ Changes
 ^^^^^^^
 * Add ``examples/deploy`` folder with example files for model deployment using Common Workflow Language and Weaver. (:pull:`47`).
     * Add ``unet.cwl`` Common Workflow Language file for model inference.
-    * Add ``deploy_body.yml`` for deployment using weaver.
     * Add ``execute_unet_cwl_schema.yml`` for deployment using weaver.
 * Add ``docker`` folder with Dockerfile for resoterre and model inference. (:pull:`47`).
     * Add ``Dockerfile.base`` for resoterre package
