@@ -76,8 +76,9 @@ def test_override_config_paths_with_dict():
         "path_output": "/original/output/",
         "other_key": 123,
     }
-    overrides = {
-        "path_preprocessed_batch": "/new/batch.nc",
+
+    overrides: dict[str, Path | str | None] = {
+        "path_preprocessed_batch": Path("/new/batch.nc"),
         "path_models": None,  # Should not override
         "path_output": "/new/output/",
     }
@@ -99,7 +100,7 @@ def test_override_config_paths_with_yaml(tmp_path):
 
     with yaml_file.open("w") as f:
         yaml.dump(config_data, f)
-    overrides = {"path_preprocessed_batch": "/override/batch.nc"}
+        overrides: dict[str, Path | str | None] = {"path_preprocessed_batch": Path("/override/batch.nc")}
     result = io_utils.override_config_paths(str(yaml_file), overrides)
     assert result["path_preprocessed_batch"] == "/override/batch.nc"
     assert result["path_models"] == "/original/models/"
