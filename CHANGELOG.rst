@@ -9,6 +9,11 @@ Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:us
 
 Changes
 ^^^^^^^
+* Add ``override_config_paths`` function to ``io_utils.py`` to allow overriding config values at runtime. (:pull:`47`).
+* Update ``downscaling_inference_rdps_to_hrdps.py`` CLI to support the following arguments for overriding config values. (:pull:`47`).
+    * ``--preprocess_batch``: Path to the preprocessed batch file (overrides ``path_preprocessed_batch`` in config).
+    * ``--path_models``: Path to the directory containing the pre-trained model (overrides ``path_models`` in config).
+    * ``--path_output``: Path to the directory where inference results will be saved (overrides ``path_output`` in config).
 * Add ``examples/deploy`` folder with example files for model deployment using Common Workflow Language and Weaver. (:pull:`47`).
     * Add ``unet.cwl`` Common Workflow Language file for model inference.
     * Add ``execute_unet_cwl_schema.yml`` for deployment using weaver.
