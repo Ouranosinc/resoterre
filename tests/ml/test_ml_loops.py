@@ -15,7 +15,7 @@ def test_minimum_tracker():
 
 
 def test_minima_tracker():
-    minima_tracker = ml_loops.MinimaTracker()
+    minima_tracker = ml_loops.MinimaTracker(minimum_metrics_to_track=["metric1", "metric2"])
     minima_tracker.update_minima(iteration=1, metrics_values={"metric1": 0.5, "metric2": 0.3})
     assert minima_tracker["metric1"].value == 0.5
     assert minima_tracker["metric2"].value == 0.3
