@@ -3,6 +3,8 @@
 
 This folder demonstrates how to deploy and execute a **UNet-based downscaling inference pipeline** using [Common Workflow Language (CWL)](https://www.commonwl.org/v1.2/) and [Weaver](https://github.com/crim-ca/weaver). The pipeline performs inference on preprocessed NetCDF data using a trained UNet model.
 
+For more details on Weaver CLI commands, see the [Weaver CLI documentation](https://pavics-weaver.readthedocs.io/en/latest/cli.html).
+
 
 ## Prerequisites
 
@@ -31,11 +33,15 @@ The `unet.cwl` file describes a Common Workflow Language (CWL) CommandLineTool f
 	- `HRDPS_P_UUC_10000` (File[]): Output NetCDF files for U wind component at 10,000 m.
 	- `HRDPS_P_VVC_10000` (File[]): Output NetCDF files for V wind component at 10,000 m.
 
-- **Requirements:**
-	- **DockerRequirement:** Runs the process in a specified Docker image (update the image name as needed).
-	- **CUDARequirement:** Specifies GPU requirements for CUDA-enabled execution.
-	- **EnvVarRequirement:** Sets environment variables for compatibility (e.g., PyTorch caching).
-	- **InitialWorkDirRequirement:** Prepares the working directory structure for the preprocess inputs
+### Requirements & Hints
+
+- `DockerRequirement`: Runs the process in a specified Docker image. See [docker/README.md](../../docker/README.md) for instructions on preparing the Docker image referenced by the CWL. If using a different tag, adjust the image name in the CWL under `DockerRequirement`.
+- `cwltool:CUDARequirement`: Specifies GPU requirements for CUDA-enabled execution (provided as a hint, not required).
+- `EnvVarRequirement`: Sets environment variables for compatibility (e.g., PyTorch caching).
+- `InitialWorkDirRequirement`: Prepares the working directory structure for the preprocess inputs.
+
+> **Note:**
+> The `--enable-ext` flag is required when using `cwltool` to enable extension features such as `cwltool:CUDARequirement`.
 
 
 ## Prepare Inference Configuration
@@ -45,7 +51,7 @@ Before running the UNet process, you should update the configuration file at `co
 > **Note:**
 > Some configuration values (such as `path_preprocessed_batch`, `path_models`, and `path_output`) will be overridden at runtime by CWL arguments. The config file serves as a template, but the actual values used for these keys are determined by the arguments specified in the CWL tool:
 >
-> ```
+> ```yaml
 > arguments:
 >   - $(inputs.config.path)
 >   - --preprocess_batch
@@ -77,9 +83,14 @@ framework: pytorch
 framework_version: '2.9.0+cu130'
 ```
 
-Adjust the paths and parameters as needed for your setup. This file is referenced as the `config` input in the CWL tool and should be provided using the execute YAML [file](execute_unet_cwl_schema.yml)
+Adjust the paths and parameters as needed for your setup. This file is referenced as the `config` input in the CWL tool and should be provided using the execute YAML [file](execute_unet_cwl_schema.yml).
 
-When running without gpu, simply change `cuda` by `cpu`.
+**GPU vs CPU Configuration:**
+
+When running without GPU, change `device: cuda` to `device: cpu` in the configuration file. When invoked via `cwltool`, the `cwltool:CUDARequirement` in the CWL is specified as a hint (not a requirement), meaning:
+- If `cwltool:CUDARequirement` is present and GPU is available, the GPU will be mapped to the container.
+- If `cwltool:CUDARequirement` is omitted or GPU is unavailable, ensure `device: cpu` is set in the config to avoid errors.
+- The `--enable-ext` flag must be used with `cwltool` to recognize the `cwltool:CUDARequirement` hint.
 ---
 
 
@@ -111,29 +122,33 @@ Supported sources include:
 
 - **HTTP(S) URLs**: Files hosted on a file server accessible to Weaver (e.g., via HTTP/HTTPS).
 - **AWS S3 Buckets**: Files referenced directly from S3 ([see Weaver docs](https://pavics-weaver.readthedocs.io/en/latest/processes.html#aws-s3-bucket-references)).
-- **Local Files**: If Weaver is running on the same machine, it can access local files directly.
-- **Vault Upload**: Weaver supports a temporary "Vault Upload" feature for File inputs ([see details](https://pavics-weaver.readthedocs.io/en/latest/processes.html#file-vault-inputs)).
+- **Vault Upload / Local Files**: Weaver supports a temporary "Vault Upload" feature for File inputs, which also handles local files within the WPS workdir/outdir for job staging ([see details](https://pavics-weaver.readthedocs.io/en/latest/processes.html#file-vault-inputs)).
 
-A local file server (such as Python's `http.server`) is only needed if you want to expose files via HTTP(S) and Weaver cannot access them locally or via S3. This is typically required when Weaver runs on a different machine or in a containerized/cloud environment without direct access to your files.
-
-**How to start a simple file server (if needed):**
+### How to start a simple file server (if needed)
 
 ```bash
-python3 -m http.server  4004 -b <ip> -d <PATH_TO_FOLDER>/
+python3 -m http.server 4004 -b <ip> -d <PATH_TO_FOLDER>/
 
 # Example using tmp folder
-python3 -m http.server  4004 -b <ip> -d /tmp/inference
+python3 -m http.server 4004 -b <ip> -d /tmp/inference
 ```
 
-Here, `inference` contains a folder `/config` with the `downscaling_inference_rdps_to_hrdps.yaml` and a folder `/inputs` with the NetCDF file you want to run inference on. This file name should be the same as the one specified by the `input` in the [execute_unet_cwl_schema.yml](execute_unet_cwl_schema.yml)
+In this example, the `/tmp/inference` directory contains a `/config` folder with `downscaling_inference_rdps_to_hrdps.yaml` and an `/inputs` folder with the NetCDF file for inference (e.g., `test_00000000.nc`).
+
+When referencing files hosted on a file server in [execute_unet_cwl_schema.yml](execute_unet_cwl_schema.yml), use the full HTTP URL. For example, if serving from `http://localhost:4004`, the input file would be referenced as:
+```yaml
+input:
+  class: File
+  path: http://localhost:4004/inputs/test_00000000.nc
 ```
 
+Directory structure:
+```
 inference/
 ├── config/
 │   └── downscaling_inference_rdps_to_hrdps.yaml
 └── inputs/
     └── test_00000000.nc
-
 ```
 
 
@@ -146,6 +161,3 @@ cwltool --enable-ext --outdir results `<PATH_TO>/unet.cwl` `<PATH_TO>/execute_un
 ```
 
 This will execute the workflow and store the results in the `results/` directory.
-
----
-For more information, refer to the [Weaver documentation](https://crim-ca.github.io/weaver/) and the [CWL specification](https://www.commonwl.org/v1.2/).
