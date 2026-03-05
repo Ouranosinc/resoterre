@@ -55,23 +55,6 @@ def register_dataset_manager(name: str, known_dataset_managers_dict: dict[str, A
     return decorator
 
 
-def get_data_loader_item(data_loader_iterator: Any) -> Any:
-    """
-    Retrieve the next item from a data loader iterator.
-
-    Parameters
-    ----------
-    data_loader_iterator : iterator
-        An iterator over a data loader.
-
-    Returns
-    -------
-    Any
-        The next item from the data loader iterator.
-    """
-    return next(data_loader_iterator)
-
-
 class DatasetManager:
     """
     Base class for managing datasets and data loaders.
@@ -231,7 +214,7 @@ class DatasetManager:
                             add_eta=True,
                         )
                     try:
-                        _ = get_data_loader_item(data_loader_iterator)
+                        _ = next(data_loader_iterator)
                     except RuntimeError:
                         del data_loader_iterator
                         break

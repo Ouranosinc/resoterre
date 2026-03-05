@@ -329,6 +329,7 @@ def inference_from_preprocessed_data(config: RDPSToHRDPSInferenceConfig | dict[s
     x = torch.tensor(data_sample["input_first_block"].values).to(config_obj.device)
     x_last_layer = torch.tensor(data_sample["input_last_layer"].values).to(config_obj.device)
     output = network_manager.networks["UNet"](x=x, x_linear=None, x_last_layer=x_last_layer)
+    # torch.cuda.empty_cache()
 
     # Denormalize and revert climatology removal
     output_variables = post_process_model_output(

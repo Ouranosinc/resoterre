@@ -308,8 +308,7 @@ class DatasetWithSplits(td.Dataset):  # type: ignore[misc]
         if "fixed_data" in self.cache:
             if to_torch:
                 return {k: torch.from_numpy(v) for k, v in self.cache["fixed_data"].items()}
-        else:
-            fixed_data = cast(dict[str, np.ndarray], self.cache.get("fixed_data", {}))
+        fixed_data = cast(dict[str, np.ndarray], self.cache.get("fixed_data", {}))
         return fixed_data
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:

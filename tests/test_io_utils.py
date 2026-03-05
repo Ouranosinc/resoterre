@@ -3,8 +3,25 @@ import time
 from pathlib import Path
 
 import pytest
+import yaml
 
 from resoterre import io_utils
+
+
+def test_get_yaml_dict_when_input_is_dict():
+    input_dict = {"key1": "value1", "key2": 2, "key3": [1, 2, 3]}
+    result = io_utils.get_yaml_dict(input_dict)
+    assert result == input_dict
+
+
+def test_get_yaml_dict():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        yaml_content = {"key1": "value1", "key2": 2, "key3": [1, 2, 3]}
+        yaml_file = Path(tmp_dir, "test.yaml")
+        with yaml_file.open("w") as f:
+            yaml.dump(yaml_content, f)
+        result = io_utils.get_yaml_dict(yaml_file)
+        assert result == yaml_content
 
 
 def test_file_purge_safe_mode():

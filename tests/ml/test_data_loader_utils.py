@@ -162,6 +162,77 @@ def test_inverse_normalize_numpy_m11_log_known_min_max_small_negative():
     assert np.allclose(data, data_inverse)
 
 
+def test_dataset_with_splits_default():
+    class DummyDataset(data_loader_utils.DatasetWithSplits):
+        def __init__(
+            self,
+            dynamic_dataset_keys: list[str],
+            active_split_name: str = "train",
+            built_in_batch_size: int = 1,
+        ) -> None:
+            super().__init__(
+                dynamic_dataset_keys=dynamic_dataset_keys,
+                active_split_name=active_split_name,
+                built_in_batch_size=built_in_batch_size,
+            )
+            self.train_idx_to_key = ["x0", "x1", "x2"]
+            self.validation_idx_to_key = ["y0", "y1"]
+            self.test_idx_to_key = ["z0"]
+
+        def retrieve_input1_data(self, key):
+            index_factor = getattr(self, f"{self.active_split_name}_idx_to_key").index(key)
+            return np.array([[1, 2, 3], [4, 5, 6]]) * index_factor
+
+        def retrieve_output1_data(self, key):
+            index_factor = getattr(self, f"{self.active_split_name}_idx_to_key").index(key)
+            return np.array([[1, 2, 3], [4, 5, 6]]) * (index_factor + 1)
+
+    dummy_dataset = DummyDataset(dynamic_dataset_keys=["input1", "output1"])
+    dummy_dataset.set_active_split("validation")
+    assert dummy_dataset.active_split_name == "validation"
+    assert len(dummy_dataset) == 2
+    assert dummy_dataset.fixed_data() == {}
+    assert dummy_dataset[1]["input1"].shape == (2, 3)
+
+
+def test_dataset_with_splits_fixed_data():
+    class DummyDataset(data_loader_utils.DatasetWithSplits):
+        def __init__(
+            self,
+            dynamic_dataset_keys: list[str],
+            active_split_name: str = "train",
+            built_in_batch_size: int = 1,
+        ) -> None:
+            super().__init__(
+                dynamic_dataset_keys=dynamic_dataset_keys,
+                active_split_name=active_split_name,
+                built_in_batch_size=built_in_batch_size,
+            )
+            self.train_idx_to_key = ["x0", "x1", "x2"]
+            self.validation_idx_to_key = ["y0", "y1"]
+            self.test_idx_to_key = ["z0"]
+
+        def retrieve_input1_data(self, key):
+            index_factor = getattr(self, f"{self.active_split_name}_idx_to_key").index(key)
+            return np.array([[1, 2, 3], [4, 5, 6]]) * index_factor
+
+        def retrieve_output1_data(self, key):
+            index_factor = getattr(self, f"{self.active_split_name}_idx_to_key").index(key)
+            return np.array([[1, 2, 3], [4, 5, 6]]) * (index_factor + 1)
+
+        def compute_fixed_data_cache(self):
+            if "fixed_data" not in self.cache:
+                self.cache["fixed_data"] = {}
+            self.cache["fixed_data"]["example"] = np.array([1, 2, 3])
+
+    dummy_dataset = DummyDataset(dynamic_dataset_keys=["input1", "output1"])
+    dummy_dataset.set_active_split("validation")
+    assert dummy_dataset.active_split_name == "validation"
+    assert len(dummy_dataset) == 2
+    assert dummy_dataset.fixed_data()["example"][2] == 3
+    assert dummy_dataset.get_with_fixed_data(1, to_torch=True)["example"].shape == (3,)
+
+
 def test_dataset_with_save_default():
     class DummyDataset(data_loader_utils.DatasetWithSave):
         def __init__(
