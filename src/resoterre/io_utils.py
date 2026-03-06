@@ -101,3 +101,29 @@ def purge_files(
         else:
             purged_files.append(f)
     return [str(f) for f in purged_files]
+
+
+def override_config_paths(
+    config: dict[str, Any] | Path | str,
+    overrides: dict[str, Path | str | None],
+) -> dict[str, Any]:
+    """
+    Override multiple paths in a configuration dictionary.
+
+    Parameters
+    ----------
+    config : dict[str, Any] | Path | str
+        A dictionary or a path to a YAML file.
+    overrides : dict[str, Path | str | None]
+        Dictionary of key-value pairs to override. If a value is None, no override is performed for that key.
+
+    Returns
+    -------
+    dict[str, Any]
+        The config dictionary with the overridden paths.
+    """
+    config_dict = get_yaml_dict(config)
+    for key, value in overrides.items():
+        if value is not None:
+            config_dict[key] = str(value)
+    return config_dict

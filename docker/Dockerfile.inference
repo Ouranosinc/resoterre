@@ -10,7 +10,7 @@ ARG MODEL_PATH=model/model.pth
 WORKDIR /app
 
 # Copy the trained model
-COPY ${MODEL_PATH} /app/model/
+COPY --from=model ${MODEL_PATH} /app/model/
 RUN chmod -R a+r /app/model
 
 # Copy the inference script
