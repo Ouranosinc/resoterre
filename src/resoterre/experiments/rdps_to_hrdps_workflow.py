@@ -268,7 +268,13 @@ def save_model_output(
             encoding = {"time": {"dtype": "int64", "calendar": "standard", "units": "hours since 1970-01-01 00:00:00"}}
 
             date_str = f"{year}{month:02d}{day:02d}{hour:02d}"
-            save_file = f"{variable_name}/{date_str}_{data['height_out_idx'][0]}_{data['width_out_idx'][0]}.nc"
+            height_idx = data["height_out_idx"][0]
+            width_idx = data["width_out_idx"][0]
+            if data_sample["use_hrdps_upscale"].values[i]:
+                use_hrdps_upscale_str = "_hrdps_upscale"
+            else:
+                use_hrdps_upscale_str = ""
+            save_file = f"{variable_name}/{date_str}_{height_idx}_{width_idx}{use_hrdps_upscale_str}.nc"
             path_output = Path(config.path_output, save_file)
             path_output.parent.mkdir(parents=True, exist_ok=True)
             ds_out.to_netcdf(path_output, engine="h5netcdf", encoding=encoding)
