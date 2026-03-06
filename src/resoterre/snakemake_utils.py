@@ -1,5 +1,6 @@
 """Utility functions for Snakemake workflows."""
 
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -33,6 +34,7 @@ def merge_logs(
     output: Path | str,
     search_patterns: list[str] | None = None,
     purge: bool = False,
+    from_json_manifest: bool = False,
 ) -> None:
     """
     Merge multiple log files into a single log file, optionally filtering by search patterns.
@@ -41,7 +43,7 @@ def merge_logs(
     ----------
     inputs : Path | str | list[Path | str]
         Input log file path or list of log file paths.
-        If a single path is provided, all .log files in that directory are merged.
+        If a single path is given, all .log (or .json if from_json_manifest is True) in that directory are merged.
     output : Path | str
         Output log file path.
     search_patterns : list[str], optional
@@ -50,15 +52,24 @@ def merge_logs(
     purge : bool
         If True, delete input log files that do not contribute any lines to the output log file.
         Default is False.
+    from_json_manifest : bool
+        If True, treat 'inputs' as a JSON manifest file containing log file paths (log_file key at top level dict).
     """
+    inputs_extension = "*.json" if from_json_manifest else "*.log"
     if not isinstance(inputs, list):
-        inputs = sorted(list(Path(inputs).glob("*.log")))
+        inputs = sorted(list(Path(inputs).glob(inputs_extension)))
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     leading_str = ""
     with Path(output).open("w") as out:
         for infile in inputs:
             wrote_a_line = False
-            with Path(infile).open("r") as f:
+            if from_json_manifest:
+                with Path(infile).open("r") as f:
+                    manifest_content = json.load(f)
+                    log_infile = manifest_content["log_file"]
+            else:
+                log_infile = infile
+            with Path(log_infile).open("r") as f:
                 for line in f:
                     if search_patterns is not None:
                         for search_pattern in search_patterns:
@@ -67,12 +78,12 @@ def merge_logs(
                         else:
                             continue
                     if not wrote_a_line:
-                        out.write(f"{leading_str}--- From file: {infile} ---\n\n")
+                        out.write(f"{leading_str}--- From file: {log_infile} ---\n\n")
                         wrote_a_line = True
                         leading_str = "\n"
                     out.write(line)
             if purge and (not wrote_a_line):
-                Path(infile).unlink()
+                Path(log_infile).unlink()
 
 
 def decode_period_string(period_string: str) -> tuple[datetime, datetime]:
@@ -180,3 +191,42 @@ def split_period(
             weeks=weeks,
         )
     return period_strings
+
+
+def split_glob(
+    search_path: str | Path,
+    glob_pattern: str,
+    batch_size: int = 1,
+    output_directory: str | Path | None = None,
+    manifest_prefix: str | None = None,
+) -> list[list[Path]]:
+    """
+    Split files matching a glob pattern into batches.
+
+    Parameters
+    ----------
+    search_path : str | Path
+        Path to search for files.
+    glob_pattern : str
+        Glob pattern to match files.
+    batch_size : int
+        Number of files in each batch.
+    output_directory : str | Path
+        Directory to save manifest files. If None, no manifest files are saved.
+    manifest_prefix : str
+        Prefix for manifest file names. If None, no manifest files are saved.
+
+    Returns
+    -------
+    list[list[Path]]
+        List of batches, each batch is a list of Path objects.
+    """
+    all_files = sorted(Path(search_path).glob(glob_pattern))
+    batches = [all_files[i : i + batch_size] for i in range(0, len(all_files), batch_size)]
+    if (output_directory is not None) and (manifest_prefix is not None):
+        output_directory = Path(output_directory)
+        output_directory.mkdir(parents=True, exist_ok=True)
+        for i, batch in enumerate(batches):
+            manifest_path = Path(output_directory, f"{manifest_prefix}_{str(i).zfill(8)}.txt")
+            manifest_path.write_text("\n".join(str(p) for p in batch))
+    return batches
