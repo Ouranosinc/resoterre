@@ -270,7 +270,7 @@ def save_model_output(
             date_str = f"{year}{month:02d}{day:02d}{hour:02d}"
             height_idx = data["height_out_idx"][0]
             width_idx = data["width_out_idx"][0]
-            if data_sample["use_hrdps_upscale"].values[i]:
+            if ("use_hrdps_upscale" in data_sample) and data_sample["use_hrdps_upscale"].values[i]:
                 use_hrdps_upscale_str = "_hrdps_upscale"
             else:
                 use_hrdps_upscale_str = ""

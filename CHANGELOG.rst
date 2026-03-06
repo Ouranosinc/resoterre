@@ -9,6 +9,20 @@ Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:us
 
 Changes
 ^^^^^^^
+* Add ``netcdf_utils`` module. (:pull:`47`).
+* Add ``timeseries`` module. (:pull:`47`).
+* Add ``rdps_to_hrdps`` module. (:pull:`47`).
+* Add ``DatasetWithSplits``, ``DatasetWithSave`` and ``DatasetFromNetCDFSave`` classes to ``data_loader_utils`` module. (:pull:`47`).
+* Add ``dataset_manager`` module. (:pull:`47`).
+* Add ``ml_loops`` module. (:pull:`47`).
+* Add ``NeuralNetworksManager`` class to ``network_manager`` module. (:pull:`47`).
+* Add ``LinearReLU`` class to ``neural_networks_basic`` module. (:pull:`47`).
+* Add ``ml_sample_plot`` module. (:pull:`47`).
+* Add ``ml_training_plot`` module. (:pull:`47`).
+* Add ``logging_utils`` module. (:pull:`47`).
+* Add ``memory_utils`` module. (:pull:`47`).
+* Add ``utils`` module. (:pull:`47`).
+    * Add ``save_to_netcdf`` function to save inference results to NetCDF files.
 * Add ``override_config_paths`` function to ``io_utils.py`` to allow overriding config values at runtime. (:pull:`47`).
 * Update ``downscaling_inference_rdps_to_hrdps.py`` CLI to support the following arguments for overriding config values. (:pull:`47`).
     * ``--preprocess_batch``: Path to the preprocessed batch file (overrides ``path_preprocessed_batch`` in config).

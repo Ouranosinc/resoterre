@@ -53,6 +53,9 @@ def test_save_model_output():
             "hour", dims=("sample",), data=np.random.randint(0, 24, size=4, dtype=np.int8), dtype=np.int8
         )
         cf_coordinates.add(
+            "use_hrdps_upscale", dims=("sample",), data=np.random.randint(0, 2, size=4, dtype=np.int8), dtype=np.int8
+        )
+        cf_coordinates.add(
             "input_variables", dims=("input_channel",), data=np.array(["RDPS_VAR_1", "RDPS_VAR_2"], dtype="object")
         )
         cf_coordinates.add(
@@ -158,6 +161,9 @@ def test_inference_from_preprocessed_data():
         cf_coordinates.add("day", dims=("sample",), data=np.random.randint(1, 28, size=4, dtype=np.int8), dtype=np.int8)
         cf_coordinates.add(
             "hour", dims=("sample",), data=np.random.randint(0, 24, size=4, dtype=np.int8), dtype=np.int8
+        )
+        cf_coordinates.add(
+            "use_hrdps_upscale", dims=("sample",), data=np.random.randint(0, 2, size=4, dtype=np.int8), dtype=np.int8
         )
         cf_coordinates.add(
             "input_variables", dims=("input_channel",), data=np.array(["TT850", "PR"], dtype="object"), dtype="object"
