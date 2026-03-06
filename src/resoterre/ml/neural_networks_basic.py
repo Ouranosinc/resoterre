@@ -4,6 +4,7 @@ from typing import Any
 
 import torch
 from torch import nn
+from torch.nn.functional import log_softmax
 
 
 class Linear(nn.Linear):  # type: ignore[misc]
@@ -67,6 +68,63 @@ def init_weights(module: nn.Module) -> None:
                 init_fn(submodule.weight, **init_kwargs)
             else:
                 raise ValueError(f"Initialization function {submodule.init_weight_fn_name} not found.")
+
+
+class LinearReLU(nn.Module):  # type: ignore[misc]
+    """
+    A simple feedforward neural network with linear layers followed by ReLU activations.
+
+    Parameters
+    ----------
+    input_size : int
+        The size of the input features.
+    hidden_sizes : list[int]
+        A list of sizes for the hidden layers.
+    output_size : int
+        The size of the output features.
+    final_activation : str, optional
+        The type of activation function to apply to the output layer.
+    """
+
+    def __init__(
+        self, input_size: int, hidden_sizes: list[int], output_size: int, final_activation: str | None = None
+    ) -> None:
+        super().__init__()
+        self.final_activation = final_activation
+        connections = []
+        for i in range(len(hidden_sizes)):
+            if i != 0:
+                input_size = hidden_sizes[i - 1]
+            connections.append(
+                Linear(in_features=input_size, out_features=hidden_sizes[i], init_weight_fn_name="kaiming_uniform_")
+            )
+            connections.append(nn.ReLU())
+        if self.final_activation == "softmax":
+            connections.append(Linear(in_features=hidden_sizes[-1], out_features=output_size))
+        elif self.final_activation is not None:
+            raise ValueError(f"Unsupported final activation: {self.final_activation}")
+        self.sequential_block = nn.Sequential(*connections)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass of the LinearReLU block.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor.
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor after applying the LinearReLU block.
+        """
+        x = self.sequential_block(x)
+        if self.final_activation == "softmax":
+            x = log_softmax(x, dim=1)
+        elif self.final_activation is not None:
+            raise ValueError(f"Unsupported final activation: {self.final_activation}")
+        return x
 
 
 class SEBlock(nn.Module):  # type: ignore[misc]

@@ -33,3 +33,10 @@ def test_template_store_copy():
     figure_file_copy = templates_copy["figure_file"]
     assert figure_file_original == "/some/path/experiment1/figure1.png"
     assert figure_file_copy == "/some/path/experiment2/figure2.png"
+
+
+def test_unique_hex_digest():
+    digest1 = utils.unique_hex_digest("input1", 8)
+    digest2 = utils.unique_hex_digest("input2", 8)
+    assert digest1 == "1ea06586"
+    assert digest2 == "124d8541"

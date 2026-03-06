@@ -85,3 +85,24 @@ def test_split_period():
     assert len(period_strings) == 2
     assert period_strings[0] == "2026010100_2026011612"
     assert period_strings[1] == "2026011700_2026020112"
+
+
+def test_split_glob():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        for i in range(5):
+            with Path(tmp_dir, f"file{i}.txt").open("w") as f:
+                f.write(f"file {i}\n")
+        file_paths = snakemake_utils.split_glob(
+            search_path=Path(tmp_dir),
+            glob_pattern="file*.txt",
+            batch_size=2,
+            output_directory=Path(tmp_dir, "manifests"),
+            manifest_prefix="test",
+        )
+        assert len(file_paths) == 3
+        assert set(file_paths[0]) == {Path(tmp_dir, "file0.txt"), Path(tmp_dir, "file1.txt")}
+        assert set(file_paths[1]) == {Path(tmp_dir, "file2.txt"), Path(tmp_dir, "file3.txt")}
+        assert set(file_paths[2]) == {Path(tmp_dir, "file4.txt")}
+        assert Path(tmp_dir, "manifests", "test_00000000.txt").is_file()
+        assert Path(tmp_dir, "manifests", "test_00000001.txt").is_file()
+        assert Path(tmp_dir, "manifests", "test_00000002.txt").is_file()

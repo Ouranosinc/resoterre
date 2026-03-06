@@ -91,7 +91,7 @@ class MinimaTracker(dict[str, MinimumTracker]):
     d : dict[str, MinimumTracker], optional
         Initial dictionary of metric names to MinimumTracker instances.
     minimum_metrics_to_track : list[str], optional
-        List of metric names to ensure are tracked.
+        List of metric names to ensure trackers are initialized.
     """
 
     def __init__(

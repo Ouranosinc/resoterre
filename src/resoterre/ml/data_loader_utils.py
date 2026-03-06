@@ -308,8 +308,7 @@ class DatasetWithSplits(td.Dataset):  # type: ignore[misc]
         if "fixed_data" in self.cache:
             if to_torch:
                 return {k: torch.from_numpy(v) for k, v in self.cache["fixed_data"].items()}
-        else:
-            fixed_data = cast(dict[str, np.ndarray], self.cache.get("fixed_data", {}))
+        fixed_data = cast(dict[str, np.ndarray], self.cache.get("fixed_data", {}))
         return fixed_data
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
@@ -361,7 +360,7 @@ class DatasetWithSave(DatasetWithSplits):
     ----------
     dynamic_dataset_keys : list[str]
         List of keys for dynamic dataset components.
-    path_ml_data : Path | str
+    path_ml_data : Path | str | None
         Path to the directory where preprocessed data batches are saved.
     only_from_ml_data : bool
         Whether to only load data from saved files.
@@ -378,13 +377,13 @@ class DatasetWithSave(DatasetWithSplits):
     def __init__(
         self,
         dynamic_dataset_keys: list[str],
-        path_ml_data: Path | str,
+        path_ml_data: Path | str | None = None,
         only_from_ml_data: bool = False,
         active_split_name: str = "train",
         built_in_batch_size: int = 1,
         save_batch_size: int = 1,
         skip_load: bool = False,
-    ):
+    ) -> None:
         super().__init__(
             dynamic_dataset_keys, active_split_name=active_split_name, built_in_batch_size=built_in_batch_size
         )
@@ -473,6 +472,8 @@ class DatasetWithSave(DatasetWithSplits):
         Path
             File path for the saved batch.
         """
+        if self.path_ml_data is None:
+            raise ValueError("path_ml_data must be provided to generate saved batch path")
         return Path(
             self.path_ml_data, f"{self.active_split_name}_{self.hex_digest}_{str(self.save_idx(idx)).zfill(8)}.npz"
         )
@@ -486,6 +487,8 @@ class DatasetWithSave(DatasetWithSplits):
         Path
             File path for the saved fixed data.
         """
+        if self.path_ml_data is None:
+            raise ValueError("path_ml_data must be provided to generate saved fixed path")
         return Path(self.path_ml_data, f"fixed_{self.hex_digest}.npz")
 
     def set_fixed_data_cache_from_save(self) -> None:
@@ -509,6 +512,8 @@ class DatasetWithSave(DatasetWithSplits):
         self.cache["last_idx_data"] = data_dict
         self.cache["last_idx_file"] = self.saved_batch_path(idx)
         logger.debug("Saving batch: %s", idx, identifier="save", block_short_repetition_delay=10)
+        if self.path_ml_data is None:
+            raise ValueError("path_ml_data must be provided to save data")
         Path(self.path_ml_data).mkdir(parents=True, exist_ok=True)
         np.savez(self.saved_batch_path(idx), **data_dict)
         fixed_npz_file = self.saved_fixed_path()
@@ -774,6 +779,8 @@ class DatasetFromNetCDFSave(DatasetWithSave):
         list[str]
             List of inferred indices for the split.
         """
+        if self.path_ml_data is None:
+            raise ValueError("path_ml_data must be provided to infer indices from netCDF files")
         nc_files = sorted(list(Path(self.path_ml_data).glob(f"{split_name}_*.nc")))
         last_dataset = xarray.open_dataset(nc_files[-1])
         num_samples = (len(nc_files) - 1) * self.save_batch_size + last_dataset[self.dynamic_dataset_keys[0]].shape[0]
@@ -795,4 +802,6 @@ class DatasetFromNetCDFSave(DatasetWithSave):
             File path for the saved netCDF batch.
         """
         # ToDo: reintroduce the option to use hex digest identifier?
+        if self.path_ml_data is None:
+            raise ValueError("path_ml_data must be provided to generate saved batch path")
         return Path(self.path_ml_data, f"{self.active_split_name}_{str(self.save_idx(idx)).zfill(8)}.nc")
