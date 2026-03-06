@@ -39,19 +39,20 @@ docker build -f docker/Dockerfile.base -t resoterre-base:latest .
 
 #### Build Arguments
 
-The inference image uses a build argument, `MODEL_PATH`, to specify which trained model file to include in the image. By default, this is set to `model/model.pth`, but you should override it to point to your actual model file.
+The inference image uses a build argument, `MODEL_PATH`, to specify which trained model file to include in the image. By default, this is set to `model/model.pth`, but you should override it to point to your actual model file. A `--build-context` flag can be passed to the docker command to specify a directory outside of the current repo.
 
 For example, if your trained model is at:
 
 ```
-model/2026-01-26T11-06-33_rabahe_UNet_EpochNb_2.pth
+tmp/2026-01-26T11-06-33_rabahe_UNet_EpochNb_2.pth
 ```
 
 Build the inference image with the model baked in by passing the build argument:
 
 ```bash
 docker build -f docker/Dockerfile.inference \
-  --build-arg MODEL_PATH=model/2026-01-26T11-06-33_rabahe_UNet_EpochNb_2.pth \
+  --build-arg MODEL_PATH='2026-01-26T11-06-33_rabahe_UNet_EpochNb_2.pth' \
+  --build-context model=/tmp \
   -t resoterre-inference:2026-01-26 .
 ```
 

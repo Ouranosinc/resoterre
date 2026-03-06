@@ -84,3 +84,41 @@ def test_file_purge_older_than_or_more_than():
             tmp_dir, pattern="*.txt", older_than=0.07, more_than=5, must_both_be_true=False
         )
         assert len(purge_files) == 5
+
+
+def test_override_config_paths_with_dict():
+    config = {
+        "path_preprocessed_batch": "/original/batch.nc",
+        "path_models": "/original/models/",
+        "path_output": "/original/output/",
+        "other_key": 123,
+    }
+
+    overrides: dict[str, Path | str | None] = {
+        "path_preprocessed_batch": Path("/new/batch.nc"),
+        "path_models": None,  # Should not override
+        "path_output": "/new/output/",
+    }
+    result = io_utils.override_config_paths(config, overrides)
+    assert result["path_preprocessed_batch"] == "/new/batch.nc"
+    assert result["path_models"] == "/original/models/"
+    assert result["path_output"] == "/new/output/"
+    assert result["other_key"] == 123
+
+
+def test_override_config_paths_with_yaml(tmp_path):
+    config_data = {
+        "path_preprocessed_batch": "/original/batch.nc",
+        "path_models": "/original/models/",
+        "path_output": "/original/output/",
+    }
+    yaml_file = tmp_path / "config.yaml"
+    import yaml
+
+    with yaml_file.open("w") as f:
+        yaml.dump(config_data, f)
+        overrides: dict[str, Path | str | None] = {"path_preprocessed_batch": Path("/override/batch.nc")}
+    result = io_utils.override_config_paths(str(yaml_file), overrides)
+    assert result["path_preprocessed_batch"] == "/override/batch.nc"
+    assert result["path_models"] == "/original/models/"
+    assert result["path_output"] == "/original/output/"
