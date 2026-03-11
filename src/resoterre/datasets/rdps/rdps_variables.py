@@ -188,6 +188,10 @@ rdps_variables["UU_model_levels"] = VariableHandler(
     normalize_min=-100.0,
     normalize_max=100.0,
 )
+rdps_variables["UU_model_levels_anomaly"] = copy.copy(rdps_variables["UU_model_levels"])
+rdps_variables["UU_model_levels_anomaly"].name = "UU_model_levels_anomaly"
+rdps_variables["UU_model_levels_anomaly"].normalize_min = -100.0
+rdps_variables["UU_model_levels_anomaly"].normalize_max = 100.0
 rdps_variables["UU_pressure_levels"] = copy.copy(rdps_variables["UU_model_levels"])
 rdps_variables["UU_pressure_levels"].name = "UU_pressure_levels"
 rdps_variables["UU_pressure_levels"].netcdf_key = "UU_pressure_levels"
@@ -226,6 +230,10 @@ rdps_variables["VV_model_levels"] = VariableHandler(
     normalize_min=-100.0,
     normalize_max=100.0,
 )
+rdps_variables["VV_model_levels_anomaly"] = copy.copy(rdps_variables["VV_model_levels"])
+rdps_variables["VV_model_levels_anomaly"].name = "VV_model_levels_anomaly"
+rdps_variables["VV_model_levels_anomaly"].normalize_min = -100.0
+rdps_variables["VV_model_levels_anomaly"].normalize_max = 100.0
 rdps_variables["VV_pressure_levels"] = copy.copy(rdps_variables["VV_model_levels"])
 rdps_variables["VV_pressure_levels"].name = "VV_pressure_levels"
 rdps_variables["VV_pressure_levels"].netcdf_key = "VV_pressure_levels"
