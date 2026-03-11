@@ -167,11 +167,14 @@ class RDPSToHRDPSInferenceConfig:
 
     path_logs: Path | None = None
     path_models: Path | None = None
+    path_rdps_climatology: Path | None = None
+    path_hrdps_climatology: Path | None = None
     path_output: Path | None = None
     path_preprocessed_batch: Path | None = None
     search_path: Path | None = None
     glob_pattern: str | None = None
     experiment_name: str = "test"
+    anomaly_variables: list[str] = field(default_factory=list)
     device: str = "cpu"
 
 
