@@ -3,10 +3,12 @@
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
+import xarray
 
+from resoterre.data_management.data_info import DatasetInfo
 from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables, long_variable_name, short_variable_name
 
 
@@ -167,87 +169,139 @@ def hrdps_caspar_data(
     return data
 
 
-# ToDo: reintroduce
-# def hrdps_caspar_individual_file_check(
-#     hrdps_caspar_file, forecast_hours, source_type="caspar_012", acceptable_nan_fraction=0.0
-# ):
-#     dataset_info = DatasetInfo()
-#     global_idx = dataset_info.create_entry(file_path=str(hrdps_caspar_file.path_nc_file))
+def hrdps_caspar_individual_file_check(
+    hrdps_caspar_file: HRDPSCasparFile,
+    forecast_hours: list[int],
+    source_type: str = "caspar_012",
+    acceptable_nan_fraction: float = 0.0,
+) -> DatasetInfo:
+    """
+    Check the integrity of an individual HRDPS CaSPAr file.
 
-#     if not hrdps_caspar_file.path_nc_file.is_file():
-#         logger.critical(f"File {hrdps_caspar_file.path_nc_file} does not exist.")
-#         dataset_info.set_properties(file_exists=False, is_bool=True)
-#         return dataset_info
-#     dataset_info.set_properties(file_exists=True, is_bool=True)
+    Parameters
+    ----------
+    hrdps_caspar_file : HRDPSCasparFile
+        The HRDPS CaSPAr file to check.
+    forecast_hours : list[int]
+        List of forecast hours to select from the data for checking.
+    source_type : str
+        Source type of the data.
+    acceptable_nan_fraction : float
+        The maximum acceptable fraction of NaN values in the data for it to be considered valid.
 
-#     try:
-#         ds = xarray.open_dataset(hrdps_caspar_file.path_nc_file, decode_timedelta=False)
-#     except OSError:
-#         logger.critical(f"Error opening file {hrdps_caspar_file.path_nc_file}.")
-#         dataset_info.set_properties(file_opens=False, is_bool=True)
-#         return dataset_info
-#     dataset_info.set_properties(file_opens=True, is_bool=True)
+    Returns
+    -------
+    DatasetInfo
+        A DatasetInfo object containing the results of the integrity check.
+    """
+    dataset_info = DatasetInfo()
+    global_idx = dataset_info.create_entry(file_path=str(hrdps_caspar_file.path_nc_file))
 
-#     raw_idx = dataset_info.create_entry(
-#         file_path=str(hrdps_caspar_file.path_nc_file),
-#         variable_name=hrdps_caspar_file.short_variable_name,
-#         cleanup=False,
-#     )
-#     clean_idx = dataset_info.create_entry(
-#         file_path=str(hrdps_caspar_file.path_nc_file), variable_name=hrdps_caspar_file.short_variable_name,
-#         cleanup=True
-#     )
-#     dataset_info.set_properties(idx=[raw_idx, clean_idx], is_bool=True, file_exists=True, file_opens=True)
+    if not hrdps_caspar_file.path_nc_file.is_file():
+        logger.critical("File %s does not exist.", hrdps_caspar_file.path_nc_file)
+        dataset_info.set_properties(file_exists=False, is_bool=True)
+        return dataset_info
+    dataset_info.set_properties(file_exists=True, is_bool=True)
 
-#     if not hasattr(ds, hrdps_caspar_file.long_variable_name):
-#         logger.critical(
-#             f"Variable {hrdps_caspar_file.long_variable_name} not in file {hrdps_caspar_file.path_nc_file}."
-#         )
-#         dataset_info.set_properties(idx=[raw_idx, clean_idx], variable_in_file=False, is_bool=True)
-#         return dataset_info
-#     dataset_info.set_properties(idx=[global_idx, raw_idx, clean_idx], variable_in_file=True, is_bool=True)
+    try:
+        ds = xarray.open_dataset(hrdps_caspar_file.path_nc_file, decode_timedelta=False)
+    except OSError:
+        logger.critical("Error opening file %s.", hrdps_caspar_file.path_nc_file)
+        dataset_info.set_properties(file_opens=False, is_bool=True)
+        return dataset_info
+    dataset_info.set_properties(file_opens=True, is_bool=True)
 
-#     xarray_variable = getattr(ds, hrdps_caspar_file.long_variable_name)
-#     dataset_info.set_properties(idx=[global_idx, raw_idx, clean_idx], shape=xarray_variable.shape)
+    raw_idx = dataset_info.create_entry(
+        file_path=str(hrdps_caspar_file.path_nc_file),
+        variable_name=hrdps_caspar_file.short_variable_name,
+        cleanup=False,
+    )
+    clean_idx = dataset_info.create_entry(
+        file_path=str(hrdps_caspar_file.path_nc_file), variable_name=hrdps_caspar_file.short_variable_name, cleanup=True
+    )
+    dataset_info.set_properties(idx=[raw_idx, clean_idx], is_bool=True, file_exists=True, file_opens=True)
 
-#     if xarray_variable.shape != expected_shapes[source_type]:
-#         logger.critical(
-#             f"Variable {hrdps_caspar_file.long_variable_name} has shape {xarray_variable.shape} instead of "
-#             f"{expected_shapes[source_type]}."
-#         )
-#         dataset_info.set_properties(idx=[global_idx, raw_idx, clean_idx], variable_correct_shape=False, is_bool=True)
-#         return dataset_info
-#     dataset_info.set_properties(idx=[global_idx, raw_idx, clean_idx], variable_correct_shape=True, is_bool=True)
+    if not hasattr(ds, hrdps_caspar_file.long_variable_name):
+        logger.critical(
+            "Variable %s not in file %s.", hrdps_caspar_file.long_variable_name, hrdps_caspar_file.path_nc_file
+        )
+        dataset_info.set_properties(idx=[raw_idx, clean_idx], variable_in_file=False, is_bool=True)
+        return dataset_info
+    dataset_info.set_properties(idx=[global_idx, raw_idx, clean_idx], variable_in_file=True, is_bool=True)
 
-#     xarray_data = hrdps_caspar_data(xarray_variable, forecast_hours, cleanup=False)
-#     dataset_info.set_statistics(idx=raw_idx, data_array=xarray_data)
-#     xarray_data = hrdps_caspar_data(xarray_variable, forecast_hours, cleanup=True)
-#     dataset_info.set_statistics(idx=clean_idx, data_array=xarray_data)
-#     dataset_info.set_properties(first_hour_all_zeros=bool(np.all(xarray_data[0, ...] == 0)), is_bool=True)
+    xarray_variable = getattr(ds, hrdps_caspar_file.long_variable_name)
+    dataset_info.set_properties(idx=[global_idx, raw_idx, clean_idx], shape=xarray_variable.shape)
 
-#     variable_info = hrdps_variables[xarray_variable.name]
-#     valid_statistics = True
-#     if dataset_info.min() < variable_info.min:
-#         valid_statistics = False
-#         logger.debug(f"Invalid minimum for {xarray_variable.name} ({dataset_info.min()} < {variable_info.min})")
-#     if dataset_info.max() > variable_info.max:
-#         valid_statistics = False
-#         logger.debug(f"Invalid maximum for {xarray_variable.name} ({dataset_info.max()} > {variable_info.max})")
-#     if dataset_info.mean() < variable_info.mean_min:
-#         valid_statistics = False
-#         logger.debug(f"Invalid mean for {xarray_variable.name} ({dataset_info.mean()} < {variable_info.mean_min})")
-#     if dataset_info.mean() > variable_info.mean_max:
-#         valid_statistics = False
-#         logger.debug(f"Invalid mean for {xarray_variable.name} ({dataset_info.mean()} > {variable_info.mean_max})")
-#     if not valid_statistics:
-#         return dataset_info
-#     dataset_info.set_properties(idx=[global_idx, clean_idx], valid_statistics=True, is_bool=True)
-#     if dataset_info.nan_fraction() > acceptable_nan_fraction:
-#         logger.debug(
-#             f"Too many NaNs for {xarray_variable.name} {dataset_info.nan_fraction()} > {acceptable_nan_fraction}."
-#         )
-#         return dataset_info
-#     dataset_info.set_properties(idx=[global_idx, clean_idx], valid_for_ml=True, is_bool=True)
+    if xarray_variable.shape != expected_shapes[source_type]:
+        logger.critical(
+            "Variable %s has shape %s instead of shape %s.",
+            hrdps_caspar_file.long_variable_name,
+            xarray_variable.shape,
+            expected_shapes[source_type],
+        )
+        dataset_info.set_properties(idx=[global_idx, raw_idx, clean_idx], variable_correct_shape=False, is_bool=True)
+        return dataset_info
+    dataset_info.set_properties(idx=[global_idx, raw_idx, clean_idx], variable_correct_shape=True, is_bool=True)
 
-#     ds.close()
-#     return dataset_info
+    xarray_data = hrdps_caspar_data(xarray_variable, forecast_hours, cleanup=False)
+    dataset_info.set_statistics(idx=raw_idx, data_array=xarray_data)
+    xarray_data = hrdps_caspar_data(xarray_variable, forecast_hours, cleanup=True)
+    dataset_info.set_statistics(idx=clean_idx, data_array=xarray_data)
+    dataset_info.set_properties(first_hour_all_zeros=bool(np.all(xarray_data[0, ...] == 0)), is_bool=True)
+
+    variable_info = hrdps_variables[xarray_variable.name]
+    valid_statistics = True
+    dataset_info_min = dataset_info.min()
+    if dataset_info_min is None:
+        valid_statistics = False
+        logger.debug("Minimum is None for %s.", xarray_variable.name)
+    else:
+        variable_info_min = cast(float, variable_info.min)
+        if dataset_info_min < variable_info_min:
+            valid_statistics = False
+            logger.debug("Invalid minimum for %s (%s < %s).", xarray_variable.name, dataset_info_min, variable_info_min)
+    dataset_info_max = dataset_info.max()
+    if dataset_info_max is None:
+        valid_statistics = False
+        logger.debug("Maximum is None for %s.", xarray_variable.name)
+    else:
+        variable_info_max = cast(float, variable_info.max)
+        if dataset_info_max < variable_info_max:
+            valid_statistics = False
+            logger.debug("Invalid maximum for %s (%s < %s).", xarray_variable.name, dataset_info_max, variable_info_max)
+    dataset_info_mean = dataset_info.mean()
+    if dataset_info_mean is None:
+        valid_statistics = False
+        logger.debug("Mean is None for %s.", xarray_variable.name)
+    else:
+        variable_info_mean_min = cast(float, variable_info.mean_min)
+        variable_info_mean_max = cast(float, variable_info.mean_max)
+        if dataset_info_mean < variable_info_mean_min:
+            valid_statistics = False
+            logger.debug(
+                "Invalid mean for %s (%s < %s).", xarray_variable.name, dataset_info_mean, variable_info_mean_min
+            )
+        elif dataset_info_mean > variable_info_mean_max:
+            valid_statistics = False
+            logger.debug(
+                "Invalid mean for %s (%s > %s).", xarray_variable.name, dataset_info_mean, variable_info_mean_max
+            )
+    if not valid_statistics:
+        return dataset_info
+    dataset_info.set_properties(idx=[global_idx, clean_idx], valid_statistics=True, is_bool=True)
+    dataset_info_nan_fraction = dataset_info.nan_fraction()
+    if dataset_info_nan_fraction is None:
+        logger.debug("NaN fraction is None for %s.", xarray_variable.name)
+        return dataset_info
+    elif dataset_info_nan_fraction > acceptable_nan_fraction:
+        logger.debug(
+            "Too many NaNs for %s (%s > %s).",
+            xarray_variable.name,
+            dataset_info_nan_fraction,
+            acceptable_nan_fraction,
+        )
+        return dataset_info
+    dataset_info.set_properties(idx=[global_idx, clean_idx], valid_for_ml=True, is_bool=True)
+
+    ds.close()
+    return dataset_info
