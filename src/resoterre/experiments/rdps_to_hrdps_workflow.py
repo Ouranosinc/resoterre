@@ -116,7 +116,7 @@ class RDPSToHRDPSOnDiskConfig:
     path_hrdps_sftlf: Path | None = None
     path_grids: Path | None = None
     random_seed: int | None = 0
-    rdps_input_validation_batch_size: int = 32  # ToDo: this is also used for hrdps validation batch size
+    input_validation_batch_size: int = 32
     data_loader_snakemake_batch_size: int = 128
     # ToDo: many more workflow settings are needed here
     grid_input_for_ml: str | None = None

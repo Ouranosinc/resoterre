@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from resoterre.experiments.rdps_to_hrdps_workflow import RDPSToHRDPSInferenceConfig
+from resoterre.experiments.rdps_to_hrdps_workflow import RDPSToHRDPSOnDiskConfig
 
 # from resoterre.io_utils import write_json
 from resoterre.logging_utils import start_root_logger
@@ -22,7 +22,7 @@ snakemake = None  # Overwritten by Snakemake at runtime
 snakemake_workflow_dir = Path(snakemake.workflow.workdir)
 
 
-def main(input_files: list[Path | str], output_directory: Path | str, config: RDPSToHRDPSInferenceConfig) -> None:
+def main(input_files: list[Path | str], output_directory: Path | str, config: RDPSToHRDPSOnDiskConfig) -> None:
     """
     Main function to split valid datetimes into train/validation/test sets.
 

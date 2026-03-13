@@ -7,16 +7,13 @@ snakemake -s rdps_to_hrdps_on_disk.smk -j1 --config config_yaml=config.yaml --di
 from pathlib import Path
 
 from resoterre.config_utils import config_from_yaml
-from resoterre.hybrid_data_loaders.rdps_to_hrdps_workflow import RDPSToHRDPSOnDiskConfig
+from resoterre.experiments.rdps_to_hrdps_workflow import RDPSToHRDPSOnDiskConfig
 from resoterre.snakemake_utils import merge_logs, decode_period_string, split_period
 
 snakefile_dir = Path(str(workflow.snakefile)).parent
 workflow_dir = Path.cwd()
 
-config_yaml = Path(snakefile_dir, config['config_yaml'])
-if not config_yaml.is_file():
-    config_yaml = Path(config['config_yaml'])
-config_obj = config_from_yaml(RDPSToHRDPSOnDiskConfig, config_yaml)
+config_obj = config_from_yaml(RDPSToHRDPSOnDiskConfig, Path(snakefile_dir, config['config_yaml']))
 
 # Initial split for data validation
 period_strings = split_period(
@@ -69,7 +66,7 @@ checkpoint split_valid_datetimes:
     params:
         config_obj=config_obj
     script:
-        "rdps_to_hrdps_split_valid_datetime.py"
+        "rdps_to_hrdps_split_valid_datetime_4smk.py"
 
 
 rule rdps_hrdps_intersection:
@@ -100,7 +97,7 @@ rule rdps_integrity_check:
         config_obj=config_obj
     retries: 2
     script:
-        "rdps_integrity_check.py"
+        "rdps_integrity_check_4smk.py"
 
 
 rule aggregate_hrdps_integrity_check:
@@ -121,7 +118,7 @@ rule hrdps_integrity_check:
         config_obj=config_obj
     retries: 2
     script:
-        "hrdps_integrity_check.py"
+        "hrdps_integrity_check_4smk.py"
 
 
 rule rdps_to_hrdps_netcdf_batch:
@@ -135,4 +132,4 @@ rule rdps_to_hrdps_netcdf_batch:
         config_obj=config_obj,
     retries: 3
     script:
-        "rdps_to_hrdps_save_data_loader.py"
+        "rdps_to_hrdps_save_data_loader_4smk.py"
