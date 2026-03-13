@@ -21,7 +21,7 @@ def test_hrdps_caspar_file_initialization_01():
     assert caspar_file.path_nc_file == Path("/path/to/data/0-12/HRDPS_P_TT_10000/2024/2024010106.nc")
     assert caspar_file.datetime == datetime(2024, 1, 1, 6)
     assert caspar_file.source_type == "caspar_012"
-    assert caspar_file.path_data == Path("/path/to/data/0-12")
+    assert caspar_file.path_data == Path("/path/to/data")
     assert caspar_file.long_variable_name == "HRDPS_P_TT_10000"
     assert caspar_file.short_variable_name == "P_TT_10000"
 
@@ -37,7 +37,7 @@ def test_hrdps_caspar_file_initialization_02():
     assert caspar_file.path_nc_file == Path("/path/to/data/0-12/HRDPS_P_TT_10000/2024/2024010106.nc")
     assert caspar_file.datetime == datetime(2024, 1, 1, 6)
     assert caspar_file.source_type == "caspar_012"
-    assert caspar_file.path_data == Path("/path/to/data/0-12")
+    assert caspar_file.path_data == Path("/path/to/data")
     assert caspar_file.long_variable_name == "HRDPS_P_TT_10000"
     assert caspar_file.short_variable_name == "P_TT_10000"
 

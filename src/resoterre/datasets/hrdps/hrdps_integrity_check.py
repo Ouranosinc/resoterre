@@ -71,10 +71,10 @@ class HRDPSCasparFile:
             self.datetime = datetime.strptime(self.path_nc_file.stem, "%Y%m%d%H")
             if source_type in known_source_type:
                 if path_data is not None:
-                    self.path_data = path_data
+                    self.path_data = Path(path_data)
                     self.path_nc_file = Path(self.path_data, self.path_nc_file)
                 else:
-                    self.path_data = self.path_nc_file.parent.parent.parent
+                    self.path_data = self.path_nc_file.parent.parent.parent.parent
                 self.long_variable_name = self.path_nc_file.parent.parent.name
             else:
                 raise ValueError(f"Unknown source_type: {source_type}.")
@@ -82,7 +82,7 @@ class HRDPSCasparFile:
         else:
             if path_data is None:
                 raise ValueError("path_data must be provided if path_nc_file is not provided.")
-            self.path_data = path_data
+            self.path_data = Path(path_data)
             if datetime_input is None:
                 raise ValueError("datetime_input must be provided if path_nc_file is not provided.")
             self.datetime = datetime_input
