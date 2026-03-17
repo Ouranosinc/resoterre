@@ -8,7 +8,7 @@ from pathlib import Path
 
 from resoterre.config_utils import config_from_yaml
 from resoterre.experiments.rdps_to_hrdps_workflow import RDPSToHRDPSOnDiskConfig
-from resoterre.snakemake_utils import merge_logs, decode_period_string, split_period
+from resoterre.snakemake_utils import merge_logs, merge_manifests, decode_period_string, split_period
 
 snakefile_dir = Path(str(workflow.snakefile)).parent
 workflow_dir = Path.cwd()

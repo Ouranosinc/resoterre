@@ -9,6 +9,7 @@ import numpy as np
 import xarray
 
 from resoterre.data_management.data_info import DatasetInfo
+from resoterre.data_management.forecast_utils import infer_forecast_time
 from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables, long_variable_name, short_variable_name
 
 
@@ -266,9 +267,9 @@ def hrdps_caspar_individual_file_check(
         logger.debug("Maximum is None for %s.", xarray_variable.name)
     else:
         variable_info_max = cast(float, variable_info.max)
-        if dataset_info_max < variable_info_max:
+        if dataset_info_max > variable_info_max:
             valid_statistics = False
-            logger.debug("Invalid maximum for %s (%s < %s).", xarray_variable.name, dataset_info_max, variable_info_max)
+            logger.debug("Invalid maximum for %s (%s > %s).", xarray_variable.name, dataset_info_max, variable_info_max)
     dataset_info_mean = dataset_info.mean()
     if dataset_info_mean is None:
         valid_statistics = False
@@ -305,3 +306,61 @@ def hrdps_caspar_individual_file_check(
 
     ds.close()
     return dataset_info
+
+
+def hrdps_integrity_check_datetime_list(
+    path_hrdps: Path | str,
+    hrdps_variables: list[str],
+    forecast_hours: list[int],
+    list_of_datetime: list[datetime] | None = None,
+    source_type: str = "caspar_012",
+) -> list[datetime]:
+    """
+    Check the integrity of HRDPS data for a list of datetimes.
+
+    Parameters
+    ----------
+    path_hrdps : Path | str
+        Base path to the HRDPS data directory.
+    hrdps_variables : list[str]
+        List of HRDPS variable names to check.
+    forecast_hours : list[int]
+        List of forecast hours to select from the data for checking.
+    list_of_datetime : list[datetime], optional
+        List of datetimes to check. If None, the function will raise NotImplementedError.
+    source_type : str
+        Source type of the data, e.g., 'caspar_06' or 'caspar_012'.
+
+    Returns
+    -------
+    list[datetime]
+        List of datetimes for which the HRDPS data passed the integrity check.
+    """
+    if list_of_datetime is None:
+        raise NotImplementedError()
+    if forecast_hours[0] != 7:
+        raise NotImplementedError()  # ToDo: validate that this works for custom forecast_hours list
+    valid_datetime_list = []
+    for current_datetime in list_of_datetime:
+        valid_for_ml = True
+        forecast_datetime, forecast_hour = infer_forecast_time(current_datetime, forecast_hours[0], 6)
+        for variable_name in hrdps_variables:
+            hrdps_caspar_file = HRDPSCasparFile(
+                path_data=path_hrdps,
+                datetime_input=forecast_datetime,
+                variable_name=variable_name,
+                source_type=source_type,
+            )
+            dataset_info = hrdps_caspar_individual_file_check(
+                hrdps_caspar_file, [forecast_hour], source_type=source_type, acceptable_nan_fraction=0.0
+            )
+            if "valid_for_ml" in dataset_info._properties:
+                if not dataset_info._properties["valid_for_ml"][2]:  # 2 is the cleaned data entry
+                    valid_for_ml = False
+                    break
+            else:
+                valid_for_ml = False
+                break
+        if valid_for_ml:
+            valid_datetime_list.append(current_datetime)
+    return valid_datetime_list
