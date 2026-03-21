@@ -151,6 +151,8 @@ class RDPSToHRDPSInferenceConfig:
         Path to the logs directory.
     path_models : Path, optional
         Path to the directory containing the trained models.
+    path_hrdps_climatology : Path, optional
+        Path to the HRDPS climatology data, used for adding climatology back to the outputs if they are anomalies.
     path_output : Path, optional
         Path to the output directory where results will be saved.
     path_preprocessed_batch : Path, optional
@@ -161,13 +163,14 @@ class RDPSToHRDPSInferenceConfig:
         Glob pattern to match multiple preprocessed data files for inference.
     experiment_name : str
         Name of the experiment.
+    anomaly_variables : list[str]
+        List of variable names to be treated as anomalies during post-processing.
     device : str
         Device to use for inference (e.g., "cpu" or "cuda").
     """
 
     path_logs: Path | None = None
     path_models: Path | None = None
-    path_rdps_climatology: Path | None = None
     path_hrdps_climatology: Path | None = None
     path_output: Path | None = None
     path_preprocessed_batch: Path | None = None
@@ -342,7 +345,10 @@ def inference_from_preprocessed_data(config: RDPSToHRDPSInferenceConfig | dict[s
 
     # Denormalize and revert climatology removal
     output_variables = post_process_model_output(
-        output, variable_names=list(map(str, data_sample["output_variables"].values))
+        output,
+        data_sample=data_sample,
+        anomaly_variables=config_obj.anomaly_variables,
+        path_hrdps_climatology=config_obj.path_hrdps_climatology,
     )
 
     # Save output

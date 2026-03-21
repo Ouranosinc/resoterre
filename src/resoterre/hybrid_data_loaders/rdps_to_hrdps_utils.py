@@ -3,6 +3,7 @@
 import itertools
 import random
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -19,7 +20,7 @@ def rdps_to_hrdps_split(
     rdps_window_size: int,
     overlap_factor: int,
     hrdps_required_unmasked_fraction: float,
-    path_hrdps_mask: str,
+    path_hrdps_mask: Path | str,
     save_batch_size: int,
     temporal_window: int | None = 0,
     input_mode: str = "rdps_only",
@@ -45,7 +46,7 @@ def rdps_to_hrdps_split(
         Factor by which the spatial windows overlap.
     hrdps_required_unmasked_fraction : float
         Fraction of unmasked grid points in the HRDPS window required for inclusion.
-    path_hrdps_mask : str
+    path_hrdps_mask : Path | str
         Path to the HRDPS mask file (numpy .npz format with a "mask" array).
     save_batch_size : int
         Number of samples per saved batch.

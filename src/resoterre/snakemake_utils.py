@@ -3,15 +3,26 @@
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import cast
+from typing import Literal, overload
 
 
-read_manifest_output_type = list[str | Path | datetime]
+@overload
+def read_manifest(
+    file_path: Path | str, convert_to: Literal["str"] = "str", datetime_format: None = None
+) -> list[str]: ...  # numpydoc ignore=GL08
+@overload
+def read_manifest(
+    file_path: Path | str, convert_to: Literal["Path"], datetime_format: None = None
+) -> list[Path]: ...  # numpydoc ignore=GL08
+@overload
+def read_manifest(
+    file_path: Path | str, convert_to: Literal["datetime"], datetime_format: str
+) -> list[datetime]: ...  # numpydoc ignore=GL08
 
 
 def read_manifest(
     file_path: Path | str, convert_to: str = "str", datetime_format: str | None = None
-) -> list[str | Path | datetime]:
+) -> list[str] | list[Path] | list[datetime]:
     """
     Read a manifest file and convert entries to the specified type.
 
@@ -26,19 +37,19 @@ def read_manifest(
 
     Returns
     -------
-    list[str | Path | datetime]
+    list[str] | list[Path] | list[datetime]
         List of manifest entries converted to the specified type.
     """
     with Path(file_path).open("r") as f:
         manifest_content = [line.rstrip("\r\n") for line in f if line.strip()]
     if convert_to == "str":
-        return cast(read_manifest_output_type, manifest_content)
+        return manifest_content
     elif convert_to == "Path":
-        return cast(read_manifest_output_type, [Path(s) for s in manifest_content])
+        return [Path(s) for s in manifest_content]
     elif convert_to == "datetime":
         if datetime_format is None:
             raise ValueError("datetime_format must be provided when convert_to is 'datetime'")
-        return cast(read_manifest_output_type, [datetime.strptime(s, datetime_format) for s in manifest_content])
+        return [datetime.strptime(s, datetime_format) for s in manifest_content]
     else:
         raise ValueError(f"Unsupported convert_to value: {convert_to}")
 

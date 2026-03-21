@@ -170,7 +170,7 @@ values = [
 ]
 
 [tool.codespell]
-ignore-words-list = "astroid,socio-economic"
+ignore-words-list = "astroid,socio-economic,pres"
 
 [tool.coverage.paths]
 source = ["src/resoterre/", "*/site-packages/resoterre/"]

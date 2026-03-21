@@ -10,7 +10,8 @@ import xarray
 
 from resoterre.data_management.data_info import DatasetInfo
 from resoterre.data_management.forecast_utils import infer_forecast_time
-from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables, long_variable_name, short_variable_name
+from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables as hrdps_variables_collection
+from resoterre.datasets.hrdps.hrdps_variables import long_variable_name, short_variable_name
 
 
 logger = logging.getLogger(__name__)
@@ -47,9 +48,9 @@ class HRDPSCasparFile:
 
     Parameters
     ----------
-    path_nc_file : str, optional
+    path_nc_file : Path | str, optional
         Full path to the .nc file.
-    path_data : str, optional
+    path_data : Path | str, optional
         Base path to the data directory.
     datetime_input : datetime, optional
         Datetime corresponding to the file.
@@ -66,7 +67,7 @@ class HRDPSCasparFile:
         datetime_input: datetime | None = None,
         variable_name: str | None = None,
         source_type: str = "caspar_012",
-    ):
+    ) -> None:
         # path_nc_file can be the full path or the incomplete path, with path_data also provided
         self.source_type = source_type
         if path_nc_file is not None:
@@ -154,7 +155,7 @@ def hrdps_caspar_data(
         forecast_hours_slice = slice(forecast_hours[0], forecast_hours[-1] + 1)
     else:
         forecast_hours_slice = slice(None)
-    variable_info = hrdps_variables[xarray_variable.name]
+    variable_info = hrdps_variables_collection[xarray_variable.name]
     data = xarray_variable[forecast_hours_slice, :, :].data
     if cleanup:
         if variable_info.has_nan_thresholds():
@@ -250,7 +251,7 @@ def hrdps_caspar_individual_file_check(
     dataset_info.set_statistics(idx=clean_idx, data_array=xarray_data)
     dataset_info.set_properties(first_hour_all_zeros=bool(np.all(xarray_data[0, ...] == 0)), is_bool=True)
 
-    variable_info = hrdps_variables[xarray_variable.name]
+    variable_info = hrdps_variables_collection[xarray_variable.name]
     valid_statistics = True
     dataset_info_min = dataset_info.min()
     if dataset_info_min is None:

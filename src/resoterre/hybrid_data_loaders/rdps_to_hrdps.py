@@ -7,10 +7,11 @@ from typing import Any
 
 import numpy as np
 import torch
+import xarray
 from torch.utils import data as td
 
 from resoterre.config_utils import register_config
-from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables
+from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables, long_variable_name, short_variable_name
 from resoterre.ml.data_loader_utils import DatasetConfig, DatasetFromNetCDFSave, inverse_normalize, recursive_collate
 from resoterre.ml.dataset_manager import DatasetManager, register_dataset_manager
 
@@ -84,7 +85,12 @@ class RDPSToHRDPSDatasetConfig(DatasetConfig):
     dataset_manager: str = "RDPSToHRDPS"
 
 
-def post_process_model_output(output: torch.Tensor, variable_names: list[str]) -> dict[str, np.ndarray]:
+def post_process_model_output(
+    output: torch.Tensor,
+    data_sample: xarray.Dataset,
+    anomaly_variables: list[str] | None = None,
+    path_hrdps_climatology: Path | None = None,
+) -> dict[str, np.ndarray]:
     """
     Post-process the model output by inverse normalizing each variable.
 
@@ -92,8 +98,12 @@ def post_process_model_output(output: torch.Tensor, variable_names: list[str]) -
     ----------
     output : torch.Tensor
         The model output tensor of shape (batch_size, num_variables, height, width).
-    variable_names : list[str]
-        List of variable names corresponding to the output channels.
+    data_sample : xarray.Dataset
+        The original data sample corresponding to the model output, used for retrieving metadata.
+    anomaly_variables : list[str], optional
+        List of variable names that are anomalies.
+    path_hrdps_climatology : Path, optional
+        Path to the HRDPS climatology data, used for adding climatology back to the outputs if they are anomalies.
 
     Returns
     -------
@@ -102,7 +112,12 @@ def post_process_model_output(output: torch.Tensor, variable_names: list[str]) -
     """
     output_variables = {}
     for i in range(output.shape[1]):
-        variable_name = str(variable_names[i])
+        variable_name = list(map(str, data_sample["output_variables"].values))[i]
+        if (anomaly_variables is not None) and (variable_name in anomaly_variables):
+            variable_name = variable_name + "_anomaly"
+            add_climatology = True
+        else:
+            add_climatology = False
         normalize_min_local = hrdps_variables[variable_name].normalize_min
         if normalize_min_local is None:
             raise ValueError(f"Variable {variable_name} does not have normalization parameters defined.")
@@ -120,7 +135,26 @@ def post_process_model_output(output: torch.Tensor, variable_names: list[str]) -
             log_normalize=hrdps_variables[variable_name].log_normalize,
             log_offset=hrdps_variables[variable_name].normalize_log_offset,
         )
-    # ToDo: climatology addition, latest run does not use climatologies for outputs...
+        if add_climatology:
+            if path_hrdps_climatology is None:
+                raise ValueError("path_hrdps_climatology must be provided to add climatology back.")
+            original_variable_name = short_variable_name(variable_name.replace("_anomaly", ""))
+            for j in range(output_variables[variable_name].shape[0]):
+                month = f"{data_sample['month'][i]:02d}"
+                day = f"{data_sample['day'][i]:02d}"
+                hour = f"{data_sample['hour'][i]:02d}"
+                climatology_file = Path(
+                    path_hrdps_climatology,
+                    original_variable_name,
+                    f"hrdps_climatology_{original_variable_name}_{month}-{day}T{hour}.nc",
+                )
+                ds_climatology = xarray.open_dataset(climatology_file)
+                z = ds_climatology[long_variable_name(original_variable_name)].values
+                i1 = data_sample["height_out_idx"].values[j][0]
+                i2 = data_sample["height_out_idx"].values[j][-1]
+                j1 = data_sample["width_out_idx"].values[j][0]
+                j2 = data_sample["width_out_idx"].values[j][-1]
+                output_variables[variable_name][j, i : i + 1, :, :] += z[i1 : i2 + 1, j1 : j2 + 1]
     return output_variables
 
 
