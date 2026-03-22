@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import xarray
 
+from resoterre.data_management.data_io import sample_chunk_size
+from resoterre.data_management.netcdf_utils import add_xarray_variable
 from resoterre.ml.data_loader_utils import index_train_validation_test_split
 
 
@@ -165,3 +168,159 @@ def rdps_to_hrdps_split(
         for j in range(0, len(split_dict[split]), save_batch_size):
             batch_dict[split].append([dt for dt in split_dict[split][j : j + save_batch_size]])
     return batch_dict
+
+
+def save_ml_input(
+    output_file: Path | str,
+    input_first_block: np.ndarray,
+    input_last_layer: np.ndarray,
+    target: np.ndarray,
+    heights_in_idx: np.ndarray,
+    widths_in_idx: np.ndarray,
+    heights_idx: np.ndarray,
+    widths_idx: np.ndarray,
+    latitudes: np.ndarray,
+    longitudes: np.ndarray,
+    year_1d: np.ndarray,
+    month_1d: np.ndarray,
+    day_1d: np.ndarray,
+    hour_1d: np.ndarray,
+    list_of_input_variables: list[str],
+    list_of_output_variables: list[str],
+    use_hrdps_upscale: np.ndarray,
+) -> None:
+    """
+    Save the ML input data to a NetCDF file with CF conventions.
+
+    Parameters
+    ----------
+    output_file : Path | str
+        Path to the output NetCDF file.
+    input_first_block : np.ndarray
+        Input data for the first block (e.g., RDPS data).
+    input_last_layer : np.ndarray
+        Input data for the last layer (e.g., HRDPS data or upscaled RDPS data).
+    target : np.ndarray
+        Target data (e.g., HRDPS data).
+    heights_in_idx : np.ndarray
+        Height indices for the input data.
+    widths_in_idx : np.ndarray
+        Width indices for the input data.
+    heights_idx : np.ndarray
+        Height indices for the output data.
+    widths_idx : np.ndarray
+        Width indices for the output data.
+    latitudes : np.ndarray
+        Latitude values for the output grid.
+    longitudes : np.ndarray
+        Longitude values for the output grid.
+    year_1d : np.ndarray
+        Year values for each sample.
+    month_1d : np.ndarray
+        Month values for each sample.
+    day_1d : np.ndarray
+        Day values for each sample.
+    hour_1d : np.ndarray
+        Hour values for each sample.
+    list_of_input_variables : list[str]
+        List of input variable names.
+    list_of_output_variables : list[str]
+        List of output variable names.
+    use_hrdps_upscale : np.ndarray
+        Boolean array indicating whether HRDPS upscale is used for each sample.
+    """
+    num_input_channel = input_first_block[0].shape[0]
+    num_last_layer_channel = input_last_layer[0].shape[0]
+    num_target_channel = target[0].shape[0]
+    height_in = input_first_block[0].shape[1]
+    width_in = input_first_block[0].shape[2]
+    height = target[0].shape[1]
+    width = target[0].shape[2]
+
+    encoding: dict[str, Any] = {}
+    cf_coordinates: dict[str, xarray.Variable] = {}
+    add_xarray_variable(
+        cf_coordinates, "height_in_idx", heights_in_idx, encoding, dims=("sample", "height_in"), dtype=np.int16
+    )
+    add_xarray_variable(
+        cf_coordinates, "width_in_idx", widths_in_idx, encoding, dims=("sample", "width_in"), dtype=np.int16
+    )
+    add_xarray_variable(
+        cf_coordinates, "height_out_idx", heights_idx, encoding, dims=("sample", "height_out"), dtype=np.int16
+    )
+    add_xarray_variable(
+        cf_coordinates, "width_out_idx", widths_idx, encoding, dims=("sample", "width_out"), dtype=np.int16
+    )
+    add_xarray_variable(
+        cf_coordinates,
+        "lat",
+        latitudes,
+        encoding,
+        dims=("sample", "height_out"),
+        attrs={"units": "degrees_north", "standard_name": "latitude"},
+        dtype=np.float32,
+    )
+    add_xarray_variable(
+        cf_coordinates,
+        "lon",
+        longitudes,
+        encoding,
+        dims=("sample", "width_out"),
+        attrs={"units": "degrees_east", "standard_name": "longitude"},
+        dtype=np.float32,
+    )
+    add_xarray_variable(cf_coordinates, "year", year_1d, encoding, dims=("sample",), dtype=np.int16)
+    add_xarray_variable(cf_coordinates, "month", month_1d, encoding, dims=("sample",), dtype=np.int8)
+    add_xarray_variable(cf_coordinates, "day", day_1d, encoding, dims=("sample",), dtype=np.int8)
+    add_xarray_variable(cf_coordinates, "hour", hour_1d, encoding, dims=("sample",), dtype=np.int8)
+    add_xarray_variable(
+        cf_coordinates, "input_variables", list_of_input_variables, encoding, dims=("input_channel",), dtype="object"
+    )
+    add_xarray_variable(
+        cf_coordinates, "output_variables", list_of_output_variables, encoding, dims=("target_channel",), dtype="object"
+    )
+    add_xarray_variable(
+        cf_coordinates, "use_hrdps_upscale", use_hrdps_upscale, encoding, dims=("sample",), dtype=np.int8
+    )
+
+    cf_variables: dict[str, xarray.Variable] = {}
+    add_xarray_variable(
+        cf_variables,
+        "input_first_block",
+        input_first_block,
+        encoding,
+        dims=("sample", "input_channel", "height_in", "width_in"),
+        dtype=np.float32,
+        zlib=True,
+        complevel=4,
+    )
+    add_xarray_variable(
+        cf_variables,
+        "input_last_layer",
+        input_last_layer,
+        encoding,
+        dims=("sample", "last_layer_channel", "height_out", "width_out"),
+        dtype=np.float32,
+        zlib=True,
+        complevel=4,
+    )
+    add_xarray_variable(
+        cf_variables,
+        "target",
+        target,
+        encoding,
+        dims=("sample", "target_channel", "height_out", "width_out"),
+        dtype=np.float32,
+        zlib=True,
+        complevel=4,
+    )
+
+    cf_attrs = {"Conventions": "CF-1.6"}
+    ds = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs=cf_attrs)
+
+    sample_chunk = sample_chunk_size(extra_dimensions_product=num_input_channel * height * width)
+    sample_chunk = max(1, min(sample_chunk, len(input_first_block)))
+    encoding["input_first_block"]["chunksizes"] = (sample_chunk, num_input_channel, height_in, width_in)
+    encoding["input_last_layer"]["chunksizes"] = (sample_chunk, num_last_layer_channel, height, width)
+    encoding["target"]["chunksizes"] = (sample_chunk, num_target_channel, height, width)
+    ds.to_netcdf(output_file, engine="h5netcdf", encoding=encoding)

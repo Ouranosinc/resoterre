@@ -144,7 +144,7 @@ def normalize(
     valid_min: float | None = None,
     valid_max: float | None = None,
     log_normalize: bool = False,
-    log_offset: float = 1.0,
+    log_offset: float | None = 1.0,
 ) -> np.array:
     """
     Normalize data to a specified range, optionally applying logarithmic normalization.
@@ -161,7 +161,7 @@ def normalize(
         Maximum value for normalization. If None, the maximum of the data is used.
     log_normalize : bool
         Whether to apply logarithmic normalization.
-    log_offset : float
+    log_offset : float, optional
         Offset for logarithmic normalization to avoid log(0).
 
     Returns
@@ -178,6 +178,8 @@ def normalize(
     if valid_max is None:
         valid_max = data.max()
     if log_normalize:
+        if log_offset is None:
+            raise ValueError("log_offset must be provided when log_normalize is True.")
         data = np.log(data - valid_min + log_offset)
         valid_range = valid_max - valid_min
         valid_min = np.log(log_offset)
