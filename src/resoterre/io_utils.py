@@ -1,5 +1,6 @@
 """Utility functions for input/output operations."""
 
+import json
 import time
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,41 @@ def get_yaml_dict(yaml_obj: dict[str, Any] | Path | str) -> dict[str, Any]:
         if not isinstance(yaml_obj, dict):
             raise ValueError(f"The YAML file {yaml_obj} does not contain a valid dictionary.")
         return yaml_obj
+
+
+def write_json(path_output: Path | str, content: Any) -> None:
+    """
+    Write content to a JSON file.
+
+    Parameters
+    ----------
+    path_output : Path | str
+        Path to the output JSON file.
+    content : Any
+        Content to be written to the JSON file.
+    """
+    path_output = Path(path_output)
+    path_output.parent.mkdir(parents=True, exist_ok=True)
+    with path_output.open("w", encoding="utf-8") as f:
+        json.dump(content, f, indent=2, sort_keys=True)
+
+
+def read_json(path_input: Path | str) -> Any:
+    """
+    Read content from a JSON file.
+
+    Parameters
+    ----------
+    path_input : Path | str
+        Path to the input JSON file.
+
+    Returns
+    -------
+    Any
+        Content read from the JSON file.
+    """
+    with Path(path_input).open(encoding="utf-8") as f:
+        return json.load(f)
 
 
 def purge_files(

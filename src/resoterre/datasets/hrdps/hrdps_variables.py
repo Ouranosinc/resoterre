@@ -71,6 +71,10 @@ hrdps_variables["P_UUC_10000"] = VariableHandler(
     normalize_min=-100.0,
     normalize_max=100.0,
 )
+hrdps_variables["P_UUC_10000_anomaly"] = copy.copy(hrdps_variables["P_UUC_10000"])
+hrdps_variables["P_UUC_10000_anomaly"].name = "P_UUC_10000_anomaly"
+hrdps_variables["P_UUC_10000_anomaly"].normalize_min = -20.0
+hrdps_variables["P_UUC_10000_anomaly"].normalize_max = 20.0
 
 hrdps_variables["P_VVC_10000"] = VariableHandler(
     "P_VVC_10000",
@@ -90,6 +94,10 @@ hrdps_variables["P_VVC_10000"] = VariableHandler(
     normalize_min=-100.0,
     normalize_max=100.0,
 )
+hrdps_variables["P_VVC_10000_anomaly"] = copy.copy(hrdps_variables["P_VVC_10000"])
+hrdps_variables["P_VVC_10000_anomaly"].name = "P_VVC_10000_anomaly"
+hrdps_variables["P_VVC_10000_anomaly"].normalize_min = -20.0
+hrdps_variables["P_VVC_10000_anomaly"].normalize_max = 20.0
 
 # orog?
 hrdps_variables["MF"] = VariableHandler(
@@ -133,4 +141,44 @@ hrdps_variables.mapping["HRDPS_P_TT_10000"] = "P_TT_10000"
 hrdps_variables.mapping["HRDPS_P_TT_10000_anomaly"] = "P_TT_10000_anomaly"
 hrdps_variables.mapping["HRDPS_P_PR_SFC"] = "P_PR_SFC"
 hrdps_variables.mapping["HRDPS_P_UUC_10000"] = "P_UUC_10000"
+hrdps_variables.mapping["HRDPS_P_UUC_10000_anomaly"] = "P_UUC_10000_anomaly"
 hrdps_variables.mapping["HRDPS_P_VVC_10000"] = "P_VVC_10000"
+hrdps_variables.mapping["HRDPS_P_VVC_10000_anomaly"] = "P_VVC_10000_anomaly"
+
+
+def short_variable_name(variable_name: str) -> str:
+    """
+    Short variable name without the ``HRDPS_`` prefix.
+
+    Parameters
+    ----------
+    variable_name : str
+        The variable name, which may or may not have the ``HRDPS_`` prefix.
+
+    Returns
+    -------
+    str
+        The short variable name without the ``HRDPS_`` prefix.
+    """
+    if variable_name[0:6] == "HRDPS_":
+        return variable_name[6:]
+    return variable_name
+
+
+def long_variable_name(variable_name: str) -> str:
+    """
+    Long variable name with the ``HRDPS_`` prefix.
+
+    Parameters
+    ----------
+    variable_name : str
+        The variable name, which may or may not have the ``HRDPS_`` prefix.
+
+    Returns
+    -------
+    str
+        The long variable name with the ``HRDPS_`` prefix.
+    """
+    if variable_name[0:6] == "HRDPS_":
+        return variable_name
+    return "HRDPS_" + variable_name
