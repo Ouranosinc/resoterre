@@ -86,6 +86,15 @@ def index_train_validation_test_split(
         Three lists of indices: (train_indices, validation_indices, test_indices).
     """
     idx = list(range(n))
+    # Adding option to only have test samples
+    if (train_fraction == 0.0) and (test_fraction_from_validation_set == 1.0):
+        idx_train: list[int] = []
+        idx_validation: list[int] = []
+        idx_test: list[int] = idx
+        if shuffle_within_sets:
+            random.seed(random_seed)
+            random.shuffle(idx_test)
+        return idx_train, idx_validation, idx_test
     idx_train, idx_validation_test = train_test_split(
         idx, train_size=train_fraction, random_state=random_seed, shuffle=shuffle
     )
