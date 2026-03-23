@@ -282,7 +282,11 @@ def save_model_output(
             # ToDo: add standard_name and long_name mapping to hrdps_variables and add it to attributes
             #       careful, this is post accumulation to quantity
             variable_attributes = {"units": hrdps_variables[variable_name].units}
-            variable_data = output_variables[variable_name][i, 0, :, :]  # channel index was already extracted
+            if variable_name in config.anomaly_variables:
+                name_in_output = variable_name + "_anomaly"
+            else:
+                name_in_output = variable_name
+            variable_data = output_variables[name_in_output][i, 0, :, :]  # channel index was already extracted
             if mask is not None:
                 variable_attributes["ancillary_variables"] = "mask"
                 # ToDo: this is a hack, mask should be present in data_sample to begin with.
