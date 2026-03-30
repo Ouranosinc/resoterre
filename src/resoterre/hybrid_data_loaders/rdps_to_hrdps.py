@@ -14,6 +14,7 @@ from resoterre.config_utils import register_config
 from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables, long_variable_name, short_variable_name
 from resoterre.ml.data_loader_utils import DatasetConfig, DatasetFromNetCDFSave, inverse_normalize, recursive_collate
 from resoterre.ml.dataset_manager import DatasetManager, register_dataset_manager
+from resoterre.plots.nd_plots import NDPlot
 
 
 @register_config("RDPSToHRDPS")
@@ -90,6 +91,8 @@ def post_process_model_output(
     data_sample: xarray.Dataset,
     anomaly_variables: list[str] | None = None,
     path_hrdps_climatology: Path | None = None,
+    debug: bool = False,
+    path_debug_plots: Path | None = None,
 ) -> dict[str, np.ndarray]:
     """
     Post-process the model output by inverse normalizing each variable.
@@ -104,12 +107,22 @@ def post_process_model_output(
         List of variable names that are anomalies.
     path_hrdps_climatology : Path, optional
         Path to the HRDPS climatology data, used for adding climatology back to the outputs if they are anomalies.
+    debug : bool
+        Whether to save debug plots of the model output before post-processing.
+    path_debug_plots : Path, optional
+        Path to save debug plots.
 
     Returns
     -------
     dict[str, np.ndarray]
         A dictionary mapping variable names to their inverse normalized numpy arrays.
     """
+    debug_plots = NDPlot(
+        path_figures=path_debug_plots,
+        file_name="hrdps_{context}_{variable_name}.png",
+        title="HRDPS {variable_name} {context}",
+        reverse_i=True,
+    )
     output_variables = {}
     for i in range(output.shape[1]):
         variable_name = list(map(str, data_sample["output_variables"].values))[i]
@@ -127,6 +140,11 @@ def post_process_model_output(
             raise ValueError(f"Variable {variable_name} does not have normalization parameters defined.")
         normalize_max: float = normalize_max_local
         # ToDo: guarantee positive precipitation after inverse normalization?
+        debug_plots(
+            plot_data=output[0, i : i + 1, :, :].cpu().detach().numpy(),
+            strings_kwargs={"variable_name": variable_name, "context": "on disk output"},
+            enabled=debug,
+        )
         output_variables[variable_name] = inverse_normalize(
             output[:, i : i + 1, :, :].cpu().detach().numpy(),
             known_min=normalize_min,
@@ -135,14 +153,19 @@ def post_process_model_output(
             log_normalize=hrdps_variables[variable_name].log_normalize,
             log_offset=hrdps_variables[variable_name].normalize_log_offset,
         )
+        debug_plots(
+            plot_data=output_variables[variable_name][0, 0, :, :],
+            strings_kwargs={"variable_name": variable_name, "context": "after inverse normalization"},
+            enabled=debug,
+        )
         if add_climatology:
             if path_hrdps_climatology is None:
                 raise ValueError("path_hrdps_climatology must be provided to add climatology back.")
             original_variable_name = short_variable_name(variable_name.replace("_anomaly", ""))
             for j in range(output_variables[variable_name].shape[0]):
-                month = f"{data_sample['month'][i]:02d}"
-                day = f"{data_sample['day'][i]:02d}"
-                hour = f"{data_sample['hour'][i]:02d}"
+                month = f"{data_sample['month'][j]:02d}"
+                day = f"{data_sample['day'][j]:02d}"
+                hour = f"{data_sample['hour'][j]:02d}"
                 climatology_file = Path(
                     path_hrdps_climatology,
                     original_variable_name,
@@ -154,7 +177,12 @@ def post_process_model_output(
                 i2 = data_sample["height_out_idx"].values[j][-1]
                 j1 = data_sample["width_out_idx"].values[j][0]
                 j2 = data_sample["width_out_idx"].values[j][-1]
-                output_variables[variable_name][j, i : i + 1, :, :] += z[i1 : i2 + 1, j1 : j2 + 1]
+                output_variables[variable_name][j, 0, :, :] += z[i1 : i2 + 1, j1 : j2 + 1]
+                debug_plots(
+                    plot_data=output_variables[variable_name][j, 0, :, :],
+                    strings_kwargs={"variable_name": variable_name, "context": "after adding climatology"},
+                    enabled=(debug and j == 0),
+                )
     return output_variables
 
 

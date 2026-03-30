@@ -90,6 +90,8 @@ class RDPSToHRDPSOnDiskConfig:
         List of variable names that should include temporal context.
     anomaly_variables : list[str]
         List of variable names to be treated as anomalies.
+    fixed_variables : list[str]
+        List of variable names that are fixed in time.
     normalize : bool
         Whether to normalize the data.
     train_fraction : float
@@ -134,6 +136,7 @@ class RDPSToHRDPSOnDiskConfig:
     temporal_window: int | None = None
     variables_with_temporal_context: list[str] = field(default_factory=list)
     anomaly_variables: list[str] = field(default_factory=list)
+    fixed_variables: list[str] = field(default_factory=list)
     normalize: bool = True
     train_fraction: float = 0.8
     validation_fraction: float = 0.1
@@ -154,10 +157,14 @@ class RDPSToHRDPSInferenceConfig:
         Path to the directory containing the trained models.
     path_hrdps_climatology : Path, optional
         Path to the HRDPS climatology data, used for adding climatology back to the outputs if they are anomalies.
+    path_rdps_climatology : Path, optional
+        Path to the RDPS climatology data, used for adding climatology back to the inputs if they are anomalies.
     path_output : Path, optional
         Path to the output directory where results will be saved.
     path_preprocessed_batch : Path, optional
         Path to the preprocessed data batch for inference.
+    path_figures : Path, optional
+        Path to the directory where debug figures will be saved.
     search_path: Path, optional
         Path to the directory containing preprocessed data files for inference.
     glob_pattern: str, optional
@@ -166,6 +173,10 @@ class RDPSToHRDPSInferenceConfig:
         Name of the experiment.
     anomaly_variables : list[str]
         List of variable names to be treated as anomalies during post-processing.
+    fixed_variables: list[str]
+        List of variable that are fixed in time.
+    batch_size : int
+        Batch size for splitting the inference into multiple jobs (not the batch size of the data).
     device : str
         Device to use for inference (e.g., "cpu" or "cuda").
     """
@@ -173,12 +184,16 @@ class RDPSToHRDPSInferenceConfig:
     path_logs: Path | None = None
     path_models: Path | None = None
     path_hrdps_climatology: Path | None = None
+    path_rdps_climatology: Path | None = None
     path_output: Path | None = None
     path_preprocessed_batch: Path | None = None
+    path_figures: Path | None = None
     search_path: Path | None = None
     glob_pattern: str | None = None
     experiment_name: str = "test"
     anomaly_variables: list[str] = field(default_factory=list)
+    fixed_variables: list[str] = field(default_factory=list)
+    batch_size: int = 1
     device: str = "cpu"
 
 
@@ -333,7 +348,10 @@ def save_model_output(
     return list_of_saved_files
 
 
-def inference_from_preprocessed_data(config: RDPSToHRDPSInferenceConfig | dict[str, Any] | Path | str) -> list[str]:
+def inference_from_preprocessed_data(
+    config: RDPSToHRDPSInferenceConfig | dict[str, Any] | Path | str,
+    debug: bool = False,
+) -> list[str]:
     """
     Workflow for performing inference from preprocessed RDPS data to HRDPS data.
 
@@ -341,6 +359,8 @@ def inference_from_preprocessed_data(config: RDPSToHRDPSInferenceConfig | dict[s
     ----------
     config : RDPSToHRDPSInferenceConfig | dict[str, Any] | Path | str
         Configuration for the inference process, including as a dictionary or a path to a YAML file.
+    debug : bool
+        Whether to save debug plots.
 
     Returns
     -------
@@ -394,6 +414,8 @@ def inference_from_preprocessed_data(config: RDPSToHRDPSInferenceConfig | dict[s
         data_sample=data_sample,
         anomaly_variables=config_obj.anomaly_variables,
         path_hrdps_climatology=config_obj.path_hrdps_climatology,
+        debug=debug,
+        path_debug_plots=config_obj.path_figures,
     )
 
     # Save output

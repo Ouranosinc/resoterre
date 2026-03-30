@@ -5,7 +5,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from resoterre.datasets.rdps.rdps_integrity_check import rdps_integrity_check_datetime_list
+from resoterre.datasets.rdps.rdps_integrity_check import rdps_regrid_check_datetime_list
 from resoterre.experiments.rdps_to_hrdps_workflow import RDPSToHRDPSOnDiskConfig
 from resoterre.logging_utils import start_root_logger
 from resoterre.snakemake_utils import decode_period_string
@@ -42,12 +42,12 @@ def rdps_integrity_check_4smk(output_file: Path | str, period_str: str, config: 
         list_of_datetime.append(current_datetime)
         current_datetime += timedelta(hours=1)
 
-    if config.path_rdps is None:
-        raise ValueError("path_rdps must be provided in the config for RDPS integrity check")
-    manifest = rdps_integrity_check_datetime_list(
-        config.path_rdps,
+    if config.path_rdps_regrid is None:
+        raise ValueError("path_rdps_regrid must be provided in the config for RDPS integrity check")
+    manifest = rdps_regrid_check_datetime_list(
+        config.path_rdps_regrid,
         config.rdps_variables,
-        config.forecast_hours,
+        config.anomaly_variables,
         list_of_datetime=list_of_datetime,
     )
 

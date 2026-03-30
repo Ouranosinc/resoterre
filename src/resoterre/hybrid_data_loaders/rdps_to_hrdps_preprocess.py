@@ -12,6 +12,7 @@ from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables
 from resoterre.datasets.rdps.rdps_variables import rdps_variables
 from resoterre.hybrid_data_loaders.rdps_to_hrdps_utils import save_ml_input
 from resoterre.ml.data_loader_utils import normalize
+from resoterre.plots.nd_plots import NDPlot
 
 
 if TYPE_CHECKING:
@@ -123,6 +124,7 @@ def rdps_preprocess_single_entry_data(
     current_datetime: datetime,
     i_rdps: int,
     j_rdps: int,
+    debug: bool = False,
 ) -> None:
     """
     Preprocess RDPS data for a single entry and store it in the data holder.
@@ -141,7 +143,15 @@ def rdps_preprocess_single_entry_data(
         Starting index for the RDPS data in the height dimension.
     j_rdps : int
         Starting index for the RDPS data in the width dimension.
+    debug : bool
+        Whether to save debug plots during preprocessing.
     """
+    debug_plots = NDPlot(
+        path_figures=config.path_figures,
+        file_name="rdps_{variable_name}_{t}_{context}_{current_datetime_str}.png",
+        title="RDPS {variable_name} t={t} {context} {current_datetime_str}",
+        reverse_i=True,
+    )
     if config.rdps_window_size is None:
         raise ValueError("rdps_window_size must be set in the config")
     data_holder.tmp_input_data = np.zeros(
@@ -165,6 +175,16 @@ def rdps_preprocess_single_entry_data(
                 raise ValueError(f"NaN in {rdps_variable} for {current_datetime.strftime('%Y%m%d%H')}")
             if rdps_variable in config.anomaly_variables:
                 variable_handler_rdps = rdps_variables[f"{rdps_variable}_anomaly"]
+            debug_plots(
+                plot_data=data,
+                enabled=debug,
+                strings_kwargs={
+                    "variable_name": rdps_variable,
+                    "t": str(t),
+                    "context": "before normalization",
+                    "current_datetime_str": current_datetime.strftime("%Y%m%d%H"),
+                },
+            )
             data = normalize(
                 data,
                 mode=(-1, 1),
@@ -172,6 +192,16 @@ def rdps_preprocess_single_entry_data(
                 valid_max=variable_handler_rdps.normalize_max,
                 log_normalize=variable_handler_rdps.log_normalize,
                 log_offset=variable_handler_rdps.normalize_log_offset,
+            )
+            debug_plots(
+                plot_data=data,
+                enabled=debug,
+                strings_kwargs={
+                    "variable_name": rdps_variable,
+                    "t": str(t),
+                    "context": "after normalization",
+                    "current_datetime_str": current_datetime.strftime("%Y%m%d%H"),
+                },
             )
             if np.any(np.isnan(data)):
                 raise ValueError(f"NaN after normalize in {rdps_variable} for {current_datetime.strftime('%Y%m%d%H')}")
@@ -187,6 +217,7 @@ def hrdps_preprocess_single_entry_data(
     current_datetime: datetime,
     i_hrdps: int,
     j_hrdps: int,
+    debug: bool = False,
 ) -> None:
     """
     Preprocess HRDPS data for a single entry and store it in the data holder.
@@ -207,7 +238,15 @@ def hrdps_preprocess_single_entry_data(
         Starting index for the HRDPS data in the height dimension.
     j_hrdps : int
         Starting index for the HRDPS data in the width dimension.
+    debug : bool
+        Whether to save debug plots during preprocessing.
     """
+    debug_plots = NDPlot(
+        path_figures=config.path_figures,
+        file_name="hrdps_{variable_name}_{t}_{context}_{current_datetime_str}.png",
+        title="HRDPS {variable_name} t={t} {context} {current_datetime_str}",
+        reverse_i=True,
+    )
     data_holder.tmp_hrdps_upscale_data = np.zeros(
         (len(data_holder.input_channels_keys), config.rdps_window_size, config.rdps_window_size), dtype=np.float32
     )
@@ -230,6 +269,16 @@ def hrdps_preprocess_single_entry_data(
                 raise ValueError(f"NaN in {hrdps_variable} for {current_datetime.strftime('%Y%m%d%H')}")
             if hrdps_variable in config.anomaly_variables:
                 variable_handler_hrdps = hrdps_variables[f"{hrdps_variable}_anomaly"]
+            debug_plots(
+                plot_data=data,
+                enabled=debug,
+                strings_kwargs={
+                    "variable_name": hrdps_variable,
+                    "t": str(t),
+                    "context": "before normalization",
+                    "current_datetime_str": current_datetime.strftime("%Y%m%d%H"),
+                },
+            )
             data = normalize(
                 data,
                 mode=(-1, 1),
@@ -238,11 +287,31 @@ def hrdps_preprocess_single_entry_data(
                 log_normalize=variable_handler_hrdps.log_normalize,
                 log_offset=variable_handler_hrdps.normalize_log_offset,
             )
+            debug_plots(
+                plot_data=data,
+                enabled=debug,
+                strings_kwargs={
+                    "variable_name": hrdps_variable,
+                    "t": str(t),
+                    "context": "after normalization",
+                    "current_datetime_str": current_datetime.strftime("%Y%m%d%H"),
+                },
+            )
             if np.any(np.isnan(data)):
                 raise ValueError(f"NaN after normalize in {hrdps_variable} for {current_datetime.strftime('%Y%m%d%H')}")
             data_holder.tmp_hrdps_upscale_data[idx_upscale, :, :] = data.reshape(
                 config.rdps_window_size, 4, config.rdps_window_size, 4
             ).mean(axis=(1, 3))
+            debug_plots(
+                plot_data=data_holder.tmp_hrdps_upscale_data[idx_upscale, :, :],
+                enabled=debug,
+                strings_kwargs={
+                    "variable_name": hrdps_variable,
+                    "t": str(t),
+                    "context": "after upscale",
+                    "current_datetime_str": current_datetime.strftime("%Y%m%d%H"),
+                },
+            )
             if np.any(np.isnan(data_holder.tmp_hrdps_upscale_data)):
                 raise ValueError(f"NaN after upscale in {hrdps_variable} for {current_datetime.strftime('%Y%m%d%H')}")
             idx_upscale += 1
@@ -265,6 +334,7 @@ def rdps_to_hrdps_preprocess_single_entry_data(
     j_rdps: int,
     i_hrdps: int,
     j_hrdps: int,
+    debug: bool = False,
 ) -> None:
     """
     Fetch data for a single entry of RDPS and HRDPS data, preprocess it, and store it in the data holder.
@@ -291,37 +361,47 @@ def rdps_to_hrdps_preprocess_single_entry_data(
         Starting index for the HRDPS data in the height dimension.
     j_hrdps : int
         Starting index for the HRDPS data in the width dimension.
+    debug : bool
+        Whether to save debug plots during preprocessing.
     """
-    rdps_preprocess_single_entry_data(data_holder, config, rdps_ds, current_datetime, i_rdps, j_rdps)
+    rdps_preprocess_single_entry_data(data_holder, config, rdps_ds, current_datetime, i_rdps, j_rdps, debug)
     hrdps_preprocess_single_entry_data(
-        data_holder, config, hrdps_ds, hrdps_window_size, current_datetime, i_hrdps, j_hrdps
+        data_holder, config, hrdps_ds, hrdps_window_size, current_datetime, i_hrdps, j_hrdps, debug
     )
 
-    data_holder.tmp_hrdps_fixed_data = np.zeros((2, hrdps_window_size, hrdps_window_size), dtype=np.float32)
-    xarray_var = data_holder.hrdps_mf_ds["MF"]
-    data = xarray_var.values[0, i_hrdps : i_hrdps + hrdps_window_size, j_hrdps : j_hrdps + hrdps_window_size]
-    variable_handler = hrdps_variables["MF"]
-    data = normalize(
-        data,
-        mode=(-1, 1),
-        valid_min=variable_handler.normalize_min,
-        valid_max=variable_handler.normalize_max,
-        log_normalize=variable_handler.log_normalize,
-        log_offset=variable_handler.normalize_log_offset,
-    )
-    data_holder.tmp_hrdps_fixed_data[0, :, :] = data
-    xarray_var = data_holder.hrdps_sftlf_ds["HRDPS_sftlf"]
-    data = xarray_var.values[i_hrdps : i_hrdps + hrdps_window_size, j_hrdps : j_hrdps + hrdps_window_size]
-    variable_handler = hrdps_variables["sftlf"]
-    data = normalize(
-        data,
-        mode=(-1, 1),
-        valid_min=variable_handler.normalize_min,
-        valid_max=variable_handler.normalize_max,
-        log_normalize=variable_handler.log_normalize,
-        log_offset=variable_handler.normalize_log_offset,
-    )
-    data_holder.tmp_hrdps_fixed_data[1, :, :] = data
+    if len(config.fixed_variables) > 0:
+        data_holder.tmp_hrdps_fixed_data = np.zeros(
+            (len(config.fixed_variables), hrdps_window_size, hrdps_window_size), dtype=np.float32
+        )
+        nf = 0
+        if "orog" in config.fixed_variables:
+            xarray_var = data_holder.hrdps_mf_ds["MF"]
+            data = xarray_var.values[0, i_hrdps : i_hrdps + hrdps_window_size, j_hrdps : j_hrdps + hrdps_window_size]
+            variable_handler = hrdps_variables["MF"]
+            data = normalize(
+                data,
+                mode=(-1, 1),
+                valid_min=variable_handler.normalize_min,
+                valid_max=variable_handler.normalize_max,
+                log_normalize=variable_handler.log_normalize,
+                log_offset=variable_handler.normalize_log_offset,
+            )
+            data_holder.tmp_hrdps_fixed_data[nf, :, :] = data
+            nf += 1
+        if "sftlf" in config.fixed_variables:
+            xarray_var = data_holder.hrdps_sftlf_ds["HRDPS_sftlf"]
+            data = xarray_var.values[i_hrdps : i_hrdps + hrdps_window_size, j_hrdps : j_hrdps + hrdps_window_size]
+            variable_handler = hrdps_variables["sftlf"]
+            data = normalize(
+                data,
+                mode=(-1, 1),
+                valid_min=variable_handler.normalize_min,
+                valid_max=variable_handler.normalize_max,
+                log_normalize=variable_handler.log_normalize,
+                log_offset=variable_handler.normalize_log_offset,
+            )
+            data_holder.tmp_hrdps_fixed_data[nf, :, :] = data
+            nf += 1
 
     if np.any(np.isnan(data_holder.tmp_input_data)):
         raise ValueError("NaN in input_data")
@@ -341,6 +421,7 @@ def rdps_to_hrdps_preprocess_single_entry(
     j_hrdps: int,
     use_hrdps_upscale: bool,
     config: RDPSToHRDPSOnDiskConfig,
+    debug: bool = False,
 ) -> None:
     """
     Preprocess a single entry of RDPS and HRDPS data and store it in the data holder.
@@ -365,6 +446,8 @@ def rdps_to_hrdps_preprocess_single_entry(
         Whether to use the upscaled HRDPS data as input.
     config : RDPSToHRDPSOnDiskConfig
         Configuration object containing paths and parameters for preprocessing.
+    debug : bool
+        Whether to save debug plots during preprocessing.
     """
     if config.path_hrdps_regrid is None:
         raise ValueError("path_hrdps_regrid must be set in the config")
@@ -401,7 +484,17 @@ def rdps_to_hrdps_preprocess_single_entry(
             hrdps_ds[hrdps_variable].append(xarray.open_dataset(hrdps_file))
 
     rdps_to_hrdps_preprocess_single_entry_data(
-        data_holder, config, rdps_ds, hrdps_ds, hrdps_window_size, current_datetime, i_rdps, j_rdps, i_hrdps, j_hrdps
+        data_holder,
+        config,
+        rdps_ds,
+        hrdps_ds,
+        hrdps_window_size,
+        current_datetime,
+        i_rdps,
+        j_rdps,
+        i_hrdps,
+        j_hrdps,
+        debug,
     )
 
     if use_hrdps_upscale:
@@ -474,11 +567,17 @@ def save_rdps_to_hrdps_preprocessed_batch(
             use_hrdps_upscale,
             config,
         )
+    if all(x is None for x in data_holder.input_last_layer):
+        input_last_layer = None
+    elif None in data_holder.input_last_layer:
+        raise ValueError("input_last_layer is partially None, which is not allowed")
+    else:
+        input_last_layer = np.array(data_holder.input_last_layer)
     Path(path_output).parent.mkdir(parents=True, exist_ok=True)
     save_ml_input(
         Path(path_output),
         input_first_block=np.array(data_holder.input_first_block),
-        input_last_layer=np.array(data_holder.input_last_layer),
+        input_last_layer=input_last_layer,
         target=np.array(data_holder.target),
         heights_in_idx=np.array(data_holder.sample_height_in),
         widths_in_idx=np.array(data_holder.sample_width_in),

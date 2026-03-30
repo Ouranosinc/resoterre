@@ -173,7 +173,7 @@ def rdps_to_hrdps_split(
 def save_ml_input(
     output_file: Path | str,
     input_first_block: np.ndarray,
-    input_last_layer: np.ndarray,
+    input_last_layer: np.ndarray | None,
     target: np.ndarray,
     heights_in_idx: np.ndarray,
     widths_in_idx: np.ndarray,
@@ -197,11 +197,11 @@ def save_ml_input(
     output_file : Path | str
         Path to the output NetCDF file.
     input_first_block : np.ndarray
-        Input data for the first block (e.g., RDPS data).
-    input_last_layer : np.ndarray
-        Input data for the last layer (e.g., HRDPS data or upscaled RDPS data).
+        Input data for the first block.
+    input_last_layer : np.ndarray | None
+        Input data for the last layer.
     target : np.ndarray
-        Target data (e.g., HRDPS data).
+        Target data.
     heights_in_idx : np.ndarray
         Height indices for the input data.
     widths_in_idx : np.ndarray
@@ -230,7 +230,10 @@ def save_ml_input(
         Boolean array indicating whether HRDPS upscale is used for each sample.
     """
     num_input_channel = input_first_block[0].shape[0]
-    num_last_layer_channel = input_last_layer[0].shape[0]
+    if input_last_layer is None:
+        num_last_layer_channel = 0
+    else:
+        num_last_layer_channel = input_last_layer[0].shape[0]
     num_target_channel = target[0].shape[0]
     height_in = input_first_block[0].shape[1]
     width_in = input_first_block[0].shape[2]
@@ -294,16 +297,17 @@ def save_ml_input(
         zlib=True,
         complevel=4,
     )
-    add_xarray_variable(
-        cf_variables,
-        "input_last_layer",
-        input_last_layer,
-        encoding,
-        dims=("sample", "last_layer_channel", "height_out", "width_out"),
-        dtype=np.float32,
-        zlib=True,
-        complevel=4,
-    )
+    if input_last_layer is not None:
+        add_xarray_variable(
+            cf_variables,
+            "input_last_layer",
+            input_last_layer,
+            encoding,
+            dims=("sample", "last_layer_channel", "height_out", "width_out"),
+            dtype=np.float32,
+            zlib=True,
+            complevel=4,
+        )
     add_xarray_variable(
         cf_variables,
         "target",
@@ -321,6 +325,7 @@ def save_ml_input(
     sample_chunk = sample_chunk_size(extra_dimensions_product=num_input_channel * height * width)
     sample_chunk = max(1, min(sample_chunk, len(input_first_block)))
     encoding["input_first_block"]["chunksizes"] = (sample_chunk, num_input_channel, height_in, width_in)
-    encoding["input_last_layer"]["chunksizes"] = (sample_chunk, num_last_layer_channel, height, width)
+    if input_last_layer is not None:
+        encoding["input_last_layer"]["chunksizes"] = (sample_chunk, num_last_layer_channel, height, width)
     encoding["target"]["chunksizes"] = (sample_chunk, num_target_channel, height, width)
     ds.to_netcdf(output_file, engine="h5netcdf", encoding=encoding)
