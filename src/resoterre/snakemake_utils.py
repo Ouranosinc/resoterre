@@ -277,5 +277,5 @@ def split_glob(
         output_directory.mkdir(parents=True, exist_ok=True)
         for i, batch in enumerate(batches):
             manifest_path = Path(output_directory, f"{manifest_prefix}_{str(i).zfill(8)}.txt")
-            manifest_path.write_text("\n".join(str(p) for p in batch))
+            manifest_path.write_text("\n".join(str(p) for p in batch) + "\n")
     return batches
