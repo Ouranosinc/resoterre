@@ -569,7 +569,7 @@ def save_rdps_to_hrdps_preprocessed_batch(
         )
     if all(x is None for x in data_holder.input_last_layer):
         input_last_layer = None
-    elif None in data_holder.input_last_layer:
+    elif any(x is None for x in data_holder.input_last_layer):
         raise ValueError("input_last_layer is partially None, which is not allowed")
     else:
         input_last_layer = np.array(data_holder.input_last_layer)

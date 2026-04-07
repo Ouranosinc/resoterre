@@ -179,6 +179,11 @@ def post_process_model_output(
                 j2 = data_sample["width_out_idx"].values[j][-1]
                 output_variables[variable_name][j, 0, :, :] += z[i1 : i2 + 1, j1 : j2 + 1]
                 debug_plots(
+                    plot_data=z[i1 : i2 + 1, j1 : j2 + 1],
+                    strings_kwargs={"variable_name": variable_name, "context": "climatology"},
+                    enabled=(debug and j == 0),
+                )
+                debug_plots(
                     plot_data=output_variables[variable_name][j, 0, :, :],
                     strings_kwargs={"variable_name": variable_name, "context": "after adding climatology"},
                     enabled=(debug and j == 0),
