@@ -67,6 +67,7 @@ def rdps_to_hrdps_split_4smk(
             path_hrdps_mask=config.path_hrdps_mask,
             save_batch_size=config.save_batch_size,
             temporal_window=config.temporal_window,
+            restrict_hrdps_i_j=config.restrict_hrdps_i_j,
             input_mode=config.input_mode,
         )
         for split in ["train", "validation", "test"]:

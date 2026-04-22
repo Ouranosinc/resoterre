@@ -26,6 +26,7 @@ def rdps_to_hrdps_split(
     path_hrdps_mask: Path | str,
     save_batch_size: int,
     temporal_window: int | None = 0,
+    restrict_hrdps_i_j: list[list[int]] | None = None,
     input_mode: str = "rdps_only",
 ) -> dict[str, Any]:
     """
@@ -55,6 +56,8 @@ def rdps_to_hrdps_split(
         Number of samples per saved batch.
     temporal_window : int, optional
         Number of hours before and after each datetime that is also part of the input data.
+    restrict_hrdps_i_j : list[list[int]]
+        List of [i, j] pairs to restrict the HRDPS tiles to specific locations.
     input_mode : str, optional
         Input mode for the model, one of "rdps_only", "rdps_and_hrdps", or "hrdps_upscale".
 
@@ -73,6 +76,7 @@ def rdps_to_hrdps_split(
         input_mode_options = [True]
     else:
         raise ValueError(f"Invalid input_mode: {input_mode}")
+    restrict_hrdps_i_j = restrict_hrdps_i_j or []
     hrdps_window_size = rdps_window_size * 4
     num_windows = (256 // rdps_window_size) * (512 // rdps_window_size) * (overlap_factor**2)
     hrdps_mask = np.load(path_hrdps_mask)["mask"]
@@ -104,6 +108,8 @@ def rdps_to_hrdps_split(
         j_hrdps = j * hrdps_step
         mask_mean = np.mean(hrdps_mask[i_hrdps : i_hrdps + hrdps_window_size, j_hrdps : j_hrdps + hrdps_window_size])
         if mask_mean >= (1 - hrdps_required_unmasked_fraction):
+            continue
+        if restrict_hrdps_i_j and ([i_hrdps, j_hrdps] not in restrict_hrdps_i_j):
             continue
         valid_ijs.append({"i_rdps": i_rdps, "j_rdps": j_rdps, "i_hrdps": i_hrdps, "j_hrdps": j_hrdps})
 

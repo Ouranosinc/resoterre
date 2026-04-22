@@ -132,6 +132,7 @@ class RDPSToHRDPSOnDiskConfig:
     rdps_window_size: int | None = None
     overlap_factor: int | None = None  # preferably a divisor of rdps_window_size
     hrdps_required_unmasked_fraction: float | None = None
+    restrict_hrdps_i_j: list[Any] = field(default_factory=list)
     input_mode: str | None = None
     temporal_window: int | None = None
     variables_with_temporal_context: list[str] = field(default_factory=list)
@@ -165,6 +166,8 @@ class RDPSToHRDPSInferenceConfig:
         Path to the preprocessed data batch for inference.
     path_figures : Path, optional
         Path to the directory where debug figures will be saved.
+    path_mask : Path, optional
+        Path to the mask file to apply to the outputs.
     search_path: Path, optional
         Path to the directory containing preprocessed data files for inference.
     glob_pattern: str, optional
@@ -188,6 +191,8 @@ class RDPSToHRDPSInferenceConfig:
     path_output: Path | None = None
     path_preprocessed_batch: Path | None = None
     path_figures: Path | None = None
+    # ToDo: phase out path_mask when it is available in the data sample.
+    path_mask: Path | None = None
     search_path: Path | None = None
     glob_pattern: str | None = None
     experiment_name: str = "test"
@@ -419,6 +424,10 @@ def inference_from_preprocessed_data(
     )
 
     # Save output
-    list_of_saved_files = save_model_output(config_obj, data_sample, output_variables)
+    # ToDo: the mask should really be in the data sample files...
+    mask = None
+    if config_obj.path_mask is not None:
+        mask = np.load(config_obj.path_mask)["mask"]
+    list_of_saved_files = save_model_output(config_obj, data_sample, output_variables, mask=mask)
 
     return list_of_saved_files
