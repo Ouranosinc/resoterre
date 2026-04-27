@@ -69,11 +69,17 @@ def rdps_to_hrdps_split(
     if temporal_window is None:
         temporal_window = 0
     if input_mode == "rdps_only":
-        input_mode_options = [False]
+        input_mode_options_train = [False]
+        input_mode_options_test = [False]
     elif input_mode == "rdps_and_hrdps":
-        input_mode_options = [False, True]
+        input_mode_options_train = [False, True]
+        input_mode_options_test = [False]
     elif input_mode == "hrdps_upscale":
-        input_mode_options = [True]
+        input_mode_options_train = [True]
+        input_mode_options_test = [False]
+    elif input_mode == "hrdps_upscale_debug":
+        input_mode_options_train = [True]
+        input_mode_options_test = [True]
     else:
         raise ValueError(f"Invalid input_mode: {input_mode}")
     restrict_hrdps_i_j = restrict_hrdps_i_j or []
@@ -125,7 +131,7 @@ def rdps_to_hrdps_split(
     rng = random.Random(random_seed)  # noqa: S311
     split_dict: dict[str, Any] = {}
     split_dict["train"] = list(
-        itertools.product([valid_datetime_list[i] for i in train_split], valid_ijs, input_mode_options)
+        itertools.product([valid_datetime_list[i] for i in train_split], valid_ijs, input_mode_options_train)
     )
     rng.shuffle(split_dict["train"])
     split_dict["train"] = [
@@ -140,7 +146,7 @@ def rdps_to_hrdps_split(
         for x in split_dict["train"]
     ]
     split_dict["validation"] = list(
-        itertools.product([valid_datetime_list[i] for i in validation_split], valid_ijs, input_mode_options)
+        itertools.product([valid_datetime_list[i] for i in validation_split], valid_ijs, input_mode_options_train)
     )
     rng.shuffle(split_dict["validation"])
     split_dict["validation"] = [
@@ -154,7 +160,9 @@ def rdps_to_hrdps_split(
         }
         for x in split_dict["validation"]
     ]
-    split_dict["test"] = list(itertools.product([valid_datetime_list[i] for i in test_split], valid_ijs, [False]))
+    split_dict["test"] = list(
+        itertools.product([valid_datetime_list[i] for i in test_split], valid_ijs, input_mode_options_test)
+    )
     rng.shuffle(split_dict["test"])
     split_dict["test"] = [
         {

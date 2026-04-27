@@ -180,6 +180,8 @@ class RDPSToHRDPSInferenceConfig:
         List of variable that are fixed in time.
     batch_size : int
         Batch size for splitting the inference into multiple jobs (not the batch size of the data).
+    hrdps_upscale_filename_extension : str
+        Filename extension to identify samples that use HRDPS upscale data.
     device : str
         Device to use for inference (e.g., "cpu" or "cuda").
     """
@@ -199,6 +201,7 @@ class RDPSToHRDPSInferenceConfig:
     anomaly_variables: list[str] = field(default_factory=list)
     fixed_variables: list[str] = field(default_factory=list)
     batch_size: int = 1
+    hrdps_upscale_filename_extension: str = "_hrdps_upscale"
     device: str = "cpu"
 
 
@@ -342,7 +345,7 @@ def save_model_output(
             height_idx = data["height_out_idx"][0]
             width_idx = data["width_out_idx"][0]
             if ("use_hrdps_upscale" in data_sample) and data_sample["use_hrdps_upscale"].values[i]:
-                use_hrdps_upscale_str = "_hrdps_upscale"
+                use_hrdps_upscale_str = config.hrdps_upscale_filename_extension
             else:
                 use_hrdps_upscale_str = ""
             save_file = f"{variable_name}/{date_str}_{height_idx}_{width_idx}{use_hrdps_upscale_str}.nc"
