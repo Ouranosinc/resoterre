@@ -7,6 +7,52 @@ from resoterre.data_management.variables import VariableHandler, VariableHandler
 
 vertical_levels = [850, 700, 500, 250]
 
+rdps_parent_variables = {
+    "GZ850": "GZ",
+    "GZ700": "GZ",
+    "GZ500": "GZ",
+    "GZ250": "GZ",
+    "HU850": "HU",
+    "HU700": "HU",
+    "HU500": "HU",
+    "HU250": "HU",
+    "TT850": "TT_pressure_levels",
+    "TT700": "TT_pressure_levels",
+    "TT500": "TT_pressure_levels",
+    "TT250": "TT_pressure_levels",
+    "UU850": "UU_pressure_levels",
+    "UU700": "UU_pressure_levels",
+    "UU500": "UU_pressure_levels",
+    "UU250": "UU_pressure_levels",
+    "VV850": "VV_pressure_levels",
+    "VV700": "VV_pressure_levels",
+    "VV500": "VV_pressure_levels",
+    "VV250": "VV_pressure_levels",
+}
+
+rdps_vertical_levels = {
+    "GZ850": 850,
+    "GZ700": 700,
+    "GZ500": 500,
+    "GZ250": 250,
+    "HU850": 850,
+    "HU700": 700,
+    "HU500": 500,
+    "HU250": 250,
+    "TT850": 850,
+    "TT700": 700,
+    "TT500": 500,
+    "TT250": 250,
+    "UU850": 850,
+    "UU700": 700,
+    "UU500": 500,
+    "UU250": 250,
+    "VV850": 850,
+    "VV700": 700,
+    "VV500": 500,
+    "VV250": 250,
+}
+
 rdps_variables = VariableHandlerCollection()
 
 # hus / specific_humidity in CF Metadata Conventions
@@ -143,8 +189,8 @@ rdps_variables["TT_model_levels"] = VariableHandler(
 )
 rdps_variables["TT_model_levels_anomaly"] = copy.copy(rdps_variables["TT_model_levels"])
 rdps_variables["TT_model_levels_anomaly"].name = "TT_model_levels_anomaly"
-rdps_variables["TT_model_levels_anomaly"].normalize_min = -20.0
-rdps_variables["TT_model_levels_anomaly"].normalize_max = 20.0
+rdps_variables["TT_model_levels_anomaly"].normalize_min = -10.0
+rdps_variables["TT_model_levels_anomaly"].normalize_max = 10.0
 rdps_variables["TT_pressure_levels"] = copy.copy(rdps_variables["TT_model_levels"])
 rdps_variables["TT_pressure_levels"].name = "TT_pressure_levels"
 rdps_variables["TT_pressure_levels"].netcdf_key = "TT_pressure_levels"
@@ -190,8 +236,8 @@ rdps_variables["UU_model_levels"] = VariableHandler(
 )
 rdps_variables["UU_model_levels_anomaly"] = copy.copy(rdps_variables["UU_model_levels"])
 rdps_variables["UU_model_levels_anomaly"].name = "UU_model_levels_anomaly"
-rdps_variables["UU_model_levels_anomaly"].normalize_min = -100.0
-rdps_variables["UU_model_levels_anomaly"].normalize_max = 100.0
+rdps_variables["UU_model_levels_anomaly"].normalize_min = -20.0
+rdps_variables["UU_model_levels_anomaly"].normalize_max = 20.0
 rdps_variables["UU_pressure_levels"] = copy.copy(rdps_variables["UU_model_levels"])
 rdps_variables["UU_pressure_levels"].name = "UU_pressure_levels"
 rdps_variables["UU_pressure_levels"].netcdf_key = "UU_pressure_levels"
@@ -232,8 +278,8 @@ rdps_variables["VV_model_levels"] = VariableHandler(
 )
 rdps_variables["VV_model_levels_anomaly"] = copy.copy(rdps_variables["VV_model_levels"])
 rdps_variables["VV_model_levels_anomaly"].name = "VV_model_levels_anomaly"
-rdps_variables["VV_model_levels_anomaly"].normalize_min = -100.0
-rdps_variables["VV_model_levels_anomaly"].normalize_max = 100.0
+rdps_variables["VV_model_levels_anomaly"].normalize_min = -20.0
+rdps_variables["VV_model_levels_anomaly"].normalize_max = 20.0
 rdps_variables["VV_pressure_levels"] = copy.copy(rdps_variables["VV_model_levels"])
 rdps_variables["VV_pressure_levels"].name = "VV_pressure_levels"
 rdps_variables["VV_pressure_levels"].netcdf_key = "VV_pressure_levels"

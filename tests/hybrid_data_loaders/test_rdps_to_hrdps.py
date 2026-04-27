@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import xarray
 
 from resoterre.hybrid_data_loaders import rdps_to_hrdps
 
@@ -15,9 +16,17 @@ def test_post_process_model_output():
     # Setting u-component wind min and max
     dummy_data[1, 2, 3, 0] = -1.0
     dummy_data[3, 2, 23, 12] = 1.0
-    processed_data = rdps_to_hrdps.post_process_model_output(
-        dummy_data, ["HRDPS_P_TT_10000", "HRDPS_P_PR_SFC", "HRDPS_P_UUC_10000"]
+    dummy_dataset = xarray.Dataset(
+        data_vars={
+            "output_variables": (("target_channel"), ["HRDPS_P_TT_10000", "HRDPS_P_PR_SFC", "HRDPS_P_UUC_10000"]),
+            "month": (("sample"), [1, 1, 1]),
+            "day": (("sample"), [15, 15, 15]),
+            "hour": (("sample"), [12, 13, 14]),
+            "height_out_idx": (("sample", "height_out"), np.random.randint(0, 10, size=(3, 16))),
+            "width_out_idx": (("sample", "width_out"), np.random.randint(0, 10, size=(3, 16))),
+        }
     )
+    processed_data = rdps_to_hrdps.post_process_model_output(dummy_data, dummy_dataset)
     assert "HRDPS_P_TT_10000" in processed_data
     assert "HRDPS_P_PR_SFC" in processed_data
     assert "HRDPS_P_UUC_10000" in processed_data

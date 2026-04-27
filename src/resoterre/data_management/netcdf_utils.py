@@ -1,10 +1,17 @@
 """Utilities for working with NetCDF files in compliance with CF conventions."""
 
+from typing import Any
+
 import numpy as np
 import xarray
 
 
 _notset = object()
+
+netcdf_defaults = {
+    "lat_attributes": {"units": "degrees_north", "long_name": "latitude", "standard_name": "latitude", "axis": "Y"},
+    "lon_attributes": {"units": "degrees_east", "long_name": "longitude", "standard_name": "longitude", "axis": "X"},
+}
 
 
 class CFVariables(dict[str, xarray.Variable]):
@@ -53,7 +60,58 @@ class CFVariables(dict[str, xarray.Variable]):
             encoding["zlib"] = zlib
         if complevel is not _notset:
             encoding["complevel"] = complevel
-        if fill_value is not _notset:
+        if fill_value is _notset:
+            if "dtype" in encoding:
+                dtype_check = np.dtype(encoding["dtype"])
+            else:
+                dtype_check = data.dtype
+            if (not np.issubdtype(dtype_check, np.floating)) and np.isnan(data).any():
+                raise ValueError("Data contains NaN values but no fill_value was provided for non-float data.")
+        else:
             encoding["_FillValue"] = fill_value
 
         self[name] = xarray.Variable(dims=dims, data=data, attrs=attributes, encoding=encoding)
+
+
+def add_xarray_variable(
+    variable_dict: dict[str, xarray.Variable],
+    variable_name: str,
+    data: Any,
+    encoding_dict: dict[str, Any] | None,
+    dims: tuple[str, ...] | None = None,
+    attrs: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> None:
+    """
+    Add a variable to the given dictionaries for xarray Dataset creation.
+
+    Parameters
+    ----------
+    variable_dict : dict[str, xarray.Variable]
+        Dictionary to store the xarray Variable objects.
+    variable_name : str
+        Name of the variable to add.
+    data : Any
+        Data for the variable.
+    encoding_dict : dict[str, Any] | None
+        Dictionary to store the encoding information for each variable.
+    dims : tuple[str, ...], optional
+        Dimensions of the variable. If None, use the variable name as dimension.
+    attrs : dict[str, Any], optional
+        Attributes for the variable. If None, use an empty dictionary.
+    **kwargs : Any
+        Additional keyword arguments for encoding (e.g., dtype, zlib, complevel, fill_value).
+
+    Notes
+    -----
+    This function modifies the variable_dict and encoding_dict in place.
+    """
+    if dims is None:
+        dims = (variable_name,)
+    if encoding_dict is not None:
+        encoding_dict[variable_name] = {k: v for k, v in kwargs.items()}
+        variable_dict[variable_name] = xarray.Variable(dims=dims, data=data, attrs=attrs)
+    else:
+        variable_dict[variable_name] = xarray.Variable(
+            dims=dims, data=data, attrs=attrs, encoding={k: v for k, v in kwargs.items()}
+        )
