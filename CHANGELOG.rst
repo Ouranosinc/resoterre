@@ -48,6 +48,7 @@ Changes
 
 Fixes
 ^^^^^
+* Fix typing issues with data_loader_kwargs (:pull:`64`).
 * Set GitHub workflows Python version to 3.13 (:pull:`22`).
 
 Internal changes
