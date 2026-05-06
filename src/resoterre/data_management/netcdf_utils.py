@@ -50,7 +50,7 @@ class CFVariables(dict[str, xarray.Variable]):
         fill_value : object
             Fill value for missing data. If not set, do not specify.
         """
-        dims = dims or (name,)
+        dims = (name,) if dims is None else dims
         attributes = attributes or {}
 
         encoding = {}

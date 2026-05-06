@@ -549,6 +549,9 @@ def save_rdps_to_hrdps_preprocessed_batch(
     hrdps_sftlf_ds = xarray.open_dataset(config.path_hrdps_sftlf)
 
     data_holder = RDPSToHRDPSPreprocessingDataHolder(hrdps_mf_ds, hrdps_sftlf_ds)
+    debug_i = -1  # no debug by default
+    if config.debug_figures_return_period:
+        debug_i = np.random.randint(0, config.debug_figures_return_period)
     for i in range(len(datetimes)):
         current_datetime = datetimes[i]
         i_rdps = idx_list[i]["i_rdps"]
@@ -556,6 +559,7 @@ def save_rdps_to_hrdps_preprocessed_batch(
         i_hrdps = idx_list[i]["i_hrdps"]
         j_hrdps = idx_list[i]["j_hrdps"]
         use_hrdps_upscale = use_hrdps_upscale_list[i]
+        debug = i == debug_i
         rdps_to_hrdps_preprocess_single_entry(
             data_holder,
             hrdps_window_size,
@@ -566,6 +570,7 @@ def save_rdps_to_hrdps_preprocessed_batch(
             j_hrdps,
             use_hrdps_upscale,
             config,
+            debug=debug,
         )
     if all(x is None for x in data_holder.input_last_layer):
         input_last_layer = None

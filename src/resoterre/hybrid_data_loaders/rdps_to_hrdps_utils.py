@@ -59,7 +59,7 @@ def rdps_to_hrdps_split(
     restrict_hrdps_i_j : list[list[int]]
         List of [i, j] pairs to restrict the HRDPS tiles to specific locations.
     input_mode : str, optional
-        Input mode for the model, one of "rdps_only", "rdps_and_hrdps", or "hrdps_upscale".
+        Input mode for the model, one of "rdps_only", "rdps_and_hrdps", or "hrdps_upscale", or "hrdps_upscale_debug".
 
     Returns
     -------

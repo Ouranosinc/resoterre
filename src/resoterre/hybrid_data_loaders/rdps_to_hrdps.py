@@ -59,6 +59,8 @@ class RDPSToHRDPSDatasetConfig(DatasetConfig):
         List of RDPS variable names to load.
     hrdps_variables : list[str]
         List of HRDPS variable names to load.
+    restricted_channels : dict[str, list[int]] | None
+        Dictionary specifying restricted channels for each dynamic dataset key.
     skip_load : bool
         Used to skip loading the data during testing.
     dataset_manager : str
@@ -82,6 +84,7 @@ class RDPSToHRDPSDatasetConfig(DatasetConfig):
     num_forecast_time_delay: int = 0  # ToDo: replace with more specific forecast_hours
     rdps_variables: list[str] = field(default_factory=list)
     hrdps_variables: list[str] = field(default_factory=list)
+    restricted_channels: dict[str, list[int]] | None = None
     skip_load: bool = False
     dataset_manager: str = "RDPSToHRDPS"
 
@@ -91,6 +94,7 @@ def post_process_model_output(
     data_sample: xarray.Dataset,
     anomaly_variables: list[str] | None = None,
     path_hrdps_climatology: Path | None = None,
+    restricted_channels: dict[str, list[int]] | None = None,
     debug: bool = False,
     path_debug_plots: Path | None = None,
 ) -> dict[str, np.ndarray]:
@@ -103,13 +107,15 @@ def post_process_model_output(
         The model output tensor of shape (batch_size, num_variables, height, width).
     data_sample : xarray.Dataset
         The original data sample corresponding to the model output, used for retrieving metadata.
-    anomaly_variables : list[str], optional
+    anomaly_variables : list[str]
         List of variable names that are anomalies.
-    path_hrdps_climatology : Path, optional
+    path_hrdps_climatology : Path
         Path to the HRDPS climatology data, used for adding climatology back to the outputs if they are anomalies.
+    restricted_channels : dict[str, list[int]]
+        Dictionary specifying restricted channels for each dynamic dataset key.
     debug : bool
         Whether to save debug plots of the model output before post-processing.
-    path_debug_plots : Path, optional
+    path_debug_plots : Path
         Path to save debug plots.
 
     Returns
@@ -124,8 +130,13 @@ def post_process_model_output(
         reverse_i=True,
     )
     output_variables = {}
+    if restricted_channels and "target" in restricted_channels:
+        idx = sorted(restricted_channels["target"])
+        list_of_variables = [list(map(str, data_sample["output_variables"].values))[i] for i in idx]
+    else:
+        list_of_variables = list(map(str, data_sample["output_variables"].values))
     for i in range(output.shape[1]):
-        variable_name = list(map(str, data_sample["output_variables"].values))[i]
+        variable_name = list_of_variables[i]
         if (anomaly_variables is not None) and (variable_name in anomaly_variables):
             variable_name = variable_name + "_anomaly"
             add_climatology = True
@@ -226,7 +237,7 @@ class RDPSToHRDPSNetCDFDatasetManager(DatasetManager):
             The name of the data loader to reset.
         dataset_config : RDPSToHRDPSDatasetConfig
             The configuration for the dataset.
-        data_loader_kwargs : dict[str, Any], optional
+        data_loader_kwargs : dict[str, Any]
             Additional keyword arguments for the data loader.
 
         Returns
@@ -252,6 +263,7 @@ class RDPSToHRDPSNetCDFDatasetManager(DatasetManager):
                 "day",
                 "hour",
             ],
+            restricted_channels=dataset_config.restricted_channels,
             path_ml_data=dataset_config.path_ml_data,
             built_in_batch_size=dataset_config.save_batch_size,
             save_batch_size=dataset_config.save_batch_size,

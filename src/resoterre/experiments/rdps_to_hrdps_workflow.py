@@ -102,6 +102,8 @@ class RDPSToHRDPSOnDiskConfig:
         Fraction of data to use for testing.
     save_batch_size : int
         Batch size for saving data.
+    debug_figures_return_period : int
+        If greater than 0, random debug figures will be saved at roughly this return period.
     """
 
     path_workflow: Path
@@ -143,6 +145,7 @@ class RDPSToHRDPSOnDiskConfig:
     validation_fraction: float = 0.1
     test_fraction: float = 0.1
     save_batch_size: int = 1
+    debug_figures_return_period: int = 0  # 0 means no debug return period.
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,6 +181,8 @@ class RDPSToHRDPSInferenceConfig:
         List of variable names to be treated as anomalies during post-processing.
     fixed_variables: list[str]
         List of variable that are fixed in time.
+    restricted_channels: dict[str, list[int]]
+        Dictionary specifying restricted channels for each dynamic dataset key.
     batch_size : int
         Batch size for splitting the inference into multiple jobs (not the batch size of the data).
     hrdps_upscale_filename_extension : str
@@ -200,6 +205,7 @@ class RDPSToHRDPSInferenceConfig:
     experiment_name: str = "test"
     anomaly_variables: list[str] = field(default_factory=list)
     fixed_variables: list[str] = field(default_factory=list)
+    restricted_channels: dict[str, list[int]] | None = None
     batch_size: int = 1
     hrdps_upscale_filename_extension: str = "_hrdps_upscale"
     device: str = "cpu"
@@ -276,6 +282,13 @@ def save_model_output(
     for i in range(data_sample.sizes["sample"]):
         for j in range(data_sample.sizes["target_channel"]):
             variable_name = str(data_sample["output_variables"].values[j])
+            if variable_name in config.anomaly_variables:
+                name_in_output = variable_name + "_anomaly"
+            else:
+                name_in_output = variable_name
+            if name_in_output not in output_variables:
+                # This is a consequence of a subset selection earlier
+                continue
             data = {}
             year = int(data_sample["year"].values[i])
             month = int(data_sample["month"].values[i])
@@ -300,15 +313,11 @@ def save_model_output(
                     attributes=data_sample[key].attrs,
                 )
             datetime_str = f"{year}-{month:02d}-{day:02d}T{hour:02d}:00:00"
-            cf_coordinates.add("time", dims=(), data=np.array([datetime_str], dtype="datetime64[ns]"))
+            cf_coordinates.add("time", dims=("time",), data=np.array([datetime_str], dtype="datetime64[ns]"))
             cf_variables = CFVariables()
             # ToDo: add standard_name and long_name mapping to hrdps_variables and add it to attributes
             #       careful, this is post accumulation to quantity
             variable_attributes = {"units": hrdps_variables[variable_name].units}
-            if variable_name in config.anomaly_variables:
-                name_in_output = variable_name + "_anomaly"
-            else:
-                name_in_output = variable_name
             variable_data = output_variables[name_in_output][i, 0, :, :]  # channel index was already extracted
             if mask is not None:
                 variable_attributes["ancillary_variables"] = "mask"
@@ -410,9 +419,13 @@ def inference_from_preprocessed_data(
     )
 
     # Load preprocessed data
+    if config_obj.restricted_channels and "input_first_block" in config_obj.restricted_channels:
+        raise NotImplementedError("Restricted input channels are not implemented in the inference workflow yet.")
     data_sample = xarray.open_dataset(config_obj.path_preprocessed_batch)
     x = torch.tensor(data_sample["input_first_block"].values).to(config_obj.device)
-    x_last_layer = torch.tensor(data_sample["input_last_layer"].values).to(config_obj.device)
+    x_last_layer = None
+    if "input_last_layer" in data_sample:
+        x_last_layer = torch.tensor(data_sample["input_last_layer"].values).to(config_obj.device)
     output = network_manager.networks["UNet"](x=x, x_linear=None, x_last_layer=x_last_layer)
     # torch.cuda.empty_cache()
 
@@ -422,6 +435,7 @@ def inference_from_preprocessed_data(
         data_sample=data_sample,
         anomaly_variables=config_obj.anomaly_variables,
         path_hrdps_climatology=config_obj.path_hrdps_climatology,
+        restricted_channels=config_obj.restricted_channels,
         debug=debug,
         path_debug_plots=config_obj.path_figures,
     )

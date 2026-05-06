@@ -371,6 +371,8 @@ class DatasetWithSave(DatasetWithSplits):
     ----------
     dynamic_dataset_keys : list[str]
         List of keys for dynamic dataset components.
+    restricted_channels : dict[str, list[int]] | None
+        Dictionary specifying restricted channels for each dynamic dataset key.
     path_ml_data : Path | str | None
         Path to the directory where preprocessed data batches are saved.
     only_from_ml_data : bool
@@ -388,6 +390,7 @@ class DatasetWithSave(DatasetWithSplits):
     def __init__(
         self,
         dynamic_dataset_keys: list[str],
+        restricted_channels: dict[str, list[int]] | None = None,
         path_ml_data: Path | str | None = None,
         only_from_ml_data: bool = False,
         active_split_name: str = "train",
@@ -398,6 +401,7 @@ class DatasetWithSave(DatasetWithSplits):
         super().__init__(
             dynamic_dataset_keys, active_split_name=active_split_name, built_in_batch_size=built_in_batch_size
         )
+        self.restricted_channels = restricted_channels or {}
         self._get_item_count = 0
         self.path_ml_data = path_ml_data
         if only_from_ml_data and self.path_ml_data is None:
@@ -551,6 +555,8 @@ class DatasetWithSave(DatasetWithSplits):
             Loaded data for the given index.
         """
         logger.debug("Loading: %s", idx, identifier="load", block_short_repetition_delay=10)
+        if self.restricted_channels:
+            raise NotImplementedError("Loading with restricted channels is not implemented yet")
         if saved_batch_npz_file == self.cache.get("last_idx_file", None):
             loaded_data = self.cache["last_idx_data"]
         else:
@@ -626,6 +632,11 @@ class DatasetWithSave(DatasetWithSplits):
                     identifier="load_skip",
                     block_short_repetition_delay=10,
                 )
+            if key in self.restricted_channels:
+                channel_indices = self.restricted_channels[key]
+                if d[key].ndim < 2:
+                    raise ValueError(f"Data for key {key} has less than 2 dimensions, cannot apply channel restriction")
+                d[key] = d[key][:, channel_indices, ...]
         self.set_fixed_data_cache_from_save()
         return d
 
@@ -643,6 +654,8 @@ class DatasetWithSave(DatasetWithSplits):
         dict[str, torch.Tensor]
             Data for the given index.
         """
+        if self.restricted_channels:
+            raise NotImplementedError("Retrieving with restricted channels is not implemented yet")
         save_idx = self.save_idx(idx)
         built_in_ratio = self.save_batch_size // self.effective_built_in_batch_size
         save_data_dict: dict[str, np.ndarray] = {}
@@ -740,6 +753,8 @@ class DatasetFromNetCDFSave(DatasetWithSave):
         List of keys for dynamic dataset components.
     path_ml_data : Path | str
         Path to the directory where preprocessed data batches are saved.
+    restricted_channels : dict[str, list[int]] | None
+        Dictionary specifying restricted channels for each dynamic dataset key.
     active_split_name : str
         Name of the active split (e.g., 'train', 'validation', 'test').
     built_in_batch_size : int
@@ -754,6 +769,7 @@ class DatasetFromNetCDFSave(DatasetWithSave):
         self,
         dynamic_dataset_keys: list[str],
         path_ml_data: Path | str,
+        restricted_channels: dict[str, list[int]] | None = None,
         active_split_name: str = "train",
         built_in_batch_size: int = 1,
         save_batch_size: int = 1,
@@ -764,6 +780,7 @@ class DatasetFromNetCDFSave(DatasetWithSave):
             save_batch_size = sample_ds[dynamic_dataset_keys[0]].shape[0]
         super().__init__(
             dynamic_dataset_keys,
+            restricted_channels=restricted_channels,
             path_ml_data=path_ml_data,
             only_from_ml_data=True,
             active_split_name=active_split_name,
