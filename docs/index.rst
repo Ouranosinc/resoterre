@@ -19,6 +19,11 @@ Welcome to resoterre's documentation!
 
    apidoc/modules
 
+.. toctree::
+   :caption: GitHub Repository
+
+   Ouranosinc/resoterre <https://github.com/Ouranosinc/resoterre>
+
 Indices and tables
 ==================
 * :ref:`genindex`
