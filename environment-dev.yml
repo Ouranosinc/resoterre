@@ -35,3 +35,11 @@ dependencies:
   - types-click >=7.1.0
   - vulture >=2.14
   - watchdog >=6.0.0
+  - psutil >=5.9.5
+  - pytorch >=2.7.1
+  - ruff >=0.13.3
+  - scikit-learn >=1.6.1
+  - ipykernel >=6.28.0
+  - dacite >=1.8.1
+  - pip:
+    - types-PyYAML
