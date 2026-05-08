@@ -65,7 +65,9 @@ class CFVariables(dict[str, xarray.Variable]):
                 dtype_check = np.dtype(encoding["dtype"])
             else:
                 dtype_check = data.dtype
-            if (not np.issubdtype(dtype_check, np.floating)) and np.isnan(data).any():
+            is_numeric = np.issubdtype(dtype_check, np.number)
+            is_float = np.issubdtype(dtype_check, np.floating)
+            if is_numeric and (not is_float) and np.isnan(data).any():
                 raise ValueError("Data contains NaN values but no fill_value was provided for non-float data.")
         else:
             encoding["_FillValue"] = fill_value
