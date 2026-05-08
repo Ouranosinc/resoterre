@@ -31,5 +31,6 @@ dependencies:
   - ruff >=0.13.3
   - scikit-learn >=1.6.1
   - ipykernel >=6.28.0
-  - types-PyYAML >=6.0.12
   - dacite >=1.8.1
+  - pip:
+    - types-PyYAML
