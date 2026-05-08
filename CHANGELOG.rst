@@ -5,7 +5,7 @@ Changelog
 `Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
 ----------------------------------------------------------------
 
-Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:user:`Zeitsperre`), Nazim Azeli (:user:`Nazim-crim`).
+Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:user:`Zeitsperre`), Nazim Azeli (:user:`Nazim-crim`), Francis Charette-Migneault (:user:`fmigneault`)
 
 Changes
 ^^^^^^^
@@ -34,6 +34,7 @@ Changes
 * Add ``docker`` folder with Dockerfile for resoterre and model inference. (:pull:`47`).
     * Add ``Dockerfile.base`` for resoterre package
     * Add ``Dockerfile.inference`` for model inference using preprocess data.
+* Add ``model/`` entry to ``.gitignore`` to avoid model checkpoint inclusion from ``docker/README.md`` procedure.
 * Add notebooks/unetToMLM.ipynb to describe the UNet downscaling model by generating a STAC Item and Collection validated with the STAC MLM and Datacube extensions. (:pull:`21`).
 * Add UNet option to go to a linear layer at the bottom for 1D inputs. (:pull:`23`).
 * Add UNet option to use inputs in the last layer for static features. (:pull:`23`).
