@@ -9,6 +9,7 @@ Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:us
 
 Changes
 ^^^^^^^
+* Add support for Python 3.14. (:pull:`65`).
 * Add ``netcdf_utils`` module. (:pull:`47`).
 * Add ``timeseries`` module. (:pull:`47`).
 * Add ``rdps_to_hrdps`` module. (:pull:`47`).
@@ -49,19 +50,30 @@ Changes
 
 Fixes
 ^^^^^
-* Fix typing issues with data_loader_kwargs (:pull:`64`).
-* Fix broken types-PyYAML dependency in environment-dev.yml (:pull:`64`).
-* Set GitHub workflows Python version to 3.13 (:pull:`22`).
+* Fix typing issues with data_loader_kwargs. (:pull:`64`).
+* Fix broken types-PyYAML dependency in environment-dev.yml. (:pull:`64`).
+* Set GitHub workflows to support Python version 3.13. (:pull:`22`).
+* Set GitHub workflows to support Python version 3.14. (:pull:`65`).
 
 Internal changes
 ^^^^^^^^^^^^^^^^
-* Updated the cookiecutter template (:pull:`24`):
+* Updated the cookiecutter template. (:pull:`24`):
     * Replaced ``tox.ini`` with new ``tox.toml`` spec
     * Enabled the labelling workflow
     * Updated ``pyproject.toml`` to use PEP 639
     * Added a ``CITATION.cff`` file
     * Replaced the `python-coveralls` dependency (abandoned) for the `coverallsapp/github-action`
     * Updated the ``CODE_OF_CONDUCT.md`` to Contributor Covenant v3.0
+* Updated the cookiecutter template. (:pull:`65`):
+    * Updated GitHub Workflows to use more secure actions/connections
+    * Replaced `pre-commit` with `prek`. Updates pre-commit hooks
+    * GenAI contributions guidelines have been added to project files
+    * `dependency-groups` are now used for managing development/testing/documentation dependencies (PEP 735)
+    * General development/documentation dependency updates.
+    * Makefile recipes now handle some dependency management commands
+    * `tox.toml` now uses `dependency-groups` and Makefile
+    * `pytest` has been updated to v9.0. Now uses TOML-based configuration spec
+    * Linting tools now include `vulture`, `deptry`, `yamllint`, and `codespell`
 
 .. _changes_0.1.2:
 

@@ -1,4 +1,4 @@
-name: "Bump Patch Version"
+name: "Bump Version"
 
 on:
   push:
@@ -21,6 +21,7 @@ on:
       - CI/*.in
       - CI/*.py
       - CI/*.txt
+      - CITATION.cff
       - CODE_OF_CONDUCT.md
       - CONTRIBUTING.rst
       - Makefile
@@ -39,7 +40,9 @@ permissions:
 
 jobs:
   bump_patch_version:
+    name: Bump build/patch version
     runs-on: ubuntu-latest
+    environment: automation
     permissions:
       actions: read
       contents: write
