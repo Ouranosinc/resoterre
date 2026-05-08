@@ -247,6 +247,7 @@ class RDPSToHRDPSNetCDFDatasetManager(DatasetManager):
         """
         if dataset_config.path_ml_data is None:
             raise ValueError("dataset_config.path_ml_data must be specified for RDPSToHRDPSNetCDFDatasetManager.")
+        data_loader_kwargs = data_loader_kwargs or {}
         rdps_hrdps_dataset = DatasetFromNetCDFSave(
             dynamic_dataset_keys=[
                 "input_first_block",

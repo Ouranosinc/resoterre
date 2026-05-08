@@ -1,13 +1,18 @@
 name: resoterre
 channels:
   - conda-forge
+  - nodefaults
 dependencies:
   - python >=3.12,<3.13
   # Docs
-  - click >=8.1.7
-  - sphinx >=7.1.0,<8.2
+  - click >=8.3.1
+  - ipykernel
+  - ipython
+  - jupyter_client
+  - nbsphinx >=0.9.5
+  - sphinx >=8.2
   - sphinx-click
   - sphinx-codeautolink >=0.16.2
-  - sphinx-copybutton
+  - sphinx-copybutton >=0.5.2
   - sphinx-intl
   - sphinx-rtd-theme >=1.0
