@@ -45,6 +45,7 @@ dev = [
   "pip >=26.0.1",
   "prek >=0.3.0",
   "types-click >=7.1.0",
+  "types-PyYAML >=6.0.12",
   "watchdog >=6.0.0",
   {include-group = "docs"},
   {include-group = "lint"},
@@ -95,7 +96,6 @@ dependencies = [
   "pyyaml >=6.0.1",
   "scikit-learn >=1.6.1",
   "torch >=2.7.1",
-  "types-PyYAML >=6.0.12",
   "xarray >=2024.6.0"
 ]
 
@@ -204,6 +204,13 @@ skip = []
 [tool.deptry]
 extend_exclude = ["extras"]
 pep621_dev_dependency_groups = ["extras"]
+
+[tool.deptry.package_module_name_map]
+scikit-learn = "sklearn"
+
+[tool.deptry.per_rule_ignores]
+DEP002 = ["h5netcdf", "h5py"]
+DEP003 = ["typing_extensions"]
 
 [tool.flit.sdist]
 include = [
