@@ -424,7 +424,7 @@ def inference_from_preprocessed_data(
     data_sample = xarray.open_dataset(config_obj.path_preprocessed_batch)
     x = torch.tensor(data_sample["input_first_block"].values).to(config_obj.device)
     x_last_layer = None
-    if "input_last_layer" in data_sample:
+    if ("input_last_layer" in data_sample) and network_manager.networks["UNet"].num_last_layer_input_channels:
         x_last_layer = torch.tensor(data_sample["input_last_layer"].values).to(config_obj.device)
     output = network_manager.networks["UNet"](x=x, x_linear=None, x_last_layer=x_last_layer)
     # torch.cuda.empty_cache()
