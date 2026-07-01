@@ -145,6 +145,33 @@ hrdps_variables.mapping["HRDPS_P_UUC_10000_anomaly"] = "P_UUC_10000_anomaly"
 hrdps_variables.mapping["HRDPS_P_VVC_10000"] = "P_VVC_10000"
 hrdps_variables.mapping["HRDPS_P_VVC_10000_anomaly"] = "P_VVC_10000_anomaly"
 
+hrdps_netcdf_attrs = {
+    "HRDPS_P_TT_10000": {
+        "long_name": "Forecast: Air temperature",
+        "units": "deg_C",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "HRDPS_P_UUC_10000": {
+        "long_name": "Forecast: corrected U-component of the wind (along West-East direction)",
+        "units": "kts",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "HRDPS_P_VVC_10000": {
+        "long_name": "Forecast: corrected V-component of the wind (along South-North direction)",
+        "units": "kts",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "HRDPS_P_PR_SFC": {
+        "long_name": "Forecast: Quantity of precipitation",
+        "units": "m",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+}
+
 
 def short_variable_name(variable_name: str) -> str:
     """

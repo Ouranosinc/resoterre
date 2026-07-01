@@ -4,6 +4,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.gridspec import GridSpec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from resoterre.logging_utils import readable_value
@@ -227,3 +228,129 @@ class NDPlot:
             vmax=local_vmax,
             reverse_i=local_reverse_i,
         )
+
+
+class CustomPColorMesh:
+    """
+    Class for creating custom pseudocolor mesh plots with Matplotlib.
+
+    Parameters
+    ----------
+    fig : plt.Figure, optional
+        The Matplotlib Figure to plot on. If None, a new figure will be created.
+    ax : plt.Axes, optional
+        The Matplotlib Axes to plot on. If None, a new Axes will be created.
+    scale_factor : float, optional
+        A scaling factor for the figure size.
+    show_colorbar : bool, optional
+        Whether to display a colorbar.
+    """
+
+    def __init__(
+        self,
+        fig: plt.Figure | None = None,
+        ax: plt.Axes | None = None,
+        scale_factor: float = 1.0,
+        show_colorbar: bool = True,
+    ) -> None:
+        self.fig = fig
+        self.ax = ax
+        self.cbar_ax: plt.Axes | None = None
+        self.scale_factor = scale_factor
+        self.show_colorbar = show_colorbar
+        self.vmin: float | None = None
+        self.vmax: float | None = None
+
+    def init_figure(self, aspect_ratio: float | None = None) -> None:
+        """
+        Initialize the figure and axes for plotting.
+
+        Parameters
+        ----------
+        aspect_ratio : float, optional
+            The aspect ratio of the figure.
+        """
+        if aspect_ratio is None:
+            width = 6.4 * self.scale_factor
+            height = 4.8 * self.scale_factor
+        else:
+            width = 6.4 * aspect_ratio * self.scale_factor
+            height = 6.4 * self.scale_factor
+        if self.show_colorbar:
+            width *= 1.05
+        figure_size = (width, height)
+        self.fig = plt.figure(figsize=figure_size)
+
+    def plot(
+        self,
+        plot_data: np.ndarray,
+        path_output: Path | str | None = None,
+        cmap: str = "viridis",
+        vmin: float | None = None,
+        vmax: float | None = None,
+        vmin_quantile: float | None = None,
+        vmax_quantile: float | None = None,
+        reset_ax: bool = True,
+        reset_fig: bool = True,
+        close_fig: bool = True,
+    ) -> None:
+        """
+        Plot the given data as a pseudocolor mesh and optionally save the figure.
+
+        Parameters
+        ----------
+        plot_data : np.ndarray
+            The data to plot.
+        path_output : Path | str, optional
+            The file path to save the figure. If None, the figure will not be saved.
+        cmap : str, optional
+            The colormap to use for the plot.
+        vmin : float, optional
+            The minimum value for the color scale. If None, it will be determined from the data.
+        vmax : float, optional
+            The maximum value for the color scale. If None, it will be determined from the data.
+        vmin_quantile : float, optional
+            The quantile to use for determining the minimum value of the color scale. If None, it will not be used.
+        vmax_quantile : float, optional
+            The quantile to use for determining the maximum value of the color scale. If None, it will not be used.
+        reset_ax : bool, optional
+            Whether to reset the axes before plotting.
+        reset_fig : bool, optional
+            Whether to reset the figure before plotting.
+        close_fig : bool, optional
+            Whether to close the figure after plotting.
+        """
+        if self.ax is None or reset_ax:
+            if self.fig is None or reset_fig:
+                self.init_figure(aspect_ratio=plot_data.shape[1] / plot_data.shape[0])
+            if self.fig is None:
+                raise RuntimeError("Figure is not initialized.")
+            if self.show_colorbar:
+                gs = GridSpec(1, 2, width_ratios=[9.5, 0.5], figure=self.fig)
+                self.ax = self.fig.add_subplot(gs[0])
+                self.cbar_ax = self.fig.add_subplot(gs[1])
+            else:
+                self.ax = self.fig.add_subplot(111)
+        if vmin_quantile is not None and vmin is None:
+            vmin = np.nanquantile(plot_data, vmin_quantile)
+        if vmax_quantile is not None and vmax is None:
+            vmax = np.nanquantile(plot_data, vmax_quantile)
+        self.vmin = vmin
+        self.vmax = vmax
+        pcolormesh_result = self.ax.pcolormesh(plot_data, cmap=cmap, vmin=self.vmin, vmax=self.vmax)
+        min_str = readable_value(np.nanmin(plot_data))
+        mean_str = readable_value(np.nanmean(plot_data))
+        max_str = readable_value(np.nanmax(plot_data))
+        self.ax.set_title(f"min: {min_str}, mean: {mean_str}, max: {max_str}")
+        # ToDo: make colorbar in another ax with ScalarMappable?
+        if self.fig is not None:
+            if self.cbar_ax is None:
+                self.fig.colorbar(pcolormesh_result, ax=self.ax)
+            else:
+                self.fig.colorbar(pcolormesh_result, cax=self.cbar_ax)
+            if path_output is not None:
+                path_output = Path(path_output)
+                path_output.parent.mkdir(parents=True, exist_ok=True)
+                self.fig.savefig(path_output)
+            if close_fig:
+                plt.close(self.fig)

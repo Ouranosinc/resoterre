@@ -1,7 +1,8 @@
 """Workflow utilities for RDPS to HRDPS downscaling."""
 
-import datetime
+import calendar
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -10,13 +11,17 @@ import torch
 import xarray
 
 from resoterre.config_utils import config_from_yaml, known_configs
+from resoterre.data_management.geo_utils import GridSpecification
 from resoterre.data_management.netcdf_utils import CFVariables
+from resoterre.datasets.hrdps.hrdps_integrity_check import HRDPSCasparFile, hrdps_caspar_individual_file_check
+from resoterre.datasets.hrdps.hrdps_processing import save_hrdps_from_origin
 from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables
 from resoterre.hybrid_data_loaders.rdps_to_hrdps import post_process_model_output
 from resoterre.hybrid_data_loaders.rdps_to_hrdps_preprocess import save_rdps_to_hrdps_preprocessed_batch
 from resoterre.logging_utils import start_root_logger
 from resoterre.ml.network_manager import NeuralNetworksManager, NeuralNetworksManagerConfig
 from resoterre.ml.neural_networks_unet import UNet
+from resoterre.plots.nd_plots import CustomPColorMesh
 from resoterre.utils import TemplateStore
 
 
@@ -65,9 +70,9 @@ class RDPSToHRDPSOnDiskConfig:
         Grid name for input data in machine learning.
     grid_output_for_ml : str, optional
         Grid name for output data in machine learning.
-    start_datetime : datetime.datetime, optional
+    start_datetime : datetime, optional
         Start datetime for data processing.
-    end_datetime : datetime.datetime, optional
+    end_datetime : datetime, optional
         End datetime for data processing.
     rdps_variables : list[str]
         List of RDPS variable names to process.
@@ -126,8 +131,8 @@ class RDPSToHRDPSOnDiskConfig:
     # ToDo: many more workflow settings are needed here
     grid_input_for_ml: str | None = None
     grid_output_for_ml: str | None = None
-    start_datetime: datetime.datetime | None = None
-    end_datetime: datetime.datetime | None = None
+    start_datetime: datetime | None = None
+    end_datetime: datetime | None = None
     rdps_variables: list[str] = field(default_factory=list)
     hrdps_variables: list[str] = field(default_factory=list)
     forecast_hours: list[int] = field(default_factory=list)
@@ -211,6 +216,95 @@ class RDPSToHRDPSInferenceConfig:
     device: str = "cpu"
 
 
+@dataclass(frozen=True, slots=True)
+class RDPSToHRDPSConfig:
+    """
+    Configuration for RDPS to HRDPS workflows.
+
+    Attributes
+    ----------
+    path_output : Path, optional
+        Path to the output directory where results will be saved.
+    path_preprocessed_zarr : Path, optional
+        Path to the preprocessed Zarr data directory.
+    path_hrdps : Path, optional
+        Path to the raw HRDPS data directory.
+    path_rdps : Path, optional
+        Path to the raw RDPS data directory.
+    global_start_datetime : datetime, optional
+        Global start datetime for data processing.
+    global_end_datetime : datetime, optional
+        Global end datetime for data processing.
+    hrdps_variables : list[str]
+        List of HRDPS variable names to process.
+    tile_size : int, optional
+        Size of the tiles for processing.
+    tiles_center_lon : list[float]
+        List of center longitudes for the tiles.
+    tiles_center_lat : list[float]
+        List of center latitudes for the tiles.
+    hrdps_preprocessing_start_datetime : datetime, optional
+        Start datetime for HRDPS preprocessing.
+    hrdps_preprocessing_end_datetime : datetime, optional
+        End datetime for HRDPS preprocessing.
+    coarsen_factor : int, optional
+        Factor by which to coarsen the HRDPS grid in the downscaling task.
+    diagnostics : list
+        List of diagnostics to perform.
+    diagnostic_variables : list
+        List of variable names for diagnostics.
+    diagnostic_time_groupings : list
+        List of time groupings for diagnostics.
+    diagnostic_start_datetime : datetime, optional
+        Start datetime for diagnostics.
+    diagnostic_end_datetime : datetime, optional
+        End datetime for diagnostics.
+    debug_hrdps_to_zarr_figures : list
+        List of [variable name, year, month, day, forecast hour] for which to save hrdps to zarr debug figures.
+    """
+
+    path_output: Path | None = None
+    path_preprocessed_zarr: Path | None = None
+    path_hrdps: Path | None = None
+    path_rdps: Path | None = None
+    global_start_datetime: datetime | None = None
+    global_end_datetime: datetime | None = None
+    hrdps_variables: list[str] = field(default_factory=list)
+    tile_size: int | None = None
+    tiles_center_lon: list[float] = field(default_factory=list)
+    tiles_center_lat: list[float] = field(default_factory=list)
+    hrdps_preprocessing_start_datetime: datetime | None = None
+    hrdps_preprocessing_end_datetime: datetime | None = None
+    coarsen_factor: int | None = None
+    diagnostics: list[str] = field(default_factory=list)
+    diagnostic_variables: list[str] = field(default_factory=list)
+    diagnostic_time_groupings: list[str] = field(default_factory=list)
+    diagnostic_start_datetime: datetime | None = None
+    diagnostic_end_datetime: datetime | None = None
+    debug_hrdps_to_zarr_figures: list[list[str | int]] = field(default_factory=list)
+
+
+def rdps_to_hrdps_parse_config(config: RDPSToHRDPSConfig | Path | str) -> RDPSToHRDPSConfig:
+    """
+    Parse the configuration for RDPS to HRDPS workflows.
+
+    Parameters
+    ----------
+    config : RDPSToHRDPSConfig | Path | str
+        Configuration for the RDPS to HRDPS workflow. Can be an instance of RDPSToHRDPSConfig,
+        a path to a YAML file, or a YAML string.
+
+    Returns
+    -------
+    RDPSToHRDPSConfig
+        Parsed configuration object.
+    """
+    if isinstance(config, RDPSToHRDPSConfig):
+        return config
+    else:
+        return config_from_yaml(RDPSToHRDPSConfig, config)
+
+
 def preprocess_batch(path_output: Path, config: RDPSToHRDPSOnDiskConfig, input_specs: list[dict[str, Any]]) -> None:
     """
     Preprocess a batch of data for RDPS to HRDPS downscaling task.
@@ -231,7 +325,7 @@ def preprocess_batch(path_output: Path, config: RDPSToHRDPSOnDiskConfig, input_s
         - "j_hrdps": int, HRDPS grid index j
         - "use_hrdps_upscale": bool, whether to use HRDPS upscale data for this sample
     """
-    datetimes = [datetime.datetime.strptime(input_spec["datetime_str"], "%Y%m%d%H") for input_spec in input_specs]
+    datetimes = [datetime.strptime(input_spec["datetime_str"], "%Y%m%d%H") for input_spec in input_specs]
     idx_list = [
         {
             "i_rdps": input_spec["i_rdps"],
@@ -448,3 +542,103 @@ def inference_from_preprocessed_data(
     list_of_saved_files = save_model_output(config_obj, data_sample, output_variables, mask=mask)
 
     return list_of_saved_files
+
+
+def hrdps_grid_spec_from_ds(config: RDPSToHRDPSConfig, ds: xarray.Dataset) -> GridSpecification:
+    """
+    Create a GridSpecification object from an HRDPS dataset.
+
+    Parameters
+    ----------
+    config : RDPSToHRDPSConfig
+        Configuration object containing tile information.
+    ds : xarray.Dataset
+        HRDPS dataset.
+
+    Returns
+    -------
+    GridSpecification
+        Grid specification for the HRDPS dataset.
+    """
+    # ToDo: this is not specific to HRDPS. But there is some config structure implied.
+    # Assuming only 1 tiles
+    if config.tile_size is None or config.coarsen_factor is None:
+        raise ValueError("Both tile_size and coarsen_factor must be specified in the configuration.")
+    hrdps_grid_spec = GridSpecification(ds["lon"].values, ds["lat"].values)
+    hrdps_grid_spec.sub_tile(
+        key="high_res",
+        tile_center_lon=config.tiles_center_lon[0],
+        tile_center_lat=config.tiles_center_lat[0],
+        tile_size=config.tile_size,
+        set_to_active=True,
+    )
+    hrdps_grid_spec.coarsen_tile(key="high_res", key_coarse="coarse", factor=config.coarsen_factor)
+    return hrdps_grid_spec
+
+
+def hrdps_to_zarr_from_config(config: RDPSToHRDPSConfig, variable_name: str, year: int, month: int) -> None:
+    """
+    Convert HRDPS data to Zarr format based on the provided configuration.
+
+    Parameters
+    ----------
+    config : RDPSToHRDPSConfig
+        Configuration object containing paths and settings.
+    variable_name : str
+        Name of the variable to process.
+    year : int
+        Year of the data to process.
+    month : int
+        Month of the data to process.
+    """
+    if config.path_hrdps is None or config.path_preprocessed_zarr is None:
+        raise ValueError("Both path_hrdps and path_preprocessed_zarr must be specified in the configuration.")
+    path_hrdps_zarr = None
+    hrdps_grid_spec = None
+    for day in list(range(1, calendar.monthrange(year, month)[1] + 1)):
+        for forecast_hour in [0, 6, 12, 18]:
+            path_hrdps_file = Path(
+                config.path_hrdps, "0-12", variable_name, str(year), f"{year}{month:02d}{day:02d}{forecast_hour:02d}.nc"
+            )
+            hrdps_caspar_file = HRDPSCasparFile(path_hrdps_file)
+            dataset_info = hrdps_caspar_individual_file_check(hrdps_caspar_file, forecast_hours=[7, 8, 9, 10, 11, 12])
+            if not dataset_info._properties.get("valid_for_ml", [False, False, False])[2]:
+                continue
+            ds = xarray.open_dataset(path_hrdps_file)
+            if hrdps_grid_spec is None:
+                hrdps_grid_spec = hrdps_grid_spec_from_ds(config, ds)
+                i_start = hrdps_grid_spec.i_slice.start
+                j_start = hrdps_grid_spec.j_slice.start
+                path_hrdps_zarr = Path(
+                    config.path_preprocessed_zarr,
+                    f"hrdps_i_{i_start:04d}_j_{j_start:04d}_size_{config.tile_size:04d}.zarr",
+                )
+            if path_hrdps_zarr is None:
+                raise RuntimeError("path_hrdps_zarr is None. This should not happen.")
+            save_hrdps_from_origin(
+                path_hrdps_zarr,
+                ds,
+                variable_name=variable_name,
+                t_slice=slice(7, 13),
+                i_slice=hrdps_grid_spec.i_slice,
+                j_slice=hrdps_grid_spec.j_slice,
+                expected_variables=config.hrdps_variables,
+                start_datetime=config.global_start_datetime,
+                end_datetime=config.global_end_datetime,
+            )
+
+            if [variable_name, year, month, day, forecast_hour] in config.debug_hrdps_to_zarr_figures:
+                # ToDo: this actually does not feth the data from the output zarr...
+                # ToDo: also allow changing the forecast step?
+                plot_data = ds[variable_name].values[7, hrdps_grid_spec.i_slice, hrdps_grid_spec.j_slice]
+                custom_pcolormesh = CustomPColorMesh(scale_factor=2.0)
+                if config.path_output is None:
+                    raise ValueError("path_output must be specified in the configuration for debug figures.")
+                custom_pcolormesh.plot(
+                    plot_data,
+                    vmin_quantile=0.001,
+                    vmax_quantile=0.999,
+                    path_output=Path(
+                        config.path_output, f"hrdps_{variable_name}_{year}{month:02d}{day:02d}_{forecast_hour:02d}.png"
+                    ),
+                )
