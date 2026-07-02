@@ -207,7 +207,7 @@ class GridSpecification:
     @property
     def i_slice(self) -> slice:
         """
-        Return the i slice of the active tile.
+        The i slice of the active tile.
 
         Returns
         -------
@@ -221,7 +221,7 @@ class GridSpecification:
     @property
     def j_slice(self) -> slice:
         """
-        Return the j slice of the active tile.
+        The j slice of the active tile.
 
         Returns
         -------
@@ -235,7 +235,7 @@ class GridSpecification:
     @property
     def tile_lon(self) -> np.ndarray:
         """
-        Return the longitude array of the active tile.
+        Longitude array of the active tile.
 
         Returns
         -------
@@ -249,7 +249,7 @@ class GridSpecification:
     @property
     def tile_lat(self) -> np.ndarray:
         """
-        Return the latitude array of the active tile.
+        Latitude array of the active tile.
 
         Returns
         -------
@@ -263,7 +263,7 @@ class GridSpecification:
     @property
     def tile_lon_corners(self) -> np.ndarray:
         """
-        Return the longitude corners of the active tile.
+        Longitude corners of the active tile.
 
         Returns
         -------
@@ -277,7 +277,7 @@ class GridSpecification:
     @property
     def tile_lat_corners(self) -> np.ndarray:
         """
-        Return the latitude corners of the active tile.
+        Latitude corners of the active tile.
 
         Returns
         -------
