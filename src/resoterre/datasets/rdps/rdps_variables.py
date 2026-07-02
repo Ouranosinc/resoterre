@@ -345,3 +345,83 @@ rdps_variables["GZ250"].min = 500.0
 rdps_variables["GZ250"].max = 1500.0
 rdps_variables["GZ250"].mean_min = 900.0
 rdps_variables["GZ250"].mean_max = 1300.0
+
+# ToDo: complete and validate
+rdps_netcdf_attrs = {
+    "GZ500": {
+        "units": "dam",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "GZ850": {
+        "units": "dam",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "HU850": {
+        "units": "1",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "HU700": {
+        "units": "1",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "PC": {
+        "units": "m",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "PN": {
+        "units": "mb",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "PR": {
+        "units": "m",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "TD": {
+        "units": "deg_C",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "TT_model_levels": {
+        "long_name": "Forecast: Air temperature",
+        "units": "deg_C",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "TT850": {
+        "long_name": "Forecast: Air temperature",
+        "units": "deg_C",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "UU_model_levels": {
+        "long_name": "Forecast: Eastward wind",
+        "units": "kts",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "UU850": {
+        "long_name": "Forecast: Eastward wind",
+        "units": "kts",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "VV_model_levels": {
+        "long_name": "Forecast: Northward wind",
+        "units": "kts",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "VV850": {
+        "long_name": "Forecast: Northward wind",
+        "units": "kts",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+}

@@ -1,6 +1,8 @@
 """Module for geospatial utilities."""
 
 import numpy as np
+from scipy.sparse import coo_matrix
+from shapely.geometry import Polygon
 
 
 def haversine(
@@ -287,3 +289,140 @@ class GridSpecification:
         if self.active_tile is None:
             raise ValueError("No active tile set")
         return self.tiles_lat_corners[self.active_tile]
+
+
+def add_neighbhors(
+    candidates: list[tuple[int, int]],
+    i: int,
+    j: int,
+    i_shape: int,
+    j_shape: int,
+    excludes: set[tuple[int, int]] | None = None,
+) -> None:
+    """
+    Add the neighbors of a given point (i, j) to the candidates list (inplace), excluding those in the excludes set.
+
+    Parameters
+    ----------
+    candidates : list[tuple[int, int]]
+        List of candidate points to which neighbors will be added.
+    i : int
+        Row index of the point.
+    j : int
+        Column index of the point.
+    i_shape : int
+        Total number of rows in the grid.
+    j_shape : int
+        Total number of columns in the grid.
+    excludes : set[tuple[int, int]], optional
+        Set of points to be excluded from being added to candidates.
+    """
+    excludes = excludes or set()
+    if i > 0 and (i - 1, j) not in excludes and (i - 1, j) not in candidates:
+        candidates.append((i - 1, j))
+    if i < i_shape - 1 and (i + 1, j) not in excludes and (i + 1, j) not in candidates:
+        candidates.append((i + 1, j))
+    if j > 0 and (i, j - 1) not in excludes and (i, j - 1) not in candidates:
+        candidates.append((i, j - 1))
+    if j < j_shape - 1 and (i, j + 1) not in excludes and (i, j + 1) not in candidates:
+        candidates.append((i, j + 1))
+
+
+def compute_grids_area_weights(
+    source_grid_lon: np.ndarray, source_grid_lat: np.ndarray, target_grid_spec: GridSpecification
+) -> np.ndarray:
+    """
+    Compute the area weights for regridding from a source grid to a target grid.
+
+    Parameters
+    ----------
+    source_grid_lon : np.ndarray
+        2D array of longitudes for the source grid.
+    source_grid_lat : np.ndarray
+        2D array of latitudes for the source grid.
+    target_grid_spec : GridSpecification
+        GridSpecification object for the target grid.
+
+    Returns
+    -------
+    np.ndarray
+        Sparse matrix of area weights for regridding.
+    """
+    source_lon_corners = (
+        source_grid_lon[:-1, :-1] + source_grid_lon[1:, :-1] + source_grid_lon[:-1, 1:] + source_grid_lon[1:, 1:]
+    ) / 4
+    # Assuming longitudes range match in both grids
+    source_lon_corners = source_lon_corners
+    source_lat_corners = (
+        source_grid_lat[:-1, :-1] + source_grid_lat[1:, :-1] + source_grid_lat[:-1, 1:] + source_grid_lat[1:, 1:]
+    ) / 4
+    # Assuming longitudes range match in both grids
+    source_grid_lon = source_grid_lon[1:-1, 1:-1]
+    source_grid_lat = source_grid_lat[1:-1, 1:-1]
+    rdps_index = []
+    hrdps_index = []
+    fractions = []
+    for i in range(target_grid_spec.tile_lon.shape[0]):
+        for j in range(target_grid_spec.tile_lon.shape[1]):
+            target_lon = target_grid_spec.tile_lon[i, j]
+            target_lat = target_grid_spec.tile_lat[i, j]
+            target_polygon = Polygon(
+                [
+                    (target_grid_spec.tile_lon_corners[i, j], target_grid_spec.tile_lat_corners[i, j]),
+                    (target_grid_spec.tile_lon_corners[i + 1, j], target_grid_spec.tile_lat_corners[i + 1, j]),
+                    (target_grid_spec.tile_lon_corners[i + 1, j + 1], target_grid_spec.tile_lat_corners[i + 1, j + 1]),
+                    (target_grid_spec.tile_lon_corners[i, j + 1], target_grid_spec.tile_lat_corners[i, j + 1]),
+                ]
+            )
+
+            distances = haversine(source_grid_lon, source_grid_lat, target_lon, target_lat)
+            if isinstance(distances, float):
+                raise RuntimeError("Distances should be a numpy array, not a float")
+            source_grid_closest_indices = np.where(distances == distances.min())
+            i_search = source_grid_closest_indices[0][0]
+            j_search = source_grid_closest_indices[1][0]
+            candidates = [(i_search, j_search)]
+            processed: set[tuple[int, int]] = set()
+            add_neighbhors(
+                candidates, i_search, j_search, source_grid_lon.shape[0], source_grid_lon.shape[1], excludes=processed
+            )
+            while candidates:
+                candidate = candidates.pop(0)
+                source_polygon = Polygon(
+                    [
+                        (
+                            source_lon_corners[candidate[0], candidate[1]],
+                            source_lat_corners[candidate[0], candidate[1]],
+                        ),
+                        (
+                            source_lon_corners[candidate[0] + 1, candidate[1]],
+                            source_lat_corners[candidate[0] + 1, candidate[1]],
+                        ),
+                        (
+                            source_lon_corners[candidate[0] + 1, candidate[1] + 1],
+                            source_lat_corners[candidate[0] + 1, candidate[1] + 1],
+                        ),
+                        (
+                            source_lon_corners[candidate[0], candidate[1] + 1],
+                            source_lat_corners[candidate[0], candidate[1] + 1],
+                        ),
+                    ]
+                )
+                intersection = target_polygon.intersection(source_polygon)
+                fraction = intersection.area / target_polygon.area
+                processed.add(candidate)
+                if fraction > 0:
+                    rdps_index.append(np.ravel_multi_index(candidate, source_grid_lon.shape))
+                    hrdps_index.append(np.ravel_multi_index((i, j), target_grid_spec.tile_lon.shape))
+                    fractions.append(fraction)
+                    add_neighbhors(
+                        candidates,
+                        candidate[0],
+                        candidate[1],
+                        source_grid_lon.shape[0],
+                        source_grid_lon.shape[1],
+                        excludes=processed,
+                    )
+    return coo_matrix(
+        (fractions, (hrdps_index, rdps_index)), shape=(target_grid_spec.tile_lon.size, source_grid_lon.size)
+    )
