@@ -695,7 +695,7 @@ class DatasetWithSave(DatasetWithSplits):
     @property
     def dummy_data(self) -> dict[str, torch.Tensor]:
         """
-        Get dummy data structure with correct shapes, used when skip_load is True.
+        Dummy data structure with correct shapes, used when skip_load is True.
 
         Returns
         -------
