@@ -1,8 +1,9 @@
 """Workflow utilities for RDPS to HRDPS downscaling."""
 
 import calendar
+import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables
 from resoterre.datasets.rdps.rdps_integrity_check import RDPSML1File, rdps_ml1_data, rdps_ml1_individual_file_check
 from resoterre.datasets.rdps.rdps_processing import save_rdps_coarse
 from resoterre.datasets.rdps.rdps_variables import rdps_parent_variables, rdps_vertical_levels
+from resoterre.datasets.rdps.rdps_variables import rdps_variables as rdps_variables_collection
 from resoterre.hybrid_data_loaders.rdps_to_hrdps import post_process_model_output
 from resoterre.hybrid_data_loaders.rdps_to_hrdps_preprocess import save_rdps_to_hrdps_preprocessed_batch
 from resoterre.logging_utils import start_root_logger
@@ -27,6 +29,9 @@ from resoterre.ml.network_manager import NeuralNetworksManager, NeuralNetworksMa
 from resoterre.ml.neural_networks_unet import UNet
 from resoterre.plots.nd_plots import CustomPColorMesh
 from resoterre.utils import TemplateStore
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -560,7 +565,9 @@ def inference_from_preprocessed_data(
     return list_of_saved_files
 
 
-def hrdps_grid_spec_from_ds(config: RDPSToHRDPSConfig, ds: xarray.Dataset) -> GridSpecification:
+def hrdps_grid_spec_from_ds(
+    config: RDPSToHRDPSConfig, ds: xarray.Dataset, switch_to_positive_longitudes: bool = False
+) -> GridSpecification:
     """
     Create a GridSpecification object from an HRDPS dataset.
 
@@ -570,6 +577,8 @@ def hrdps_grid_spec_from_ds(config: RDPSToHRDPSConfig, ds: xarray.Dataset) -> Gr
         Configuration object containing tile information.
     ds : xarray.Dataset
         HRDPS dataset.
+    switch_to_positive_longitudes : bool, optional
+        Whether to switch longitudes to positive values.
 
     Returns
     -------
@@ -580,10 +589,21 @@ def hrdps_grid_spec_from_ds(config: RDPSToHRDPSConfig, ds: xarray.Dataset) -> Gr
     # Assuming only 1 tiles
     if config.tile_size is None or config.coarsen_factor is None:
         raise ValueError("Both tile_size and coarsen_factor must be specified in the configuration.")
-    hrdps_grid_spec = GridSpecification(ds["lon"].values, ds["lat"].values)
+    lon = ds["lon"].values
+    center_lon = config.tiles_center_lon[0]
+    if switch_to_positive_longitudes:
+        if lon.min() < 0.0 and lon.max() < 0.0:
+            lon = lon + 360.0
+        else:
+            raise NotImplementedError(
+                "Switching to positive longitudes is only implemented for all negative longitudes."
+            )
+        if center_lon < 0.0:
+            center_lon = center_lon + 360.0
+    hrdps_grid_spec = GridSpecification(lon, ds["lat"].values)
     hrdps_grid_spec.sub_tile(
         key="high_res",
-        tile_center_lon=config.tiles_center_lon[0],
+        tile_center_lon=center_lon,
         tile_center_lat=config.tiles_center_lat[0],
         tile_size=config.tile_size,
         set_to_active=True,
@@ -644,9 +664,12 @@ def hrdps_to_zarr_from_config(config: RDPSToHRDPSConfig, variable_name: str, yea
             )
 
             if [variable_name, year, month, day, forecast_hour] in config.debug_hrdps_to_zarr_figures:
-                # ToDo: this actually does not feth the data from the output zarr...
                 # ToDo: also allow changing the forecast step?
                 plot_data = ds[variable_name].values[7, hrdps_grid_spec.i_slice, hrdps_grid_spec.j_slice]
+                if variable_name == "HRDPS_P_PR_SFC":
+                    plot_data = (
+                        plot_data - ds[variable_name].values[6, hrdps_grid_spec.i_slice, hrdps_grid_spec.j_slice]
+                    )
                 custom_pcolormesh = CustomPColorMesh(scale_factor=2.0)
                 if config.path_output is None:
                     raise ValueError("path_output must be specified in the configuration for debug figures.")
@@ -655,9 +678,24 @@ def hrdps_to_zarr_from_config(config: RDPSToHRDPSConfig, variable_name: str, yea
                     vmin_quantile=0.001,
                     vmax_quantile=0.999,
                     path_output=Path(
-                        config.path_output, f"hrdps_{variable_name}_{year}{month:02d}{day:02d}_{forecast_hour:02d}.png"
+                        config.path_output,
+                        f"hrdps_raw_{variable_name}_{year}{month:02d}{day:02d}_{forecast_hour:02d}.png",
                     ),
                 )
+                ds_zarr = xarray.open_dataset(path_hrdps_zarr)
+                target_datetime = hrdps_caspar_file.datetime + timedelta(hours=7)
+                idx = int(np.where(ds_zarr["time"].values == np.datetime64(target_datetime, "ns"))[0][0])
+                plot_data = ds_zarr[variable_name][idx, :, :].values
+                CustomPColorMesh(scale_factor=2.0).plot(
+                    plot_data,
+                    vmin=custom_pcolormesh.vmin,
+                    vmax=custom_pcolormesh.vmax,
+                    path_output=Path(
+                        config.path_output,
+                        f"hrdps_zarr_{variable_name}_{year}{month:02d}{day:02d}_{forecast_hour:02d}.png",
+                    ),
+                )
+            ds.close()
 
 
 # ToDo: should be somewhere else
@@ -693,6 +731,178 @@ def find_hrdps_sample_file(config: RDPSToHRDPSConfig) -> Path:
     raise FileNotFoundError(f"No HRDPS sample file found in {config.path_hrdps}")
 
 
+def rdps_regrid_to_zarr_debug_figures(
+    config: RDPSToHRDPSConfig,
+    rdps_ml1_file: RDPSML1File,
+    data: np.ndarray,
+    result_reshaped: np.ndarray,
+    rdps_grid_spec: GridSpecification,
+    variable_name: str,
+    year: int,
+    month: int,
+) -> None:
+    """
+    Debug function to generate and save figures for RDPS regridding to Zarr format.
+
+    Parameters
+    ----------
+    config : RDPSToHRDPSConfig
+        Configuration object containing paths and settings.
+    rdps_ml1_file : RDPSML1File
+        RDPS ML1 file object containing metadata.
+    data : np.ndarray
+        Original RDPS data array.
+    result_reshaped : np.ndarray
+        Regridded RDPS data array.
+    rdps_grid_spec : GridSpecification
+        Grid specification for the RDPS data.
+    variable_name : str
+        Name of the variable being processed.
+    year : int
+        Year of the data being processed.
+    month : int
+        Month of the data being processed.
+    """
+    if config.path_output is None:
+        raise ValueError("path_output must be specified in the configuration.")
+    step_datetime = rdps_ml1_file.datetime + timedelta(hours=rdps_ml1_file.forecast_hour)
+    day = step_datetime.day
+    hour = step_datetime.hour
+    if [variable_name, year, month, day, hour] in config.debug_rdps_to_zarr_figures:
+        if len(data.shape) == 3:
+            plot_data = data[0, rdps_grid_spec.i_slice, rdps_grid_spec.j_slice]
+        elif len(data.shape) == 4:
+            plot_data = data[0, 0, rdps_grid_spec.i_slice, rdps_grid_spec.j_slice]
+        else:
+            raise RuntimeError("Unexpected number of dimensions.")
+        custom_pcolormesh = CustomPColorMesh(scale_factor=2.0)
+        custom_pcolormesh.plot(
+            plot_data,
+            vmin_quantile=0.01,
+            vmax_quantile=0.99,
+            path_output=Path(config.path_output, f"rdps_raw_{variable_name}_{year}{month:02d}{day:02d}_{hour:02d}.png"),
+        )
+        CustomPColorMesh(scale_factor=2.0).plot(
+            result_reshaped,
+            vmin=custom_pcolormesh.vmin,
+            vmax=custom_pcolormesh.vmax,
+            path_output=Path(
+                config.path_output,
+                f"rdps_regrid_zarr_{variable_name}_{year}{month:02d}{day:02d}_{hour:02d}.png",
+            ),
+        )
+
+
+def rdps_regrid_to_zarr_single_file_processing(
+    config: RDPSToHRDPSConfig,
+    rdps_candidate_file: Path | str,
+    variable_name: str,
+    rdps_to_hrdps_csr_matrix: np.ndarray,
+    hrdps_grid_spec: GridSpecification,
+    rdps_grid_spec: GridSpecification,
+    rlat_coarse: np.ndarray,
+    rlon_coarse: np.ndarray,
+    i_start: int,
+    j_start: int,
+    year: int,
+    month: int,
+    ds_hrdps: xarray.Dataset,
+) -> None:
+    """
+    Process a single RDPS file and regrid it to Zarr format.
+
+    Parameters
+    ----------
+    config : RDPSToHRDPSConfig
+        Configuration object containing paths and settings.
+    rdps_candidate_file : Path | str
+        Path to the RDPS candidate file to process.
+    variable_name : str
+        Name of the variable to process.
+    rdps_to_hrdps_csr_matrix : np.ndarray
+        CSR matrix for regridding RDPS data to HRDPS grid.
+    hrdps_grid_spec : GridSpecification
+        Grid specification for the HRDPS data.
+    rdps_grid_spec : GridSpecification
+        Grid specification for the RDPS data.
+    rlat_coarse : np.ndarray
+        Coarse latitude values for the RDPS grid.
+    rlon_coarse : np.ndarray
+        Coarse longitude values for the RDPS grid.
+    i_start : int
+        Starting index for the HRDPS grid in the i-direction.
+    j_start : int
+        Starting index for the HRDPS grid in the j-direction.
+    year : int
+        Year of the data being processed.
+    month : int
+        Month of the data being processed.
+    ds_hrdps : xarray.Dataset
+        HRDPS dataset corresponding to the regridding operation.
+    """
+    if config.path_output is None:
+        raise ValueError("path_output must be specified in the configuration.")
+    if config.path_rdps is None or config.path_hrdps is None or config.path_preprocessed_zarr is None:
+        raise ValueError(
+            "Both path_rdps, path_hrdps, and path_preprocessed_zarr must be specified in the configuration."
+        )
+    rdps_ml1_file = RDPSML1File(rdps_candidate_file)
+    rdps_variable_handler = rdps_variables_collection[variable_name]
+    rdps_parent_variable_name = rdps_parent_variables.get(variable_name, variable_name)
+    dataset_info = rdps_ml1_individual_file_check(rdps_ml1_file, variable_names=[variable_name])
+    if not dataset_info._properties.get("valid_for_ml", [False, False, False])[2]:
+        return
+    if rdps_variable_handler.cumulative:
+        dataset_info = rdps_ml1_individual_file_check(rdps_ml1_file.previous_file(), variable_names=[variable_name])
+        if not dataset_info._properties.get("valid_for_ml", [False, False, False])[2]:
+            return
+    ds = xarray.open_dataset(rdps_candidate_file, decode_timedelta=False)
+    data = rdps_ml1_data(
+        ds[rdps_parent_variable_name], vertical_level=rdps_vertical_levels.get(variable_name, None), cleanup=True
+    )[..., 1:-1, 1:-1]
+    if rdps_variable_handler.cumulative:
+        ds_previous = xarray.open_dataset(rdps_ml1_file.previous_file().path_nc_file, decode_timedelta=False)
+        data_previous = rdps_ml1_data(
+            ds_previous[rdps_parent_variable_name],
+            vertical_level=rdps_vertical_levels.get(variable_name, None),
+            cleanup=True,
+        )[..., 1:-1, 1:-1]
+        data = data - data_previous
+        ds_previous.close()
+    data_flatten = data.flatten()
+    result_flatten = rdps_to_hrdps_csr_matrix.dot(data_flatten)
+    result_reshaped = result_flatten.reshape(hrdps_grid_spec.tile_lon.shape)
+    path_rdps_coarse_zarr = Path(
+        config.path_preprocessed_zarr,
+        f"rdps_coarse_i_{i_start:04d}_j_{j_start:04d}_size_{config.tile_size:04d}.zarr",
+    )
+    save_rdps_coarse(
+        path_rdps_coarse_zarr,
+        rlat=rlat_coarse,
+        rlon=rlon_coarse,
+        lat=hrdps_grid_spec.tile_lat,
+        lon=hrdps_grid_spec.tile_lon,
+        data=result_reshaped[np.newaxis, :, :],
+        ds_rdps=ds,
+        ds_hrdps=ds_hrdps,
+        variable_name=variable_name,
+        expected_variables=config.rdps_variables,
+        start_datetime=config.rdps_preprocessing_start_datetime,
+        end_datetime=config.rdps_preprocessing_end_datetime,
+    )
+
+    rdps_regrid_to_zarr_debug_figures(
+        config=config,
+        rdps_ml1_file=rdps_ml1_file,
+        data=data,
+        result_reshaped=result_reshaped,
+        rdps_grid_spec=rdps_grid_spec,
+        variable_name=variable_name,
+        year=year,
+        month=month,
+    )
+
+
 def rdps_regrid_to_zarr_from_config(
     config: RDPSToHRDPSConfig, variable_name: str, year: int, month: int, days: list[int] | None = None
 ) -> None:
@@ -722,7 +932,6 @@ def rdps_regrid_to_zarr_from_config(
         raise ValueError("coarsen_factor must be specified in the configuration.")
     if config.tiles_center_lat is None or config.tiles_center_lon is None or config.tile_size is None:
         raise ValueError("tiles_center_lat, tiles_center_lon, and tile_size must be specified in the configuration.")
-    rdps_parent_variable_name = rdps_parent_variables.get(variable_name, variable_name)
     days = days or list(range(1, calendar.monthrange(year, month)[1] + 1))
     forecast_steps = [7, 8, 9, 10, 11, 12]
     rdps_candidate_files = []
@@ -740,8 +949,9 @@ def rdps_regrid_to_zarr_from_config(
                 if rdps_sample_file is None and rdps_candidate_files[-1].is_file():
                     rdps_sample_file = rdps_candidate_files[-1]
     if rdps_sample_file is None:
-        raise FileNotFoundError(f"No RDPS files found for year={year}, month={month:02d}")
-    ds = xarray.open_dataset(rdps_sample_file)
+        logger.debug("No RDPS files found for year=%s, month=%02d.", year, month)
+        return
+    ds = xarray.open_dataset(rdps_sample_file, decode_timedelta=False)
     rdps_grid_spec = GridSpecification(ds["lon"].values, ds["lat"].values)
     rdps_grid_spec.sub_tile(
         key="high_res",
@@ -752,7 +962,7 @@ def rdps_regrid_to_zarr_from_config(
     )
 
     ds_hrdps = xarray.open_dataset(find_hrdps_sample_file(config))
-    hrdps_grid_spec = hrdps_grid_spec_from_ds(config, ds_hrdps)
+    hrdps_grid_spec = hrdps_grid_spec_from_ds(config, ds_hrdps, switch_to_positive_longitudes=True)
     hrdps_grid_spec.active_tile = "coarse"
     # ToDo: find a unique name for the coo_matrix with tiles centers as well
     path_csr_matrix_output = Path(
@@ -773,10 +983,7 @@ def rdps_regrid_to_zarr_from_config(
         save_npz(path_csr_matrix_output, rdps_to_hrdps_csr_matrix)
     else:
         rdps_to_hrdps_csr_matrix = load_npz(path_csr_matrix_output)
-    test_data = ds[rdps_parent_variable_name].values[0, 0, 1:-1, 1:-1]
-    test_flatten = test_data.flatten()
-    test = rdps_to_hrdps_csr_matrix.dot(test_flatten)
-    test_reshaped = test.reshape(hrdps_grid_spec.tile_lon.shape)
+
     hrdps_grid_spec.active_tile = "high_res"
     i_start = hrdps_grid_spec.i_slice.start
     j_start = hrdps_grid_spec.j_slice.start
@@ -794,54 +1001,18 @@ def rdps_regrid_to_zarr_from_config(
 
     hrdps_grid_spec.active_tile = "coarse"
     for rdps_candidate_file in rdps_candidate_files:
-        rdps_ml1_file = RDPSML1File(rdps_candidate_file)
-        dataset_info = rdps_ml1_individual_file_check(rdps_ml1_file, variable_names=[variable_name])
-        if not dataset_info._properties.get("valid_for_ml", [False, False, False])[2]:
-            continue
-        ds = xarray.open_dataset(rdps_candidate_file, decode_timedelta=False)
-        # test_data = ds["TT_model_levels"].values[0, 0, 1:-1, 1:-1]
-        test_data = rdps_ml1_data(
-            ds[rdps_parent_variable_name], vertical_level=rdps_vertical_levels.get(variable_name, None), cleanup=True
-        )[0, 0, 1:-1, 1:-1]
-        test_flatten = test_data.flatten()
-        test = rdps_to_hrdps_csr_matrix.dot(test_flatten)
-        test_reshaped = test.reshape(hrdps_grid_spec.tile_lon.shape)
-        path_rdps_coarse_zarr = Path(
-            config.path_preprocessed_zarr,
-            f"rdps_coarse_i_{i_start:04d}_j_{j_start:04d}_size_{config.tile_size:04d}.zarr",
-        )
-        save_rdps_coarse(
-            path_rdps_coarse_zarr,
-            rlat=rlat_coarse,
-            rlon=rlon_coarse,
-            lat=hrdps_grid_spec.tile_lat,
-            lon=hrdps_grid_spec.tile_lon,
-            data=test_reshaped[np.newaxis, :, :],
-            ds_rdps=ds,
-            ds_hrdps=ds_hrdps,
+        rdps_regrid_to_zarr_single_file_processing(
+            config=config,
+            rdps_candidate_file=rdps_candidate_file,
             variable_name=variable_name,
-            expected_variables=config.rdps_variables,
-            start_datetime=config.rdps_preprocessing_start_datetime,
-            end_datetime=config.rdps_preprocessing_end_datetime,
+            rdps_to_hrdps_csr_matrix=rdps_to_hrdps_csr_matrix,
+            hrdps_grid_spec=hrdps_grid_spec,
+            rdps_grid_spec=rdps_grid_spec,
+            rlat_coarse=rlat_coarse,
+            rlon_coarse=rlon_coarse,
+            i_start=i_start,
+            j_start=j_start,
+            year=year,
+            month=month,
+            ds_hrdps=ds_hrdps,
         )
-
-        day = rdps_ml1_file.datetime.day
-        forecast_hour = rdps_ml1_file.forecast_hour
-        if [variable_name, year, month, day, forecast_hour] in config.debug_rdps_to_zarr_figures:
-            plot_data = ds[rdps_parent_variable_name].values[0, 0, rdps_grid_spec.i_slice, rdps_grid_spec.j_slice]
-            custom_pcolormesh = CustomPColorMesh(scale_factor=2.0)
-            custom_pcolormesh.plot(
-                plot_data,
-                path_output=Path(
-                    config.path_output, f"rdps_{variable_name}_{year}{month:02d}{day:02d}_{forecast_hour:02d}.png"
-                ),
-            )
-            CustomPColorMesh(scale_factor=2.0).plot(
-                test_reshaped,
-                vmin=custom_pcolormesh.vmin,
-                vmax=custom_pcolormesh.vmax,
-                path_output=Path(
-                    config.path_output,
-                    f"rdps_to_hrdps_{variable_name}_{year}{month:02d}{day:02d}_{forecast_hour:02d}.png",
-                ),
-            )

@@ -8,6 +8,7 @@ import numpy as np
 import xarray
 
 from resoterre.data_management.netcdf_utils import CFVariables
+from resoterre.datasets.hrdps.hrdps_integrity_check import hrdps_caspar_data
 from resoterre.datasets.hrdps.hrdps_variables import hrdps_netcdf_attrs
 
 
@@ -151,10 +152,13 @@ def save_hrdps_from_origin(
     )
 
     cf_variables = CFVariables()
+    hrdps_data = hrdps_caspar_data(
+        ds[variable_name], forecast_hours=[7, 8, 9, 10, 11, 12], cleanup=True, unpack_cumulative=True
+    )
     cf_variables.add(
         variable_name,
         dims=("time", "rlat", "rlon"),
-        data=ds[variable_name].values[t_slice, i_slice, j_slice],
+        data=hrdps_data[:, i_slice, j_slice],
         attributes={key: value for key, value in ds[variable_name].attrs.items()},
     )
 

@@ -79,6 +79,24 @@ class RDPSML1File:
         """
         return f"RDPSML1File({self.path_nc_file})"
 
+    def previous_file(self) -> "RDPSML1File":
+        """
+        Get the previous RDPSML1File object based on the current file's datetime and forecast hour.
+
+        Returns
+        -------
+        RDPSML1File
+            The previous RDPSML1File object.
+        """
+        previous_forecast_hour = self.forecast_hour - 1
+        if previous_forecast_hour < 0:
+            raise ValueError("No previous file available for forecast hour 0.")
+        return RDPSML1File(
+            path_data=self.path_data,
+            datetime_input=self.datetime,
+            forecast_hour=previous_forecast_hour,
+        )
+
 
 def rdps_ml1_data(xarray_var: Any, vertical_level: int | None = None, cleanup: bool = False) -> np.ndarray:
     """

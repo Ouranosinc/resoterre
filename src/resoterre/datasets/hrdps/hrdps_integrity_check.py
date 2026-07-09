@@ -130,7 +130,7 @@ class HRDPSCasparFile:
 
 
 def hrdps_caspar_data(
-    xarray_variable: Any, forecast_hours: list[int] | None = None, cleanup: bool = True
+    xarray_variable: Any, forecast_hours: list[int] | None = None, cleanup: bool = True, unpack_cumulative: bool = False
 ) -> np.ndarray:
     """
     Retrieve and optionally clean HRDPS CaSPAr data from an xarray variable.
@@ -143,19 +143,26 @@ def hrdps_caspar_data(
         List of forecast hours to select from the data. If None, all forecast hours are selected.
     cleanup : bool, optional
         Whether to apply cleaning to the data based on variable-specific thresholds.
+    unpack_cumulative : bool, optional
+        Whether to unpack cumulative variables into their individual time step values.
 
     Returns
     -------
     np.ndarray
         The retrieved (and optionally cleaned) HRDPS data as a NumPy array.
     """
+    variable_info = hrdps_variables_collection[xarray_variable.name]
     if forecast_hours is not None:
         if not np.all(np.diff(forecast_hours) == 1):
             raise NotImplementedError(f"Forecast hours {forecast_hours} are not consecutive.")
-        forecast_hours_slice = slice(forecast_hours[0], forecast_hours[-1] + 1)
+        if variable_info.cumulative and unpack_cumulative:
+            if forecast_hours[0] == 0:
+                raise ValueError("Cannot unpack cumulative variable starting from forecast hour 0.")
+            forecast_hours_slice = slice(forecast_hours[0] - 1, forecast_hours[-1] + 1)
+        else:
+            forecast_hours_slice = slice(forecast_hours[0], forecast_hours[-1] + 1)
     else:
         forecast_hours_slice = slice(None)
-    variable_info = hrdps_variables_collection[xarray_variable.name]
     data = xarray_variable[forecast_hours_slice, :, :].data
     if cleanup:
         if variable_info.has_nan_thresholds():
@@ -168,6 +175,8 @@ def hrdps_caspar_data(
                 data[data > variable_info.nan_max] = np.nan
         if variable_info.has_clip_thresholds():
             data = np.clip(data, variable_info.clip_min, variable_info.clip_max)
+    if variable_info.cumulative and unpack_cumulative:
+        data = np.diff(data, axis=0)
     return data
 
 
@@ -245,9 +254,9 @@ def hrdps_caspar_individual_file_check(
         return dataset_info
     dataset_info.set_properties(idx=[global_idx, raw_idx, clean_idx], variable_correct_shape=True, is_bool=True)
 
-    xarray_data = hrdps_caspar_data(xarray_variable, forecast_hours, cleanup=False)
+    xarray_data = hrdps_caspar_data(xarray_variable, forecast_hours, cleanup=False, unpack_cumulative=True)
     dataset_info.set_statistics(idx=raw_idx, data_array=xarray_data)
-    xarray_data = hrdps_caspar_data(xarray_variable, forecast_hours, cleanup=True)
+    xarray_data = hrdps_caspar_data(xarray_variable, forecast_hours, cleanup=True, unpack_cumulative=True)
     dataset_info.set_statistics(idx=clean_idx, data_array=xarray_data)
     dataset_info.set_properties(first_hour_all_zeros=bool(np.all(xarray_data[0, ...] == 0)), is_bool=True)
 
