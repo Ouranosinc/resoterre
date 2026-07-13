@@ -22,6 +22,7 @@ def save_hrdps_from_origin(
     expected_variables: list[str] | None = None,
     start_datetime: datetime | None = None,
     end_datetime: datetime | None = None,
+    path_hrdps_geophysical: Path | None = None,
 ) -> None:
     """
     Save HRDPS data to a Zarr file from the original dataset.
@@ -46,6 +47,8 @@ def save_hrdps_from_origin(
         Start datetime for the time dimension. Required if creating a new Zarr file.
     end_datetime : datetime, optional
         End datetime for the time dimension. Required if creating a new Zarr file.
+    path_hrdps_geophysical : Path, optional
+        Path to the HRDPS geophysical data directory.
     """
     # ToDo: add overwrite option and check is_empty to see if there is a need to write
     expected_variables = expected_variables or [variable_name]
@@ -127,6 +130,20 @@ def save_hrdps_from_origin(
                 ),
                 attributes={key: value for key, value in hrdps_netcdf_attrs[local_variable_name].items()},
             )
+        geophysical_encodings = {}
+        if path_hrdps_geophysical is not None:
+            for geophysical_variable_name in ["orog", "sftlf"]:
+                if Path(path_hrdps_geophysical, f"{geophysical_variable_name}.nc").is_file():
+                    ds_geophysical = xarray.open_dataset(
+                        Path(path_hrdps_geophysical, f"{geophysical_variable_name}.nc")
+                    )
+                    cf_variables.add(
+                        geophysical_variable_name,
+                        dims=("rlat", "rlon"),
+                        data=ds_geophysical[f"HRDPS_{geophysical_variable_name}"][i_slice, j_slice].values,
+                        attributes={},
+                    )
+                    geophysical_encodings[geophysical_variable_name] = {"chunks": (512, 512)}
         Path(path_output).parent.mkdir(parents=True, exist_ok=True)
         ds_output = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs=cf_attrs)
         ds_output.to_zarr(
@@ -139,6 +156,7 @@ def save_hrdps_from_origin(
                 "lon": {"chunks": (512, 512)},
                 "time": {"chunks": (8,)},
                 "is_empty": {"chunks": (len(expected_variables), 8)},
+                **geophysical_encodings,
             },
         )
         del cf_coordinates["time"]

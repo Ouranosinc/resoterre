@@ -238,6 +238,8 @@ class RDPSToHRDPSConfig:
         Path to the preprocessed Zarr data directory.
     path_hrdps : Path, optional
         Path to the raw HRDPS data directory.
+    path_hrdps_geophysical: Path, optional
+        Path to the HRDPS geophysical data directory.
     path_rdps : Path, optional
         Path to the raw RDPS data directory.
     global_start_datetime : datetime, optional
@@ -283,6 +285,7 @@ class RDPSToHRDPSConfig:
     path_output: Path | None = None
     path_preprocessed_zarr: Path | None = None
     path_hrdps: Path | None = None
+    path_hrdps_geophysical: Path | None = None
     path_rdps: Path | None = None
     global_start_datetime: datetime | None = None
     global_end_datetime: datetime | None = None
@@ -661,6 +664,7 @@ def hrdps_to_zarr_from_config(config: RDPSToHRDPSConfig, variable_name: str, yea
                 expected_variables=config.hrdps_variables,
                 start_datetime=config.global_start_datetime,
                 end_datetime=config.global_end_datetime,
+                path_hrdps_geophysical=config.path_hrdps_geophysical,
             )
 
             if [variable_name, year, month, day, forecast_hour] in config.debug_hrdps_to_zarr_figures:
