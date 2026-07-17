@@ -1,4 +1,4 @@
-"""Snakemake workflow for HRDPS hourly to zarr conversion for machine learning workflows.
+"""Snakemake workflow for HRDPS hourly to zarr conversion for machine learning.
 
 To run this workflow, use the command:
 snakemake -s 02_hrdps_to_zarr.smk -j1 --config config_yaml=config.yaml --directory=/workflow_directory

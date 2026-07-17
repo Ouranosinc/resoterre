@@ -1,8 +1,12 @@
 """Module for geospatial utilities."""
 
+from typing import Any
+
 import numpy as np
 from scipy.sparse import coo_matrix
 from shapely.geometry import Polygon
+
+from resoterre.type_checker_utils import type_check_slice
 
 
 def haversine(
@@ -46,6 +50,78 @@ def haversine(
     return c * r
 
 
+class Tile:
+    """
+    Class representing a tile within a grid, defined by its center and corner indices.
+
+    Parameters
+    ----------
+    i_center : int, optional
+        Row index of the tile's center.
+    j_center : int, optional
+        Column index of the tile's center.
+    i_start : int, optional
+        Row index of the tile's starting corner.
+    j_start : int, optional
+        Column index of the tile's starting corner.
+    i_end : int, optional
+        Row index of the tile's ending corner.
+    j_end : int, optional
+        Column index of the tile's ending corner.
+    """
+
+    def __init__(
+        self,
+        i_center: int | None = None,
+        j_center: int | None = None,
+        i_start: int | None = None,
+        j_start: int | None = None,
+        i_end: int | None = None,
+        j_end: int | None = None,
+    ) -> None:
+        self.i_center: int | None = i_center
+        self.j_center: int | None = j_center
+        self.i_start: int | None = i_start
+        self.j_start: int | None = j_start
+        self.i_end: int | None = i_end
+        self.j_end: int | None = j_end
+        self.i_slice: slice | None = None
+        self.j_slice: slice | None = None
+        self.lon: np.ndarray | None = None
+        self.lat: np.ndarray | None = None
+        self.lon_corners: np.ndarray | None = None
+        self.lat_corners: np.ndarray | None = None
+
+        if self.i_start is not None and self.i_end is not None:
+            self.i_slice = slice(self.i_start, self.i_end)
+        if self.j_start is not None and self.j_end is not None:
+            self.j_slice = slice(self.j_start, self.j_end)
+
+    def compute_corners(self, original_grid_lon: np.ndarray, original_grid_lat: np.ndarray) -> None:
+        """
+        Compute the corner coordinates of the tile based on the original grid's longitude and latitude.
+
+        Parameters
+        ----------
+        original_grid_lon : np.ndarray
+            2D array of longitudes for the original grid.
+        original_grid_lat : np.ndarray
+            2D array of latitudes for the original grid.
+        """
+        if self.i_start is None or self.i_end is None or self.j_start is None or self.j_end is None:
+            raise ValueError("Tile indices must be set before computing corners")
+        i_start = self.i_start - 1
+        i_end = self.i_end + 1
+        j_start = self.j_start - 1
+        j_end = self.j_end + 1
+        if i_start < 0 or i_end > original_grid_lon.shape[0] or j_start < 0 or j_end > original_grid_lon.shape[1]:
+            raise ValueError("Cannot compute corners for tile without a 1-cell padding buffer within its grid")
+        lon_tile = original_grid_lon[i_start:i_end, j_start:j_end]
+        lat_tile = original_grid_lat[i_start:i_end, j_start:j_end]
+        self.lon_corners = (lon_tile[:-1, :-1] + lon_tile[1:, :-1] + lon_tile[:-1, 1:] + lon_tile[1:, 1:]) / 4
+        self.lat_corners = (lat_tile[:-1, :-1] + lat_tile[1:, :-1] + lat_tile[:-1, 1:] + lat_tile[1:, 1:]) / 4
+
+
 class GridSpecification:
     """
     Class to specify a grid and its sub-tiles.
@@ -58,72 +134,18 @@ class GridSpecification:
         2D array of latitudes.
     """
 
-    def __init__(self, lon: np.array, lat: np.array) -> None:
+    def __init__(self, lon: np.ndarray, lat: np.ndarray) -> None:
         self.lon = lon
         self.lat = lat
         self.active_tile: str | None = None
-        self.tiles_i_center: dict[str, int] = {}
-        self.tiles_j_center: dict[str, int] = {}
-        self.tiles_i_start: dict[str, int] = {}
-        self.tiles_j_start: dict[str, int] = {}
-        self.tiles_i_end: dict[str, int] = {}
-        self.tiles_j_end: dict[str, int] = {}
-        self.tiles_i_slice: dict[str, slice] = {}
-        self.tiles_j_slice: dict[str, slice] = {}
-        self.tiles_lon: dict[str, np.ndarray] = {}
-        self.tiles_lat: dict[str, np.ndarray] = {}
-        self.tiles_lon_corners: dict[str, np.ndarray] = {}
-        self.tiles_lat_corners: dict[str, np.ndarray] = {}
+        self.tiles: dict[str, Tile] = {}
 
-    def _compute_slices(self, key: str) -> None:
-        """
-        Compute the slices for the tile specified by key.
-
-        Parameters
-        ----------
-        key : str
-            Key of the tile to compute slices for.
-        """
-        self.tiles_i_slice[key] = slice(self.tiles_i_start[key], self.tiles_i_end[key])
-        self.tiles_j_slice[key] = slice(self.tiles_j_start[key], self.tiles_j_end[key])
-
-    def _compute_corners(self, key: str) -> None:
-        """
-        Compute the corners for the tile specified by key.
-
-        Parameters
-        ----------
-        key : str
-            Key of the tile to compute corners for.
-        """
-        i_start = self.tiles_i_start[key] - 1
-        if i_start < 0:
-            raise ValueError("Cannot compute corners for tile with i_start < 1")
-        i_end = self.tiles_i_end[key] + 1
-        if i_end > self.lon.shape[0]:
-            raise ValueError("Cannot compute corners for tile with i_end > lon.shape[0] - 1")
-        j_start = self.tiles_j_start[key] - 1
-        if j_start < 0:
-            raise ValueError("Cannot compute corners for tile with j_start < 1")
-        j_end = self.tiles_j_end[key] + 1
-        if j_end > self.lon.shape[1]:
-            raise ValueError("Cannot compute corners for tile with j_end > lon.shape[1] - 1")
-        lon_tile = self.lon[i_start:i_end, j_start:j_end]
-        lat_tile = self.lat[i_start:i_end, j_start:j_end]
-        lon_corners_mean = (lon_tile[:-1, :-1] + lon_tile[1:, :-1] + lon_tile[:-1, 1:] + lon_tile[1:, 1:]) / 4
-        lat_corners_mean = (lat_tile[:-1, :-1] + lat_tile[1:, :-1] + lat_tile[:-1, 1:] + lat_tile[1:, 1:]) / 4
-        self.tiles_lon_corners[key] = lon_corners_mean
-        self.tiles_lat_corners[key] = lat_corners_mean
+        self._set_inner_tile()
 
     def _set_inner_tile(self) -> None:
         """Set the inner tile, which excludes the boundary cells."""
-        key = "inner"
-        self.tiles_i_start[key] = 1
-        self.tiles_j_start[key] = 1
-        self.tiles_i_end[key] = self.lon.shape[0] - 1
-        self.tiles_j_end[key] = self.lon.shape[1] - 1
-        self._compute_slices(key)
-        self._compute_corners(key)
+        self.tiles["inner"] = Tile(i_start=1, j_start=1, i_end=self.lon.shape[0] - 1, j_end=self.lon.shape[1] - 1)
+        self.tiles["inner"].compute_corners(original_grid_lon=self.lon, original_grid_lat=self.lat)
 
     def sub_tile(
         self,
@@ -152,7 +174,7 @@ class GridSpecification:
         set_to_active : bool, optional
             Whether to set the sub-tile as the active tile.
         """
-        if key in self.tiles_i_center:
+        if key in self.tiles:
             raise ValueError(f"Tile with key {key} already exists")
         if len(self.lon.shape) != 2:
             raise ValueError("Only 2D lon and lat are supported for now")
@@ -162,18 +184,19 @@ class GridSpecification:
         distances = haversine(self.lon, self.lat, tile_center_lon, tile_center_lat)
         if isinstance(distances, float):
             raise ValueError("Distances should be a numpy array, not a float")
-        indices = np.where(distances == distances.min())
-        self.tiles_i_center[key] = indices[0][0]
-        self.tiles_j_center[key] = indices[1][0]
-        self.tiles_i_start[key] = max(self.tiles_i_center[key] - tile_half_size, 0)
-        self.tiles_j_start[key] = max(self.tiles_j_center[key] - tile_half_size, 0)
-        self.tiles_i_end[key] = min(self.tiles_i_center[key] + tile_half_size, self.lon.shape[0])
-        self.tiles_j_end[key] = min(self.tiles_j_center[key] + tile_half_size, self.lon.shape[1])
-        self._compute_slices(key)
-        self.tiles_lon[key] = self.lon[self.tiles_i_slice[key], self.tiles_j_slice[key]]
-        self.tiles_lat[key] = self.lat[self.tiles_i_slice[key], self.tiles_j_slice[key]]
+        indices = np.unravel_index(np.argmin(distances), distances.shape)
+        self.tiles[key] = Tile(
+            i_center=indices[0],
+            j_center=indices[1],
+            i_start=max(indices[0] - tile_half_size, 0),
+            j_start=max(indices[1] - tile_half_size, 0),
+            i_end=min(indices[0] + tile_half_size, self.lon.shape[0]),
+            j_end=min(indices[1] + tile_half_size, self.lon.shape[1]),
+        )
+        self.tiles[key].lon = self.lon[self.tiles[key].i_slice, self.tiles[key].j_slice]
+        self.tiles[key].lat = self.lat[self.tiles[key].i_slice, self.tiles[key].j_slice]
         if compute_corners:
-            self._compute_corners(key)
+            self.tiles[key].compute_corners(original_grid_lon=self.lon, original_grid_lat=self.lat)
 
         if set_to_active:
             self.active_tile = key
@@ -191,20 +214,47 @@ class GridSpecification:
         factor : int
             Coarsening factor.
         """
-        self.tiles_lon_corners[key_coarse] = self.tiles_lon_corners[key][::factor, ::factor]
-        self.tiles_lat_corners[key_coarse] = self.tiles_lat_corners[key][::factor, ::factor]
-        self.tiles_lon[key_coarse] = (
-            self.tiles_lon_corners[key_coarse][:-1, :-1]
-            + self.tiles_lon_corners[key_coarse][1:, :-1]
-            + self.tiles_lon_corners[key_coarse][:-1, 1:]
-            + self.tiles_lon_corners[key_coarse][1:, 1:]
+        lon_corners = self.tiles[key].lon_corners
+        lat_corners = self.tiles[key].lat_corners
+        if lon_corners is None or lat_corners is None:
+            raise ValueError(f"Tile {key} must have computed corners to coarsen")
+        coarse_tile = Tile()
+        coarse_tile.lon_corners = lon_corners[::factor, ::factor]
+        coarse_tile.lat_corners = lat_corners[::factor, ::factor]
+        coarse_tile.lon = (
+            coarse_tile.lon_corners[:-1, :-1]
+            + coarse_tile.lon_corners[1:, :-1]
+            + coarse_tile.lon_corners[:-1, 1:]
+            + coarse_tile.lon_corners[1:, 1:]
         ) / 4
-        self.tiles_lat[key_coarse] = (
-            self.tiles_lat_corners[key_coarse][:-1, :-1]
-            + self.tiles_lat_corners[key_coarse][1:, :-1]
-            + self.tiles_lat_corners[key_coarse][:-1, 1:]
-            + self.tiles_lat_corners[key_coarse][1:, 1:]
+        coarse_tile.lat = (
+            coarse_tile.lat_corners[:-1, :-1]
+            + coarse_tile.lat_corners[1:, :-1]
+            + coarse_tile.lat_corners[:-1, 1:]
+            + coarse_tile.lat_corners[1:, 1:]
         ) / 4
+        self.tiles[key_coarse] = coarse_tile
+
+    def _get_active_tile_property(self, property_name: str) -> Any:
+        """
+        Get a property of the active tile.
+
+        Parameters
+        ----------
+        property_name : str
+            Name of the property to retrieve.
+
+        Returns
+        -------
+        Any
+            The value of the requested property for the active tile.
+        """
+        if self.active_tile is None:
+            raise ValueError("No active tile set")
+        value = getattr(self.tiles[self.active_tile], property_name)
+        if value is None:
+            raise ValueError(f"Property {property_name} is not set for the active tile")
+        return value
 
     @property
     def i_slice(self) -> slice:
@@ -216,9 +266,7 @@ class GridSpecification:
         slice
             The i slice of the active tile.
         """
-        if self.active_tile is None:
-            raise ValueError("No active tile set")
-        return self.tiles_i_slice[self.active_tile]
+        return type_check_slice(self._get_active_tile_property("i_slice"))
 
     @property
     def j_slice(self) -> slice:
@@ -230,9 +278,7 @@ class GridSpecification:
         slice
             The j slice of the active tile.
         """
-        if self.active_tile is None:
-            raise ValueError("No active tile set")
-        return self.tiles_j_slice[self.active_tile]
+        return type_check_slice(self._get_active_tile_property("j_slice"))
 
     @property
     def tile_lon(self) -> np.ndarray:
@@ -244,9 +290,7 @@ class GridSpecification:
         np.ndarray
             The longitude array of the active tile.
         """
-        if self.active_tile is None:
-            raise ValueError("No active tile set")
-        return self.tiles_lon[self.active_tile]
+        return self._get_active_tile_property("lon")
 
     @property
     def tile_lat(self) -> np.ndarray:
@@ -258,9 +302,7 @@ class GridSpecification:
         np.ndarray
             The latitude array of the active tile.
         """
-        if self.active_tile is None:
-            raise ValueError("No active tile set")
-        return self.tiles_lat[self.active_tile]
+        return self._get_active_tile_property("lat")
 
     @property
     def tile_lon_corners(self) -> np.ndarray:
@@ -272,9 +314,7 @@ class GridSpecification:
         np.ndarray
             The longitude corners of the active tile.
         """
-        if self.active_tile is None:
-            raise ValueError("No active tile set")
-        return self.tiles_lon_corners[self.active_tile]
+        return self._get_active_tile_property("lon_corners")
 
     @property
     def tile_lat_corners(self) -> np.ndarray:
@@ -286,12 +326,10 @@ class GridSpecification:
         np.ndarray
             The latitude corners of the active tile.
         """
-        if self.active_tile is None:
-            raise ValueError("No active tile set")
-        return self.tiles_lat_corners[self.active_tile]
+        return self._get_active_tile_property("lat_corners")
 
 
-def add_neighbhors(
+def add_neighbors(
     candidates: list[tuple[int, int]],
     i: int,
     j: int,
@@ -383,7 +421,7 @@ def compute_grids_area_weights(
             j_search = source_grid_closest_indices[1][0]
             candidates = [(i_search, j_search)]
             processed: set[tuple[int, int]] = set()
-            add_neighbhors(
+            add_neighbors(
                 candidates, i_search, j_search, source_grid_lon.shape[0], source_grid_lon.shape[1], excludes=processed
             )
             while candidates:
@@ -415,7 +453,7 @@ def compute_grids_area_weights(
                     rdps_index.append(np.ravel_multi_index(candidate, source_grid_lon.shape))
                     hrdps_index.append(np.ravel_multi_index((i, j), target_grid_spec.tile_lon.shape))
                     fractions.append(fraction)
-                    add_neighbhors(
+                    add_neighbors(
                         candidates,
                         candidate[0],
                         candidate[1],

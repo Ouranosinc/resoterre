@@ -1,5 +1,6 @@
 """Module for processing HRDPS data."""
 
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -7,13 +8,74 @@ import dask.array as da
 import numpy as np
 import xarray
 
+from resoterre.data_management.geo_utils import GridSpecification
 from resoterre.data_management.netcdf_utils import CFVariables
-from resoterre.datasets.hrdps.hrdps_integrity_check import hrdps_caspar_data
+from resoterre.datasets.hrdps import hrdps_integrity_check
 from resoterre.datasets.hrdps.hrdps_variables import hrdps_netcdf_attrs
+from resoterre.plots.nd_plots import CustomPColorMesh
+
+
+@dataclass(frozen=True, slots=True)
+class HRDPSToZarrConfig:
+    """
+    Configuration for HRDPS to Zarr conversion.
+
+    Attributes
+    ----------
+    path_output : Path, optional
+        Path to the output directory where results will be saved.
+    path_preprocessed_zarr : Path, optional
+        Path to the preprocessed Zarr data directory.
+    path_hrdps : Path, optional
+        Path to the raw HRDPS data directory.
+    path_hrdps_geophysical: Path, optional
+        Path to the HRDPS geophysical data directory.
+    conversion_start_datetime : datetime, optional
+        Start datetime for HRDPS to Zarr conversion.
+    conversion_end_datetime : datetime, optional
+        End datetime for HRDPS to Zarr conversion.
+    zarr_start_datetime : datetime, optional
+        Global start datetime for the Zarr file.
+    zarr_end_datetime : datetime, optional
+        Global end datetime for the Zarr file.
+    coarsen_factor : int, optional
+        Factor by which to coarsen the HRDPS grid in the downscaling task.
+    hrdps_variables : list[str]
+        List of HRDPS variable names to process.
+    zarr_hrdps_variables : list[str]
+        List of HRDPS variable names that are initialized in the Zarr file.
+    tile_size : int, optional
+        Size of the tiles for processing.
+    tiles_center_lon : list[float]
+        List of center longitudes for the tiles.
+    tiles_center_lat : list[float]
+        List of center latitudes for the tiles.
+    compute_upscaled_version: bool
+        Whether to also compute an upscaled version of the HRDPS data.
+    debug_hrdps_to_zarr_figures : list
+        List of [variable name, year, month, day, forecast hour] for which to save hrdps to zarr debug figures.
+    """
+
+    path_output: Path | None = None
+    path_preprocessed_zarr: Path | None = None
+    path_hrdps: Path | None = None
+    path_hrdps_geophysical: Path | None = None
+    conversion_start_datetime: datetime | None = None
+    conversion_end_datetime: datetime | None = None
+    zarr_start_datetime: datetime | None = None
+    zarr_end_datetime: datetime | None = None
+    coarsen_factor: int | None = None
+    hrdps_variables: list[str] = field(default_factory=list)
+    zarr_hrdps_variables: list[str] = field(default_factory=list)
+    tile_size: int | None = None
+    tiles_center_lon: list[float] = field(default_factory=list)
+    tiles_center_lat: list[float] = field(default_factory=list)
+    compute_upscaled_version: bool = False
+    debug_hrdps_to_zarr_figures: list[list[str | int]] = field(default_factory=list)
 
 
 def save_hrdps_from_origin(
-    path_output: Path,
+    path_output: Path | str,
     ds: xarray.Dataset,
     variable_name: str,
     t_slice: slice,
@@ -29,7 +91,7 @@ def save_hrdps_from_origin(
 
     Parameters
     ----------
-    path_output : Path
+    path_output : Path | str
         Path to the output Zarr file.
     ds : xarray.Dataset
         HRDPS dataset.
@@ -170,7 +232,7 @@ def save_hrdps_from_origin(
     )
 
     cf_variables = CFVariables()
-    hrdps_data = hrdps_caspar_data(
+    hrdps_data = hrdps_integrity_check.hrdps_caspar_data(
         ds[variable_name], forecast_hours=[7, 8, 9, 10, 11, 12], cleanup=True, unpack_cumulative=True
     )
     cf_variables.add(
@@ -199,3 +261,251 @@ def save_hrdps_from_origin(
     ds_output = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs=cf_attrs)
     ds_output = ds_output.drop_vars(["rlat", "rlon", "lat", "lon", "rotated_pole", "variable_names"])
     ds_output.to_zarr(path_output, region={"time": slice(idx, idx + t_slice.stop - t_slice.start)})
+
+
+def hrdps_grid_spec_from_ds(
+    ds: xarray.Dataset,
+    tile_size: int,
+    coarsen_factor: int,
+    tile_center_lon: float,
+    tile_center_lat: float,
+    switch_to_positive_longitudes: bool = False,
+) -> GridSpecification:
+    """
+    Create a GridSpecification object from an HRDPS dataset.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        HRDPS dataset.
+    tile_size : int
+        Size of the tile.
+    coarsen_factor : int
+        Factor by which to coarsen the high-resolution tile.
+    tile_center_lon : float
+        Longitude of the tile center.
+    tile_center_lat : float
+        Latitude of the tile center.
+    switch_to_positive_longitudes : bool, optional
+        Whether to switch longitudes to positive values.
+
+    Returns
+    -------
+    GridSpecification
+        Grid specification for the HRDPS dataset.
+    """
+    lon = ds["lon"].values
+    if switch_to_positive_longitudes:
+        if lon.min() < 0.0 and lon.max() < 0.0:
+            lon = lon + 360.0
+        else:
+            raise NotImplementedError(
+                "Switching to positive longitudes is only implemented for all negative longitudes."
+            )
+        if tile_center_lon < 0.0:
+            tile_center_lon = tile_center_lon + 360.0
+    hrdps_grid_spec = GridSpecification(lon, ds["lat"].values)
+    hrdps_grid_spec.sub_tile(
+        key="high_res",
+        tile_center_lon=tile_center_lon,
+        tile_center_lat=tile_center_lat,
+        tile_size=tile_size,
+        set_to_active=True,
+    )
+    hrdps_grid_spec.coarsen_tile(key="high_res", key_coarse="coarse", factor=coarsen_factor)
+    return hrdps_grid_spec
+
+
+class HRDPSToZarr:
+    """
+    Class for processing HRDPS data and saving it to Zarr format.
+
+    Parameters
+    ----------
+    config : HRDPSToZarrConfig
+        Configuration for HRDPS to Zarr conversion.
+    """
+
+    def __init__(self, config: HRDPSToZarrConfig) -> None:
+        self.config = config
+        self.zarr_hrdps_variables = config.zarr_hrdps_variables
+        if not self.zarr_hrdps_variables:
+            self.zarr_hrdps_variables = config.hrdps_variables
+        self.zarr_start_datetime = config.zarr_start_datetime
+        if not self.zarr_start_datetime:
+            self.zarr_start_datetime = config.conversion_start_datetime
+        self.zarr_end_datetime = config.zarr_end_datetime
+        if not self.zarr_end_datetime:
+            self.zarr_end_datetime = config.conversion_end_datetime
+
+        if self.config.conversion_start_datetime is None or self.config.conversion_end_datetime is None:
+            raise ValueError(
+                "Both conversion_start_datetime and conversion_end_datetime must be specified in the configuration."
+            )
+        self.start_day = datetime(
+            self.config.conversion_start_datetime.year,
+            self.config.conversion_start_datetime.month,
+            self.config.conversion_start_datetime.day,
+        )
+        self.end_day = datetime(
+            self.config.conversion_end_datetime.year,
+            self.config.conversion_end_datetime.month,
+            self.config.conversion_end_datetime.day,
+        )
+        self.hrdps_grid_spec: GridSpecification | None = None
+        self.path_hrdps_zarr: Path | str | None = None
+
+    def init_grid_spec(self, ds: xarray.Dataset) -> None:
+        """
+        Initialize the grid specification for HRDPS data based on the provided dataset.
+
+        Parameters
+        ----------
+        ds : xarray.Dataset
+            HRDPS dataset used to initialize the grid specification.
+        """
+        if self.config.tile_size is None:
+            raise ValueError("tile_size must be specified in the configuration.")
+        if self.config.coarsen_factor is None:
+            raise ValueError("coarsen_factor must be specified in the configuration.")
+        self.hrdps_grid_spec = hrdps_grid_spec_from_ds(
+            ds,
+            tile_size=self.config.tile_size,
+            coarsen_factor=self.config.coarsen_factor,
+            tile_center_lon=self.config.tiles_center_lon[0],
+            tile_center_lat=self.config.tiles_center_lat[0],
+        )
+        i_start = self.hrdps_grid_spec.i_slice.start
+        j_start = self.hrdps_grid_spec.j_slice.start
+        if i_start is None or j_start is None:
+            raise RuntimeError("i_start or j_start is None. This should not happen.")
+        if self.config.path_preprocessed_zarr is None:
+            raise ValueError("path_preprocessed_zarr must be specified in the configuration.")
+        self.path_hrdps_zarr = Path(
+            self.config.path_preprocessed_zarr,
+            f"hrdps_i_{i_start:04d}_j_{j_start:04d}_size_{self.config.tile_size:04d}.zarr",
+        )
+
+    def process_forecast_hour(self, variable_name: str, current_datetime: datetime, forecast_hour: int) -> None:
+        """
+        Process a single forecast hour for a given variable and date.
+
+        Parameters
+        ----------
+        variable_name : str
+            Name of the variable to process.
+        current_datetime : datetime
+            Current date and time for the forecast.
+        forecast_hour : int
+            Forecast hour for the data.
+        """
+        if self.config.path_hrdps is None:
+            raise ValueError("path_hrdps must be specified in the configuration.")
+        path_hrdps_file = Path(
+            self.config.path_hrdps,
+            "0-12",
+            variable_name,
+            str(current_datetime.year),
+            f"{current_datetime.year}{current_datetime.month:02d}{current_datetime.day:02d}{forecast_hour:02d}.nc",
+        )
+        hrdps_caspar_file = hrdps_integrity_check.HRDPSCasparFile(path_hrdps_file)
+        dataset_info = hrdps_integrity_check.hrdps_caspar_individual_file_check(
+            hrdps_caspar_file, forecast_hours=[7, 8, 9, 10, 11, 12]
+        )
+        if not dataset_info._properties.get("valid_for_ml", [False, False, False])[2]:
+            return
+        ds = xarray.open_dataset(path_hrdps_file)
+        if self.hrdps_grid_spec is None:
+            self.init_grid_spec(ds)
+        if self.hrdps_grid_spec is None:
+            raise RuntimeError("hrdps_grid_spec is None. This should not happen.")
+        if self.path_hrdps_zarr is None:
+            raise RuntimeError("path_hrdps_zarr is None. This should not happen.")
+        save_hrdps_from_origin(
+            self.path_hrdps_zarr,
+            ds,
+            variable_name=variable_name,
+            t_slice=slice(7, 13),
+            i_slice=self.hrdps_grid_spec.i_slice,
+            j_slice=self.hrdps_grid_spec.j_slice,
+            expected_variables=self.zarr_hrdps_variables,
+            start_datetime=self.config.zarr_start_datetime,
+            end_datetime=self.config.zarr_end_datetime,
+            path_hrdps_geophysical=self.config.path_hrdps_geophysical,
+        )
+        if self.config.compute_upscaled_version:
+            raise NotImplementedError("Upscaled version computation is not implemented yet.")
+
+        # ToDo: also allow changing the forecast step?
+        tag = [variable_name, current_datetime.year, current_datetime.month, current_datetime.day, forecast_hour]
+        if tag in self.config.debug_hrdps_to_zarr_figures:
+            self.debug_figures(hrdps_caspar_file, ds, variable_name, current_datetime, forecast_hour)
+
+        ds.close()
+
+    def __call__(self) -> None:
+        """Process all forecast hours for all variables within the specified date range."""
+        for variable_name in self.config.hrdps_variables:
+            current_day = self.start_day
+            while current_day <= self.end_day:
+                for forecast_hour in [0, 6, 12, 18]:
+                    self.process_forecast_hour(variable_name, current_day, forecast_hour)
+                current_day += timedelta(days=1)
+
+    def debug_figures(
+        self,
+        hrdps_caspar_file: hrdps_integrity_check.HRDPSCasparFile,
+        ds: xarray.Dataset,
+        variable_name: str,
+        current_datetime: datetime,
+        forecast_hour: int,
+    ) -> None:
+        """
+        Debug function to save figures for HRDPS to Zarr conversion.
+
+        Parameters
+        ----------
+        hrdps_caspar_file : HRDPSCasparFile
+            HRDPS Caspar file object.
+        ds : xarray.Dataset
+            HRDPS dataset.
+        variable_name : str
+            Name of the variable to plot.
+        current_datetime : datetime
+            Current date and time for the forecast.
+        forecast_hour : int
+            Forecast hour for the data.
+        """
+        if self.hrdps_grid_spec is None:
+            raise RuntimeError("hrdps_grid_spec is None. This should not happen.")
+        plot_data = ds[variable_name].values[7, self.hrdps_grid_spec.i_slice, self.hrdps_grid_spec.j_slice]
+        if variable_name == "HRDPS_P_PR_SFC":
+            plot_data = (
+                plot_data - ds[variable_name].values[6, self.hrdps_grid_spec.i_slice, self.hrdps_grid_spec.j_slice]
+            )
+        custom_pcolormesh = CustomPColorMesh(scale_factor=2.0)
+        if self.config.path_output is None:
+            raise ValueError("path_output must be specified in the configuration for debug figures.")
+        datetime_str = f"{current_datetime.year}{current_datetime.month:02d}{current_datetime.day:02d}"
+        custom_pcolormesh.plot(
+            plot_data,
+            vmin_quantile=0.001,
+            vmax_quantile=0.999,
+            path_output=Path(
+                self.config.path_output,
+                f"hrdps_{variable_name}_{datetime_str}_{forecast_hour:02d}_raw.png",
+            ),
+        )
+        ds_zarr = xarray.open_dataset(self.path_hrdps_zarr)
+        target_datetime = hrdps_caspar_file.datetime + timedelta(hours=7)
+        idx = int(np.where(ds_zarr["time"].values == np.datetime64(target_datetime, "ns"))[0][0])
+        plot_data = ds_zarr[variable_name][idx, :, :].values
+        CustomPColorMesh(scale_factor=2.0).plot(
+            plot_data,
+            vmin=custom_pcolormesh.vmin,
+            vmax=custom_pcolormesh.vmax,
+            path_output=Path(
+                self.config.path_output,
+                f"hrdps_{variable_name}_{datetime_str}_{forecast_hour:02d}_zarr.png",
+            ),
+        )

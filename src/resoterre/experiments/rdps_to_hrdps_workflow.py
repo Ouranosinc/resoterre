@@ -16,7 +16,7 @@ from resoterre.config_utils import config_from_yaml, known_configs
 from resoterre.data_management.geo_utils import GridSpecification, compute_grids_area_weights
 from resoterre.data_management.netcdf_utils import CFVariables
 from resoterre.datasets.hrdps.hrdps_integrity_check import HRDPSCasparFile, hrdps_caspar_individual_file_check
-from resoterre.datasets.hrdps.hrdps_processing import save_hrdps_from_origin
+from resoterre.datasets.hrdps.hrdps_processing import HRDPSToZarr, HRDPSToZarrConfig, hrdps_grid_spec_from_ds
 from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables
 from resoterre.datasets.rdps.rdps_integrity_check import RDPSML1File, rdps_ml1_data, rdps_ml1_individual_file_check
 from resoterre.datasets.rdps.rdps_processing import save_rdps_coarse
@@ -246,6 +246,10 @@ class RDPSToHRDPSConfig:
         Global start datetime for data processing.
     global_end_datetime : datetime, optional
         Global end datetime for data processing.
+    coarsen_factor : int, optional
+        Factor by which to coarsen the HRDPS grid in the downscaling task.
+    hrdps_preprocessing_skip : bool
+        Whether to skip HRDPS preprocessing.
     hrdps_variables : list[str]
         List of HRDPS variable names to process.
     tile_size : int, optional
@@ -258,14 +262,40 @@ class RDPSToHRDPSConfig:
         Start datetime for HRDPS preprocessing.
     hrdps_preprocessing_end_datetime : datetime, optional
         End datetime for HRDPS preprocessing.
+    hrdps_compute_upscaled_version: bool
+        Whether to also compute an upscaled version of the HRDPS data.
+    rdps_preprocessing_skip : bool
+        Whether to skip RDPS preprocessing.
     rdps_variables: list[str]
         List of RDPS variable names to process.
     rdps_preprocessing_start_datetime : datetime, optional
         Start datetime for RDPS preprocessing.
     rdps_preprocessing_end_datetime : datetime, optional
         End datetime for RDPS preprocessing.
-    coarsen_factor : int, optional
-        Factor by which to coarsen the HRDPS grid in the downscaling task.
+    rdps_variables_for_training : list[str], optional
+        List of RDPS variable names to use for training.
+    hrdps_variables_for_training : list[str], optional
+        List of HRDPS variable names to use for training.
+    training_batch_size : int
+        Batch size for training.
+    kernel_size : int
+        Kernel size for the neural network.
+    initial_nb_of_hidden_channels : int
+        Initial number of hidden channels for the neural network.
+    depth : int
+        Depth of the neural network.
+    reduction_ratio : int, optional
+        Squeeze and excitation reduction ratio for the neural network.
+    learning_rate : float
+        Learning rate for training.
+    weight_decay : float, optional
+        Weight decay for training.
+    nb_of_epochs : int
+        Number of epochs for training.
+    num_workers : int
+        Number of workers for data loading.
+    device : str
+        Device to use for training (e.g., "cpu" or "cuda").
     diagnostics : list
         List of diagnostics to perform.
     diagnostic_variables : list
@@ -280,6 +310,10 @@ class RDPSToHRDPSConfig:
         List of [variable name, year, month, day, forecast hour] for which to save hrdps to zarr debug figures.
     debug_rdps_to_zarr_figures : list
         List of [variable name, year, month, day, forecast hour] for which to save rdps to zarr debug figures.
+    debug_num_samples : int, optional
+        Number of sample in the dataset for debugging purposes. If None, all samples are used.
+    debug_training_figures_progression : list[list[int]]
+        Output frequency progression for the training figures.
     """
 
     path_output: Path | None = None
@@ -289,16 +323,31 @@ class RDPSToHRDPSConfig:
     path_rdps: Path | None = None
     global_start_datetime: datetime | None = None
     global_end_datetime: datetime | None = None
+    coarsen_factor: int | None = None
+    hrdps_preprocessing_skip: bool = False
     hrdps_variables: list[str] = field(default_factory=list)
     tile_size: int | None = None
     tiles_center_lon: list[float] = field(default_factory=list)
     tiles_center_lat: list[float] = field(default_factory=list)
     hrdps_preprocessing_start_datetime: datetime | None = None
     hrdps_preprocessing_end_datetime: datetime | None = None
+    hrdps_compute_upscaled_version: bool = False
+    rdps_preprocessing_skip: bool = False
     rdps_variables: list[str] = field(default_factory=list)
     rdps_preprocessing_start_datetime: datetime | None = None
     rdps_preprocessing_end_datetime: datetime | None = None
-    coarsen_factor: int | None = None
+    rdps_variables_for_training: list[str] | None = None
+    hrdps_variables_for_training: list[str] | None = None
+    training_batch_size: int = 32
+    kernel_size: int = 3
+    initial_nb_of_hidden_channels: int = 16
+    depth: int = 2
+    reduction_ratio: int | None = None
+    learning_rate: float = 0.001
+    weight_decay: float | None = None
+    nb_of_epochs: int = 10
+    num_workers: int = 2
+    device: str = "cpu"
     diagnostics: list[str] = field(default_factory=list)
     diagnostic_variables: list[str] = field(default_factory=list)
     diagnostic_time_groupings: list[str] = field(default_factory=list)
@@ -306,6 +355,8 @@ class RDPSToHRDPSConfig:
     diagnostic_end_datetime: datetime | None = None
     debug_hrdps_to_zarr_figures: list[list[str | int]] = field(default_factory=list)
     debug_rdps_to_zarr_figures: list[list[str | int]] = field(default_factory=list)
+    debug_num_samples: int | None = None
+    debug_training_figures_progression: list[list[int]] = field(default_factory=list)
 
 
 def rdps_to_hrdps_parse_config(config: RDPSToHRDPSConfig | Path | str) -> RDPSToHRDPSConfig:
@@ -568,53 +619,6 @@ def inference_from_preprocessed_data(
     return list_of_saved_files
 
 
-def hrdps_grid_spec_from_ds(
-    config: RDPSToHRDPSConfig, ds: xarray.Dataset, switch_to_positive_longitudes: bool = False
-) -> GridSpecification:
-    """
-    Create a GridSpecification object from an HRDPS dataset.
-
-    Parameters
-    ----------
-    config : RDPSToHRDPSConfig
-        Configuration object containing tile information.
-    ds : xarray.Dataset
-        HRDPS dataset.
-    switch_to_positive_longitudes : bool, optional
-        Whether to switch longitudes to positive values.
-
-    Returns
-    -------
-    GridSpecification
-        Grid specification for the HRDPS dataset.
-    """
-    # ToDo: this is not specific to HRDPS. But there is some config structure implied.
-    # Assuming only 1 tiles
-    if config.tile_size is None or config.coarsen_factor is None:
-        raise ValueError("Both tile_size and coarsen_factor must be specified in the configuration.")
-    lon = ds["lon"].values
-    center_lon = config.tiles_center_lon[0]
-    if switch_to_positive_longitudes:
-        if lon.min() < 0.0 and lon.max() < 0.0:
-            lon = lon + 360.0
-        else:
-            raise NotImplementedError(
-                "Switching to positive longitudes is only implemented for all negative longitudes."
-            )
-        if center_lon < 0.0:
-            center_lon = center_lon + 360.0
-    hrdps_grid_spec = GridSpecification(lon, ds["lat"].values)
-    hrdps_grid_spec.sub_tile(
-        key="high_res",
-        tile_center_lon=center_lon,
-        tile_center_lat=config.tiles_center_lat[0],
-        tile_size=config.tile_size,
-        set_to_active=True,
-    )
-    hrdps_grid_spec.coarsen_tile(key="high_res", key_coarse="coarse", factor=config.coarsen_factor)
-    return hrdps_grid_spec
-
-
 def hrdps_to_zarr_from_config(config: RDPSToHRDPSConfig, variable_name: str, year: int, month: int) -> None:
     """
     Convert HRDPS data to Zarr format based on the provided configuration.
@@ -630,76 +634,28 @@ def hrdps_to_zarr_from_config(config: RDPSToHRDPSConfig, variable_name: str, yea
     month : int
         Month of the data to process.
     """
-    if config.path_hrdps is None or config.path_preprocessed_zarr is None:
-        raise ValueError("Both path_hrdps and path_preprocessed_zarr must be specified in the configuration.")
-    path_hrdps_zarr = None
-    hrdps_grid_spec = None
-    for day in list(range(1, calendar.monthrange(year, month)[1] + 1)):
-        for forecast_hour in [0, 6, 12, 18]:
-            path_hrdps_file = Path(
-                config.path_hrdps, "0-12", variable_name, str(year), f"{year}{month:02d}{day:02d}{forecast_hour:02d}.nc"
-            )
-            hrdps_caspar_file = HRDPSCasparFile(path_hrdps_file)
-            dataset_info = hrdps_caspar_individual_file_check(hrdps_caspar_file, forecast_hours=[7, 8, 9, 10, 11, 12])
-            if not dataset_info._properties.get("valid_for_ml", [False, False, False])[2]:
-                continue
-            ds = xarray.open_dataset(path_hrdps_file)
-            if hrdps_grid_spec is None:
-                hrdps_grid_spec = hrdps_grid_spec_from_ds(config, ds)
-                i_start = hrdps_grid_spec.i_slice.start
-                j_start = hrdps_grid_spec.j_slice.start
-                path_hrdps_zarr = Path(
-                    config.path_preprocessed_zarr,
-                    f"hrdps_i_{i_start:04d}_j_{j_start:04d}_size_{config.tile_size:04d}.zarr",
-                )
-            if path_hrdps_zarr is None:
-                raise RuntimeError("path_hrdps_zarr is None. This should not happen.")
-            save_hrdps_from_origin(
-                path_hrdps_zarr,
-                ds,
-                variable_name=variable_name,
-                t_slice=slice(7, 13),
-                i_slice=hrdps_grid_spec.i_slice,
-                j_slice=hrdps_grid_spec.j_slice,
-                expected_variables=config.hrdps_variables,
-                start_datetime=config.global_start_datetime,
-                end_datetime=config.global_end_datetime,
-                path_hrdps_geophysical=config.path_hrdps_geophysical,
-            )
-
-            if [variable_name, year, month, day, forecast_hour] in config.debug_hrdps_to_zarr_figures:
-                # ToDo: also allow changing the forecast step?
-                plot_data = ds[variable_name].values[7, hrdps_grid_spec.i_slice, hrdps_grid_spec.j_slice]
-                if variable_name == "HRDPS_P_PR_SFC":
-                    plot_data = (
-                        plot_data - ds[variable_name].values[6, hrdps_grid_spec.i_slice, hrdps_grid_spec.j_slice]
-                    )
-                custom_pcolormesh = CustomPColorMesh(scale_factor=2.0)
-                if config.path_output is None:
-                    raise ValueError("path_output must be specified in the configuration for debug figures.")
-                custom_pcolormesh.plot(
-                    plot_data,
-                    vmin_quantile=0.001,
-                    vmax_quantile=0.999,
-                    path_output=Path(
-                        config.path_output,
-                        f"hrdps_raw_{variable_name}_{year}{month:02d}{day:02d}_{forecast_hour:02d}.png",
-                    ),
-                )
-                ds_zarr = xarray.open_dataset(path_hrdps_zarr)
-                target_datetime = hrdps_caspar_file.datetime + timedelta(hours=7)
-                idx = int(np.where(ds_zarr["time"].values == np.datetime64(target_datetime, "ns"))[0][0])
-                plot_data = ds_zarr[variable_name][idx, :, :].values
-                CustomPColorMesh(scale_factor=2.0).plot(
-                    plot_data,
-                    vmin=custom_pcolormesh.vmin,
-                    vmax=custom_pcolormesh.vmax,
-                    path_output=Path(
-                        config.path_output,
-                        f"hrdps_zarr_{variable_name}_{year}{month:02d}{day:02d}_{forecast_hour:02d}.png",
-                    ),
-                )
-            ds.close()
+    if config.hrdps_preprocessing_skip:
+        logger.info("HRDPS preprocessing is disabled in the configuration. Skipping HRDPS to Zarr conversion.")
+        return
+    subtask_config = HRDPSToZarrConfig(
+        path_output=config.path_output,
+        path_preprocessed_zarr=config.path_preprocessed_zarr,
+        path_hrdps=config.path_hrdps,
+        path_hrdps_geophysical=config.path_hrdps_geophysical,
+        conversion_start_datetime=datetime(year, month, 1),
+        conversion_end_datetime=datetime(year, month, calendar.monthrange(year, month)[1], 23, 59, 59),
+        zarr_start_datetime=config.global_start_datetime,
+        zarr_end_datetime=config.global_end_datetime,
+        coarsen_factor=config.coarsen_factor,
+        hrdps_variables=[variable_name],
+        zarr_hrdps_variables=config.hrdps_variables,
+        tile_size=config.tile_size,
+        tiles_center_lon=config.tiles_center_lon,
+        tiles_center_lat=config.tiles_center_lat,
+        compute_upscaled_version=config.hrdps_compute_upscaled_version,
+        debug_hrdps_to_zarr_figures=config.debug_hrdps_to_zarr_figures,
+    )
+    HRDPSToZarr(subtask_config)()
 
 
 # ToDo: should be somewhere else
@@ -966,7 +922,14 @@ def rdps_regrid_to_zarr_from_config(
     )
 
     ds_hrdps = xarray.open_dataset(find_hrdps_sample_file(config))
-    hrdps_grid_spec = hrdps_grid_spec_from_ds(config, ds_hrdps, switch_to_positive_longitudes=True)
+    hrdps_grid_spec = hrdps_grid_spec_from_ds(
+        ds=ds_hrdps,
+        tile_size=config.tile_size,
+        coarsen_factor=config.coarsen_factor,
+        tile_center_lon=config.tiles_center_lon[0],
+        tile_center_lat=config.tiles_center_lat[0],
+        switch_to_positive_longitudes=True,
+    )
     hrdps_grid_spec.active_tile = "coarse"
     # ToDo: find a unique name for the coo_matrix with tiles centers as well
     path_csr_matrix_output = Path(
@@ -1020,3 +983,17 @@ def rdps_regrid_to_zarr_from_config(
             month=month,
             ds_hrdps=ds_hrdps,
         )
+
+
+def rdps_to_hrdps_train_from_config(config: RDPSToHRDPSConfig | dict[str, Any] | Path | str, epoch: int) -> None:
+    """
+    Train a U-Net for RDPS to HRDPS downscaling on the provided configuration.
+
+    Parameters
+    ----------
+    config : RDPSToHRDPSConfig
+        Configuration object containing paths and settings.
+    epoch : int
+        Epoch number for training.
+    """
+    raise NotImplementedError("Training from config is not implemented yet.")

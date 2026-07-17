@@ -1,4 +1,4 @@
-"""Snakemake workflow for RDPS hourly to zarr conversion for machine learning workflows.
+"""Snakemake workflow for RDPS hourly to zarr conversion for machine learning.
 
 To run this workflow, use the command:
 snakemake -s 01_rdps_to_zarr.smk -j1 --config config_yaml=config.yaml --directory=/workflow_directory
