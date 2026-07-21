@@ -232,6 +232,8 @@ class RDPSToHRDPSConfig:
 
     Attributes
     ----------
+    path_logs : Path, optional
+        Path to the logs directory.
     path_output : Path, optional
         Path to the output directory where results will be saved.
     path_preprocessed_zarr : Path, optional
@@ -276,6 +278,12 @@ class RDPSToHRDPSConfig:
         List of RDPS variable names to use for training.
     hrdps_variables_for_training : list[str], optional
         List of HRDPS variable names to use for training.
+    hrdps_geophysical_variables_for_training : list[str], optional
+        List of HRDPS geophysical variable names to use for training.
+    validation_period_start: datetime, optional
+        Start datetime for the validation period.
+    test_period_start: datetime, optional
+        Start datetime for the test period. Currently only implemented if after validation_period_start.
     training_batch_size : int
         Batch size for training.
     kernel_size : int
@@ -290,10 +298,20 @@ class RDPSToHRDPSConfig:
         Learning rate for training.
     weight_decay : float, optional
         Weight decay for training.
+    mse_loss_weight : float
+        Weight for the mean squared error loss component.
+    mae_loss_weight : float
+        Weight for the mean absolute error loss component.
+    mass_loss_weight : float
+        Weight for the mass loss component.
+    ssim_loss_weight : float
+        Weight for the structural similarity index loss component.
     nb_of_epochs : int
         Number of epochs for training.
     num_workers : int
         Number of workers for data loading.
+    num_threads : int
+        Number of threads for PyTorch operations.
     device : str
         Device to use for training (e.g., "cpu" or "cuda").
     diagnostics : list
@@ -316,6 +334,7 @@ class RDPSToHRDPSConfig:
         Output frequency progression for the training figures.
     """
 
+    path_logs: Path | None = None
     path_output: Path | None = None
     path_preprocessed_zarr: Path | None = None
     path_hrdps: Path | None = None
@@ -336,8 +355,11 @@ class RDPSToHRDPSConfig:
     rdps_variables: list[str] = field(default_factory=list)
     rdps_preprocessing_start_datetime: datetime | None = None
     rdps_preprocessing_end_datetime: datetime | None = None
-    rdps_variables_for_training: list[str] | None = None
-    hrdps_variables_for_training: list[str] | None = None
+    rdps_variables_for_training: list[str] = field(default_factory=list)
+    hrdps_variables_for_training: list[str] = field(default_factory=list)
+    hrdps_geophysical_variables_for_training: list[str] = field(default_factory=list)
+    validation_period_start: datetime | None = None
+    test_period_start: datetime | None = None
     training_batch_size: int = 32
     kernel_size: int = 3
     initial_nb_of_hidden_channels: int = 16
@@ -345,8 +367,13 @@ class RDPSToHRDPSConfig:
     reduction_ratio: int | None = None
     learning_rate: float = 0.001
     weight_decay: float | None = None
+    mse_loss_weight: float = 1.0
+    mae_loss_weight: float = 0.0
+    mass_loss_weight: float = 0.0
+    ssim_loss_weight: float = 0.0
     nb_of_epochs: int = 10
     num_workers: int = 2
+    num_threads: int = 2
     device: str = "cpu"
     diagnostics: list[str] = field(default_factory=list)
     diagnostic_variables: list[str] = field(default_factory=list)
@@ -983,17 +1010,3 @@ def rdps_regrid_to_zarr_from_config(
             month=month,
             ds_hrdps=ds_hrdps,
         )
-
-
-def rdps_to_hrdps_train_from_config(config: RDPSToHRDPSConfig | dict[str, Any] | Path | str, epoch: int) -> None:
-    """
-    Train a U-Net for RDPS to HRDPS downscaling on the provided configuration.
-
-    Parameters
-    ----------
-    config : RDPSToHRDPSConfig
-        Configuration object containing paths and settings.
-    epoch : int
-        Epoch number for training.
-    """
-    raise NotImplementedError("Training from config is not implemented yet.")
