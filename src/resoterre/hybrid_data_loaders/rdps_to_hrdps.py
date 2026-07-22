@@ -12,7 +12,9 @@ from torch.utils.data import DataLoader, Dataset
 
 from resoterre.config_utils import register_config
 from resoterre.data_management.timeseries import overlapping_datetimes_indices
-from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables, long_variable_name, short_variable_name
+from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables as hrdps_variables_collection
+from resoterre.datasets.hrdps.hrdps_variables import long_variable_name, short_variable_name
+from resoterre.datasets.rdps.rdps_variables import rdps_variables as rdps_variables_collection
 from resoterre.ml.data_loader_utils import (
     DatasetConfig,
     DatasetFromNetCDFSave,
@@ -149,11 +151,11 @@ def post_process_model_output(
             add_climatology = True
         else:
             add_climatology = False
-        normalize_min_local = hrdps_variables[variable_name].normalize_min
+        normalize_min_local = hrdps_variables_collection[variable_name].normalize_min
         if normalize_min_local is None:
             raise ValueError(f"Variable {variable_name} does not have normalization parameters defined.")
         normalize_min: float = normalize_min_local
-        normalize_max_local = hrdps_variables[variable_name].normalize_max
+        normalize_max_local = hrdps_variables_collection[variable_name].normalize_max
         if normalize_max_local is None:
             raise ValueError(f"Variable {variable_name} does not have normalization parameters defined.")
         normalize_max: float = normalize_max_local
@@ -168,8 +170,8 @@ def post_process_model_output(
             known_min=normalize_min,
             known_max=normalize_max,
             mode=(-1, 1),
-            log_normalize=hrdps_variables[variable_name].log_normalize,
-            log_offset=hrdps_variables[variable_name].normalize_log_offset,
+            log_normalize=hrdps_variables_collection[variable_name].log_normalize,
+            log_offset=hrdps_variables_collection[variable_name].normalize_log_offset,
         )
         debug_plots(
             plot_data=output_variables[variable_name][0, 0, :, :],
@@ -300,13 +302,15 @@ class RDPSToHRDPSZarrDataset(Dataset):  # type: ignore[misc]
         List of RDPS variables to include in the dataset.
     hrdps_variables : list[str]
         List of HRDPS variables to include in the dataset.
-    geophysical_variables : list[str] | None
+    geophysical_variables : list[str], optional
         List of geophysical variables to include in the dataset.
-    validation_period_start : datetime.datetime
+    validation_period_start : datetime.datetime, optional
         Start datetime for the validation period.
-    test_period_start : datetime.datetime
+    test_period_start : datetime.datetime, optional
         Start datetime for the test period.
-    debug_num_samples : int
+    test_period_end : datetime.datetime, optional
+        End datetime for the test period. If None, the end of the dataset is used.
+    debug_num_samples : int, optional
         Number of sample in the dataset for debugging purposes. If None, all samples are used.
     """
 
@@ -319,6 +323,7 @@ class RDPSToHRDPSZarrDataset(Dataset):  # type: ignore[misc]
         geophysical_variables: list[str] | None = None,
         validation_period_start: datetime.datetime | None = None,
         test_period_start: datetime.datetime | None = None,
+        test_period_end: datetime.datetime | None = None,
         debug_num_samples: int | None = None,
     ) -> None:
         self.path_zarr_rdps = path_zarr_rdps
@@ -363,6 +368,8 @@ class RDPSToHRDPSZarrDataset(Dataset):  # type: ignore[misc]
         if (validation_period_start is not None) or (test_period_start is not None):
             validation_start_idx = 0
             validation_end_idx = len(self.valid_time_idx)
+            test_start_idx = 0
+            test_end_idx = len(self.valid_time_idx)
             for i, time_idx in enumerate(self.valid_time_idx):
                 current_datetime = rdps_times[time_idx + self.rdps_start_idx]
                 current_datetime = current_datetime.astype("datetime64[us]").astype(object)
@@ -377,8 +384,17 @@ class RDPSToHRDPSZarrDataset(Dataset):  # type: ignore[misc]
                     if self.train_time_idx is None:
                         self.train_time_idx = self.valid_time_idx[:i]
                     validation_end_idx = i
+                    test_start_idx = i
                     self.test_time_idx = self.valid_time_idx[i:]
                     break
+            if test_period_end is not None:
+                for j, time_idx in enumerate(self.valid_time_idx[test_start_idx:]):
+                    current_datetime = rdps_times[time_idx + self.rdps_start_idx]
+                    current_datetime = current_datetime.astype("datetime64[us]").astype(object)
+                    if current_datetime > test_period_end:
+                        test_end_idx = j + test_start_idx
+                        break
+                self.test_time_idx = self.valid_time_idx[test_start_idx:test_end_idx]
             if validation_period_start is not None:
                 self.validation_time_idx = self.valid_time_idx[validation_start_idx:validation_end_idx]
 
@@ -398,7 +414,7 @@ class RDPSToHRDPSZarrDataset(Dataset):  # type: ignore[misc]
     @property
     def split_valid_time_idx(self) -> list[int]:
         """
-        Return the valid time indices for the active split.
+        The valid time indices for the active split.
 
         Returns
         -------
@@ -436,7 +452,13 @@ class RDPSToHRDPSZarrDataset(Dataset):  # type: ignore[misc]
             dtype=np.float32,
         )
         for i, variable_name in enumerate(self.geophysical_variables):
-            input_last_layer[i, :, :] = self.ds_hrdps[variable_name].values
+            input_last_layer[i, :, :] = normalize(
+                self.ds_hrdps[variable_name].values,
+                valid_min=hrdps_variables_collection[variable_name].normalize_min,
+                valid_max=hrdps_variables_collection[variable_name].normalize_max,
+                log_normalize=hrdps_variables_collection[variable_name].log_normalize,
+                log_offset=hrdps_variables_collection[variable_name].normalize_log_offset,
+            )
         return {"input_last_layer": input_last_layer}
 
     def __getitem__(self, idx: int) -> dict[str, np.ndarray]:
@@ -462,8 +484,15 @@ class RDPSToHRDPSZarrDataset(Dataset):  # type: ignore[misc]
         )
         for i, rdps_variable in enumerate(self.rdps_variables):
             rdps_data = self.ds_rdps.isel(time=rdps_idx)[rdps_variable].values
+            # ToDo: some data validation failed and there are still negative precipitations in RDPS
+            if rdps_variables_collection[rdps_variable].log_normalize:
+                rdps_data = np.clip(rdps_data, a_min=0.0, a_max=None)
             input_first_block[i, :, :] = normalize(
-                rdps_data, valid_min=-40.0, valid_max=40.0, log_normalize=False, log_offset=1e-12
+                rdps_data,
+                valid_min=rdps_variables_collection[rdps_variable].normalize_min,
+                valid_max=rdps_variables_collection[rdps_variable].normalize_max,
+                log_normalize=rdps_variables_collection[rdps_variable].log_normalize,
+                log_offset=rdps_variables_collection[rdps_variable].normalize_log_offset,
             )
         if self.ds_hrdps is None:
             self.ds_hrdps = xarray.open_zarr(self.path_zarr_hrdps)
@@ -473,7 +502,11 @@ class RDPSToHRDPSZarrDataset(Dataset):  # type: ignore[misc]
         for i, hrdps_variable in enumerate(self.hrdps_variables):
             hrdps_data = self.ds_hrdps.isel(time=hrdps_idx)[hrdps_variable].values
             target[i, :, :] = normalize(
-                hrdps_data, valid_min=-40.0, valid_max=40.0, log_normalize=False, log_offset=1e-12
+                hrdps_data,
+                valid_min=hrdps_variables_collection[hrdps_variable].normalize_min,
+                valid_max=hrdps_variables_collection[hrdps_variable].normalize_max,
+                log_normalize=hrdps_variables_collection[hrdps_variable].log_normalize,
+                log_offset=hrdps_variables_collection[hrdps_variable].normalize_log_offset,
             )
         current_datetime = self.ds_rdps["time"].values[rdps_idx]
         current_datetime = current_datetime.astype("datetime64[us]").astype(object)

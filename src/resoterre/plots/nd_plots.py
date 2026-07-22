@@ -5,7 +5,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.gridspec import GridSpec
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from resoterre.logging_utils import readable_value
 
@@ -52,9 +51,7 @@ def nd_ax_plot(
         if reverse_i:
             plot_data = plot_data[::-1, :]
         im = ax.imshow(plot_data, cmap="viridis", vmin=vmin, vmax=vmax)
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes("bottom", size="5%", pad=0.5)
-        _ = fig.colorbar(im, cax=cax, orientation="horizontal")
+        _ = fig.colorbar(im, ax=ax, location="bottom", orientation="horizontal", fraction=0.05, pad=0.05)
     else:
         raise NotImplementedError()
     if len(plot_data.shape) == 0:

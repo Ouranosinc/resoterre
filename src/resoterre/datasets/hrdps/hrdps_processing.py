@@ -286,7 +286,7 @@ def hrdps_grid_spec_from_ds(
         Longitude of the tile center.
     tile_center_lat : float
         Latitude of the tile center.
-    switch_to_positive_longitudes : bool, optional
+    switch_to_positive_longitudes : bool
         Whether to switch longitudes to positive values.
 
     Returns

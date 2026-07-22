@@ -314,6 +314,12 @@ class RDPSToHRDPSConfig:
         Number of threads for PyTorch operations.
     device : str
         Device to use for training (e.g., "cpu" or "cuda").
+    inference_variables : list[str]
+        List of variable names to use for inference.
+    inference_start_datetime : datetime, optional
+        Start datetime for inference.
+    inference_end_datetime : datetime, optional
+        End datetime for inference.
     diagnostics : list
         List of diagnostics to perform.
     diagnostic_variables : list
@@ -375,6 +381,9 @@ class RDPSToHRDPSConfig:
     num_workers: int = 2
     num_threads: int = 2
     device: str = "cpu"
+    inference_variables: list[str] = field(default_factory=list)
+    inference_start_datetime: datetime | None = None
+    inference_end_datetime: datetime | None = None
     diagnostics: list[str] = field(default_factory=list)
     diagnostic_variables: list[str] = field(default_factory=list)
     diagnostic_time_groupings: list[str] = field(default_factory=list)

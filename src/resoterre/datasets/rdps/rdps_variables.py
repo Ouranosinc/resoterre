@@ -134,8 +134,8 @@ rdps_variables["PN"] = VariableHandler(
     nan_max=None,
     cumulative=False,
     log_normalize=False,
-    normalize_min=900.0,
-    normalize_max=1100.0,
+    normalize_min=950.0,
+    normalize_max=1050.0,
 )
 rdps_variables["PN_anomaly"] = copy.copy(rdps_variables["PN"])
 rdps_variables["PN_anomaly"].name = "PN_anomaly"

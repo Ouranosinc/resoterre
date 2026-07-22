@@ -107,9 +107,11 @@ class RDPSToHRDPSTrainingFromConfig:
         self.optimizer = optim.Adam(self.unet.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
         self.losses: list[float] = []
         self.minima_tracker = MinimaTracker(minimum_metrics_to_track=["(Loss)", "Loss", "ValidationLoss"])
+        self.minimum_validation_loss_model: Path | None = None
         self.total_iterations = 0
+        self.mse_loss = nn.MSELoss()
 
-    def save_state(self, epoch: int, include_safetensors: bool = False) -> None:
+    def save_state(self, epoch: int, include_safetensors: bool = False, new_validation_minimum: bool = False) -> None:
         """
         Save the current state of the UNet model, optimizer, and training progress.
 
@@ -119,17 +121,22 @@ class RDPSToHRDPSTrainingFromConfig:
             Current epoch number.
         include_safetensors : bool
             Whether to save the model state in safetensors format.
+        new_validation_minimum : bool
+            Whether the current epoch has achieved a new minimum validation loss.
         """
         if self.config.path_output is None:
             raise ValueError("Output path is not specified in the configuration.")
         experiment_name = "skeleton"
         output_path = Path(self.config.path_output, f"{experiment_name}_unet_epoch_{epoch:03d}.pth")
+        if new_validation_minimum:
+            self.minimum_validation_loss_model = output_path
         torch.save(
             {
                 "model_state_dict": self.unet.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
                 "total_iterations": self.total_iterations,
                 "minima_tracker": self.minima_tracker,
+                "minimum_validation_loss_model": str(self.minimum_validation_loss_model),
             },
             output_path,
         )
@@ -169,6 +176,83 @@ class RDPSToHRDPSTrainingFromConfig:
         self.minima_tracker = checkpoint.get(
             "minima_tracker", MinimaTracker(minimum_metrics_to_track=["(Loss)", "Loss", "ValidationLoss"])
         )
+        self.minimum_validation_loss_model = checkpoint.get("minimum_validation_loss_model", str(input_path))
+
+    def to_device(self, device: str) -> None:
+        """
+        Move the UNet model and optimizer to the specified device.
+
+        Parameters
+        ----------
+        device : str
+            Device to move the model and optimizer to (e.g., 'cpu', 'cuda').
+        """
+        self.unet.to(device)
+        for state in self.optimizer.state.values():
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor):
+                    state[k] = v.to(device)
+
+    def training_step(self, item: dict[str, torch.Tensor], epoch: int) -> None:
+        """
+        Training step for a single batch of data.
+
+        Parameters
+        ----------
+        item : dict[str, torch.Tensor]
+            Dictionary containing input and target tensors for the batch.
+        epoch : int
+            Current epoch number.
+        """
+        if self.config.path_output is None:
+            raise ValueError("Output path is not specified in the configuration.")
+        self.optimizer.zero_grad()
+        input_data = item["input_first_block"].to(self.config.device, non_blocking=True)
+        target_data = item["target"].to(self.config.device, non_blocking=True)
+        if "input_last_layer" in item:
+            input_last_layer = item["input_last_layer"].to(self.config.device, non_blocking=True)
+        else:
+            input_last_layer = None
+        output = self.unet(input_data, x_last_layer=input_last_layer)
+        loss_terms = {}
+        weights = []
+        mse_weight = 1.0
+        if mse_weight > 0:
+            loss_terms["mse_loss"] = self.mse_loss(output, target_data)
+            weights.append(mse_weight)
+        # if ssim_weight > 0:
+        #     loss_terms["ssim_loss"] = 1 - ssim_loss(output, target_data)
+        #     weights.append(config.ssim_weight)
+        loss = sum(loss_terms[term] * weight for term, weight in zip(loss_terms.keys(), weights, strict=True))
+        loss.backward()
+        self.optimizer.step()
+        self.losses.append(loss.item())
+        self.total_iterations += 1
+        new_minima = self.minima_tracker.update_minima(
+            iteration=len(self.losses),
+            metrics_values={"Loss": self.losses[-1]},
+            epoch=epoch,
+            return_true_for=["Loss"],
+        )
+        if new_minima:
+            iteration_str = f"{self.total_iterations:7d} (epoch {epoch:2d})"
+            logger.info("Iteration %s, loss: %s (new minimum)", iteration_str, readable_value(self.losses[-1]))
+
+        if self.config.device == "cuda":
+            output = output.detach().cpu().numpy()
+            input_dict = {"input": input_data.detach().cpu().numpy()}
+            target_data = target_data.detach().cpu().numpy()
+            if input_last_layer is not None:
+                input_dict["input_last_layer"] = input_last_layer.detach().cpu().numpy()
+        ml_sample_figures(
+            path_output=Path(self.config.path_output),
+            count=self.total_iterations,
+            input_data=input_dict,
+            target_data=target_data,
+            output_data=output,
+            output_labels=self.config.hrdps_variables_for_training,
+            scheduler=ActionScheduler(every_progression=self.config.debug_training_figures_progression),
+        )
 
     def __call__(self, epoch: int) -> None:
         """
@@ -179,63 +263,14 @@ class RDPSToHRDPSTrainingFromConfig:
         epoch : int
             Current epoch number.
         """
-        if self.config.path_output is None:
-            raise ValueError("Output path is not specified in the configuration.")
         if epoch > 1 and not self.losses:
             self.load_state(epoch=epoch - 1)
         torch.set_num_threads(self.config.num_threads)
-        self.unet.to(self.config.device)
-        for state in self.optimizer.state.values():
-            for k, v in state.items():
-                if isinstance(v, torch.Tensor):
-                    state[k] = v.to(self.config.device)
+        self.to_device(self.config.device)
         self.unet.train()
-        mse_loss = nn.MSELoss()
+        self.mse_loss = nn.MSELoss()
         for item in self.data_loader:
-            self.optimizer.zero_grad()
-            input_data = item["input_first_block"].to(self.config.device, non_blocking=True)
-            target_data = item["target"].to(self.config.device, non_blocking=True)
-            if "input_last_layer" in item:
-                input_last_layer = item["input_last_layer"].to(self.config.device, non_blocking=True)
-            else:
-                input_last_layer = None
-            output = self.unet(input_data, x_last_layer=input_last_layer)
-            loss_terms = {}
-            weights = []
-            mse_weight = 1.0
-            if mse_weight > 0:
-                loss_terms["mse_loss"] = mse_loss(output, target_data)
-                weights.append(mse_weight)
-            # if ssim_weight > 0:
-            #     loss_terms["ssim_loss"] = 1 - ssim_loss(output, target_data)
-            #     weights.append(config.ssim_weight)
-            loss = sum(loss_terms[term] * weight for term, weight in zip(loss_terms.keys(), weights, strict=True))
-            loss.backward()
-            self.optimizer.step()
-            self.losses.append(loss.item())
-            self.total_iterations += 1
-            new_minima = self.minima_tracker.update_minima(
-                iteration=len(self.losses),
-                metrics_values={"Loss": self.losses[-1]},
-                epoch=epoch,
-                return_true_for=["Loss"],
-            )
-            if new_minima:
-                iteration_str = f"{self.total_iterations:7d} (epoch {epoch:2d})"
-                logger.info("Iteration %s, loss: %s (new minimum)", iteration_str, readable_value(self.losses[-1]))
-
-            if self.config.device == "cuda":
-                output = output.detach().cpu()
-                input_data = input_data.detach().cpu()
-                target_data = target_data.detach().cpu()
-            ml_sample_figures(
-                path_output=Path(self.config.path_output),
-                count=self.total_iterations,
-                input_data=input_data,
-                target_data=target_data,
-                output_data=output,
-                scheduler=ActionScheduler(every_progression=self.config.debug_training_figures_progression),
-            )
+            self.training_step(item, epoch=epoch)
         if self.config.validation_period_start:
             self.unet.train(False)
             self.dataset.active_split_name = "validation"
@@ -258,7 +293,7 @@ class RDPSToHRDPSTrainingFromConfig:
                     else:
                         input_last_layer = None
                     output = self.unet(input_data, x_last_layer=input_last_layer)
-                    validation_losses.append(mse_loss(output, target_data).item())
+                    validation_losses.append(self.mse_loss(output, target_data).item())
                 validation_loss = sum(validation_losses) / len(validation_losses)
                 new_minima = self.minima_tracker.update_minima(
                     iteration=len(self.losses),
@@ -272,4 +307,4 @@ class RDPSToHRDPSTrainingFromConfig:
                 logger.info(
                     "End of epoch %2d, validation loss: %s%s", epoch, readable_value(validation_loss), minimum_str
                 )
-        self.save_state(epoch=epoch, include_safetensors=True)
+        self.save_state(epoch=epoch, include_safetensors=True, new_validation_minimum=new_minima)

@@ -144,6 +144,7 @@ hrdps_variables.mapping["HRDPS_P_UUC_10000"] = "P_UUC_10000"
 hrdps_variables.mapping["HRDPS_P_UUC_10000_anomaly"] = "P_UUC_10000_anomaly"
 hrdps_variables.mapping["HRDPS_P_VVC_10000"] = "P_VVC_10000"
 hrdps_variables.mapping["HRDPS_P_VVC_10000_anomaly"] = "P_VVC_10000_anomaly"
+hrdps_variables.mapping["orog"] = "MF"
 
 hrdps_netcdf_attrs = {
     "HRDPS_P_TT_10000": {
