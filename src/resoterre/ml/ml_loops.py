@@ -74,6 +74,8 @@ class MinimumTracker:
         bool
             Whether a new minimum was established.
         """
+        if value is None:
+            return False
         if (self.value is None) or (value < self.value):
             self.epoch = epoch
             self.iteration = iteration
@@ -134,9 +136,8 @@ class MinimaTracker(dict[str, MinimumTracker]):
         for key, value in metrics_values.items():
             if key in self:
                 new_minimum = self[key].update_minimum(iteration, value, epoch=epoch)
-                if new_minimum:
-                    if (return_true_for is None) or ((return_true_for is not None) and (key in return_true_for)):
-                        new_minima = True
+                if new_minimum and (return_true_for is None or key in return_true_for):
+                    new_minima = True
         return new_minima
 
 

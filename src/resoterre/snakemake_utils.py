@@ -3,6 +3,55 @@
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Literal, overload
+
+
+@overload
+def read_manifest(
+    file_path: Path | str, convert_to: Literal["str"] = "str", datetime_format: None = None
+) -> list[str]: ...  # numpydoc ignore=GL08
+@overload
+def read_manifest(
+    file_path: Path | str, convert_to: Literal["Path"], datetime_format: None = None
+) -> list[Path]: ...  # numpydoc ignore=GL08
+@overload
+def read_manifest(
+    file_path: Path | str, convert_to: Literal["datetime"], datetime_format: str
+) -> list[datetime]: ...  # numpydoc ignore=GL08
+
+
+def read_manifest(
+    file_path: Path | str, convert_to: str = "str", datetime_format: str | None = None
+) -> list[str] | list[Path] | list[datetime]:
+    """
+    Read a manifest file and convert entries to the specified type.
+
+    Parameters
+    ----------
+    file_path : Path | str
+        Path to the manifest file.
+    convert_to : str
+        Type to convert the manifest entries to. Options are "str", "Path", or "datetime".
+    datetime_format : str, optional
+        Format string for datetime conversion. Required if convert_to is "datetime".
+
+    Returns
+    -------
+    list[str] | list[Path] | list[datetime]
+        List of manifest entries converted to the specified type.
+    """
+    with Path(file_path).open("r") as f:
+        manifest_content = [line.rstrip("\r\n") for line in f if line.strip()]
+    if convert_to == "str":
+        return manifest_content
+    elif convert_to == "Path":
+        return [Path(s) for s in manifest_content]
+    elif convert_to == "datetime":
+        if datetime_format is None:
+            raise ValueError("datetime_format must be provided when convert_to is 'datetime'")
+        return [datetime.strptime(s, datetime_format) for s in manifest_content]
+    else:
+        raise ValueError(f"Unsupported convert_to value: {convert_to}")
 
 
 def merge_manifests(inputs: list[Path | str], output: Path | str) -> None:
@@ -228,5 +277,5 @@ def split_glob(
         output_directory.mkdir(parents=True, exist_ok=True)
         for i, batch in enumerate(batches):
             manifest_path = Path(output_directory, f"{manifest_prefix}_{str(i).zfill(8)}.txt")
-            manifest_path.write_text("\n".join(str(p) for p in batch))
+            manifest_path.write_text("\n".join(str(p) for p in batch) + "\n")
     return batches

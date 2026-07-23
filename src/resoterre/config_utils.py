@@ -2,14 +2,18 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar, cast
 
 from dacite import Config, from_dict
 
 from resoterre.io_utils import get_yaml_dict
 
 
-default_dacite_config = Config(type_hooks={Path: Path, datetime: datetime.fromisoformat, tuple[str, ...]: tuple})
+T = TypeVar("T")
+
+default_dacite_config = Config(
+    type_hooks={Path: Path, datetime: datetime.fromisoformat, tuple[str, ...]: tuple}, check_types=False
+)
 
 known_configs: dict[str, Any] = {}
 
@@ -102,17 +106,17 @@ def assign_custom_class_to_config_dict(
 
 
 def config_from_yaml(
-    config_cls: Any,
+    config_cls: type[T],
     yaml_obj: dict[str, Any] | Path | str,
     known_custom_config_dict: dict[str, Any] | None = None,
     type_key: str = "type",
-) -> Any:
+) -> T:
     """
     Create a configuration object from a YAML object, handling custom classes.
 
     Parameters
     ----------
-    config_cls : type
+    config_cls : type[T]
         The configuration class to instantiate.
     yaml_obj : dict | Path | str
         The YAML object to convert.
@@ -123,11 +127,11 @@ def config_from_yaml(
 
     Returns
     -------
-    config_cls
+    T
         An instance of the configuration class populated from the YAML object.
     """
     config_dict = get_yaml_dict(yaml_obj)
     assign_custom_class_to_config_dict(
         config_dict, known_custom_config_dict=known_custom_config_dict, type_key=type_key
     )
-    return from_dict(config_cls, config_dict, config=default_dacite_config)
+    return cast(T, from_dict(config_cls, config_dict, config=default_dacite_config))

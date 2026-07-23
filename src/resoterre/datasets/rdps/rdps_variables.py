@@ -7,6 +7,52 @@ from resoterre.data_management.variables import VariableHandler, VariableHandler
 
 vertical_levels = [850, 700, 500, 250]
 
+rdps_parent_variables = {
+    "GZ850": "GZ",
+    "GZ700": "GZ",
+    "GZ500": "GZ",
+    "GZ250": "GZ",
+    "HU850": "HU",
+    "HU700": "HU",
+    "HU500": "HU",
+    "HU250": "HU",
+    "TT850": "TT_pressure_levels",
+    "TT700": "TT_pressure_levels",
+    "TT500": "TT_pressure_levels",
+    "TT250": "TT_pressure_levels",
+    "UU850": "UU_pressure_levels",
+    "UU700": "UU_pressure_levels",
+    "UU500": "UU_pressure_levels",
+    "UU250": "UU_pressure_levels",
+    "VV850": "VV_pressure_levels",
+    "VV700": "VV_pressure_levels",
+    "VV500": "VV_pressure_levels",
+    "VV250": "VV_pressure_levels",
+}
+
+rdps_vertical_levels = {
+    "GZ850": 850,
+    "GZ700": 700,
+    "GZ500": 500,
+    "GZ250": 250,
+    "HU850": 850,
+    "HU700": 700,
+    "HU500": 500,
+    "HU250": 250,
+    "TT850": 850,
+    "TT700": 700,
+    "TT500": 500,
+    "TT250": 250,
+    "UU850": 850,
+    "UU700": 700,
+    "UU500": 500,
+    "UU250": 250,
+    "VV850": 850,
+    "VV700": 700,
+    "VV500": 500,
+    "VV250": 250,
+}
+
 rdps_variables = VariableHandlerCollection()
 
 # hus / specific_humidity in CF Metadata Conventions
@@ -88,8 +134,8 @@ rdps_variables["PN"] = VariableHandler(
     nan_max=None,
     cumulative=False,
     log_normalize=False,
-    normalize_min=900.0,
-    normalize_max=1100.0,
+    normalize_min=950.0,
+    normalize_max=1050.0,
 )
 rdps_variables["PN_anomaly"] = copy.copy(rdps_variables["PN"])
 rdps_variables["PN_anomaly"].name = "PN_anomaly"
@@ -143,8 +189,8 @@ rdps_variables["TT_model_levels"] = VariableHandler(
 )
 rdps_variables["TT_model_levels_anomaly"] = copy.copy(rdps_variables["TT_model_levels"])
 rdps_variables["TT_model_levels_anomaly"].name = "TT_model_levels_anomaly"
-rdps_variables["TT_model_levels_anomaly"].normalize_min = -20.0
-rdps_variables["TT_model_levels_anomaly"].normalize_max = 20.0
+rdps_variables["TT_model_levels_anomaly"].normalize_min = -10.0
+rdps_variables["TT_model_levels_anomaly"].normalize_max = 10.0
 rdps_variables["TT_pressure_levels"] = copy.copy(rdps_variables["TT_model_levels"])
 rdps_variables["TT_pressure_levels"].name = "TT_pressure_levels"
 rdps_variables["TT_pressure_levels"].netcdf_key = "TT_pressure_levels"
@@ -190,8 +236,8 @@ rdps_variables["UU_model_levels"] = VariableHandler(
 )
 rdps_variables["UU_model_levels_anomaly"] = copy.copy(rdps_variables["UU_model_levels"])
 rdps_variables["UU_model_levels_anomaly"].name = "UU_model_levels_anomaly"
-rdps_variables["UU_model_levels_anomaly"].normalize_min = -100.0
-rdps_variables["UU_model_levels_anomaly"].normalize_max = 100.0
+rdps_variables["UU_model_levels_anomaly"].normalize_min = -20.0
+rdps_variables["UU_model_levels_anomaly"].normalize_max = 20.0
 rdps_variables["UU_pressure_levels"] = copy.copy(rdps_variables["UU_model_levels"])
 rdps_variables["UU_pressure_levels"].name = "UU_pressure_levels"
 rdps_variables["UU_pressure_levels"].netcdf_key = "UU_pressure_levels"
@@ -232,8 +278,8 @@ rdps_variables["VV_model_levels"] = VariableHandler(
 )
 rdps_variables["VV_model_levels_anomaly"] = copy.copy(rdps_variables["VV_model_levels"])
 rdps_variables["VV_model_levels_anomaly"].name = "VV_model_levels_anomaly"
-rdps_variables["VV_model_levels_anomaly"].normalize_min = -100.0
-rdps_variables["VV_model_levels_anomaly"].normalize_max = 100.0
+rdps_variables["VV_model_levels_anomaly"].normalize_min = -20.0
+rdps_variables["VV_model_levels_anomaly"].normalize_max = 20.0
 rdps_variables["VV_pressure_levels"] = copy.copy(rdps_variables["VV_model_levels"])
 rdps_variables["VV_pressure_levels"].name = "VV_pressure_levels"
 rdps_variables["VV_pressure_levels"].netcdf_key = "VV_pressure_levels"
@@ -299,3 +345,83 @@ rdps_variables["GZ250"].min = 500.0
 rdps_variables["GZ250"].max = 1500.0
 rdps_variables["GZ250"].mean_min = 900.0
 rdps_variables["GZ250"].mean_max = 1300.0
+
+# ToDo: complete and validate
+rdps_netcdf_attrs = {
+    "GZ500": {
+        "units": "dam",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "GZ850": {
+        "units": "dam",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "HU850": {
+        "units": "1",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "HU700": {
+        "units": "1",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "PC": {
+        "units": "m",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "PN": {
+        "units": "mb",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "PR": {
+        "units": "m",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "TD": {
+        "units": "deg_C",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "TT_model_levels": {
+        "long_name": "Forecast: Air temperature",
+        "units": "deg_C",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "TT850": {
+        "long_name": "Forecast: Air temperature",
+        "units": "deg_C",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "UU_model_levels": {
+        "long_name": "Forecast: Eastward wind",
+        "units": "kts",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "UU850": {
+        "long_name": "Forecast: Eastward wind",
+        "units": "kts",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "VV_model_levels": {
+        "long_name": "Forecast: Northward wind",
+        "units": "kts",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+    "VV850": {
+        "long_name": "Forecast: Northward wind",
+        "units": "kts",
+        "coordinates": "lon lat",
+        "grid_mapping": "rotated_pole",
+    },
+}
