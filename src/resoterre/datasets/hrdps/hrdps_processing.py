@@ -208,6 +208,7 @@ def save_hrdps_from_origin(
                     geophysical_encodings[geophysical_variable_name] = {"chunks": (512, 512)}
         Path(path_output).parent.mkdir(parents=True, exist_ok=True)
         ds_output = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs=cf_attrs)
+        # ToDo: variable encoding for all expected variables, not just the one being saved
         ds_output.to_zarr(
             path_output,
             mode="w",
@@ -261,6 +262,191 @@ def save_hrdps_from_origin(
     ds_output = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs=cf_attrs)
     ds_output = ds_output.drop_vars(["rlat", "rlon", "lat", "lon", "rotated_pole", "variable_names"])
     ds_output.to_zarr(path_output, region={"time": slice(idx, idx + t_slice.stop - t_slice.start)})
+
+
+# ToDo: there is too much duplication in the zarr writing functions.
+def save_hrdps_zarr_format(
+    path_output: Path | str,
+    title: str,
+    institution: str,
+    source: str,
+    ds_hrdps_zarr: xarray.Dataset,
+    variable_name: str,
+    datetimes: list[datetime],
+    data: da.Array | np.ndarray,
+    expected_variables: list[str] | None = None,
+    start_datetime: datetime | None = None,
+    end_datetime: datetime | None = None,
+) -> None:
+    """
+    Save data to a Zarr file corresponding to HRDPS data.
+
+    Parameters
+    ----------
+    path_output : Path | str
+        Path to the output Zarr file.
+    title : str
+        Title for the Zarr dataset.
+    institution : str
+        Institution name for the Zarr dataset.
+    source : str
+        Source information for the Zarr dataset.
+    ds_hrdps_zarr : xarray.Dataset
+        HRDPS dataset in Zarr format.
+    variable_name : str
+        Name of the variable to save.
+    datetimes : list[datetime]
+        List of datetimes corresponding to the time dimension.
+    data : da.Array | np.ndarray
+        Data to be saved, corresponding to the variable and time dimension.
+    expected_variables : list of str, optional
+        List of expected variable names. If None, only the specified variable will be saved.
+    start_datetime : datetime, optional
+        Start datetime for the time dimension. Required if creating a new Zarr file.
+    end_datetime : datetime, optional
+        End datetime for the time dimension. Required if creating a new Zarr file.
+    """
+    # ToDo: add overwrite option and check is_empty to see if there is a need to write
+    expected_variables = expected_variables or [variable_name]
+    ds = ds_hrdps_zarr
+    cf_attrs = {
+        "Conventions": "CF-1.13",
+        "title": title,
+        "history": f"Created on {datetime.now().strftime('%Y-%m-%dT%H:%M:%S')}",
+        "institution": institution,
+        "source": source,
+    }
+    for key, value in ds.attrs.items():
+        if key not in cf_attrs:
+            cf_attrs[key] = value
+
+    cf_coordinates = CFVariables()
+    cf_coordinates.add(
+        "rlat",
+        data=ds["rlat"].values,
+        dtype=np.float32,
+        attributes={key: value for key, value in ds["rlat"].attrs.items()},
+    )
+    cf_coordinates.add(
+        "rlon",
+        data=ds["rlon"].values,
+        dtype=np.float32,
+        attributes={key: value for key, value in ds["rlon"].attrs.items()},
+    )
+    for key in ["lat", "lon"]:
+        cf_coordinates.add(
+            key,
+            dims=("rlat", "rlon"),
+            data=ds[key].values,
+            dtype=np.float32,
+            attributes={key: value for key, value in ds[key].attrs.items()},
+        )
+    cf_coordinates.add(
+        "rotated_pole",
+        dims=(),
+        data=np.array(0, dtype=np.int8),
+        attributes={key: value for key, value in ds["rotated_pole"].attrs.items()},
+    )
+    cf_coordinates.add(
+        "variable_names",
+        dims=("num_variables",),
+        data=np.array(expected_variables, dtype=object),
+    )
+    if not Path(path_output).exists():
+        list_of_datetimes = []
+        current_datetime = start_datetime
+        if current_datetime is None or end_datetime is None:
+            raise ValueError("Both start_datetime and end_datetime must be specified when creating a new Zarr file.")
+        while current_datetime <= end_datetime:
+            list_of_datetimes.append(current_datetime)
+            current_datetime += timedelta(hours=1)
+        cf_coordinates.add(
+            "time",
+            data=np.array(list_of_datetimes, dtype="datetime64[ns]"),
+            dtype=np.float64,
+            attributes={key: value for key, value in ds["time"].attrs.items()},
+        )
+        cf_coordinates.add(
+            "is_empty",
+            dims=("num_variables", "time"),
+            data=np.array(np.ones((len(expected_variables), len(list_of_datetimes))), dtype=np.int8),
+            dtype=np.int8,
+            attributes={"long_name": "Indicates if the time step is empty (1) has been filled with data (0)"},
+        )
+        cf_variables = CFVariables()
+        for local_variable_name in expected_variables:
+            cf_variables.add(
+                local_variable_name,
+                dims=("time", "rlat", "rlon"),
+                data=da.empty(
+                    (len(list_of_datetimes), ds["rlat"].size, ds["rlon"].size),
+                    dtype=np.float32,
+                    chunks=(8, ds["rlat"].size, ds["rlon"].size),
+                ),
+                attributes={key: value for key, value in hrdps_netcdf_attrs[local_variable_name].items()},
+            )
+        geophysical_encodings = {}
+        for geophysical_variable_name in ["orog", "sftlf"]:
+            if geophysical_variable_name in ds_hrdps_zarr:
+                cf_variables.add(
+                    geophysical_variable_name,
+                    dims=("rlat", "rlon"),
+                    data=ds_hrdps_zarr[geophysical_variable_name].values,
+                    attributes={},
+                )
+                geophysical_encodings[geophysical_variable_name] = {"chunks": (512, 512)}
+        Path(path_output).parent.mkdir(parents=True, exist_ok=True)
+        ds_output = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs=cf_attrs)
+        ds_output.to_zarr(
+            path_output,
+            mode="w",
+            compute=False,
+            encoding={
+                variable_name: {"chunks": (8, 512, 512)},
+                "lat": {"chunks": (512, 512)},
+                "lon": {"chunks": (512, 512)},
+                "time": {"chunks": (8,)},
+                "is_empty": {"chunks": (len(expected_variables), 8)},
+                **geophysical_encodings,
+            },
+        )
+        del cf_coordinates["time"]
+        del cf_coordinates["is_empty"]
+
+    cf_coordinates.add(
+        "time",
+        data=datetimes,
+        dtype=np.float64,
+        attributes={key: value for key, value in ds["time"].attrs.items()},
+    )
+
+    cf_variables = CFVariables()
+    cf_variables.add(
+        variable_name,
+        dims=("time", "rlat", "rlon"),
+        data=data,
+        attributes={key: value for key, value in ds[variable_name].attrs.items()},
+    )
+
+    zarr_ds = xarray.open_zarr(path_output)
+    idx = int(np.where(zarr_ds["time"].values == np.array(datetimes, dtype="datetime64[ns]")[0])[0][0])
+    is_empty = zarr_ds["is_empty"][:, idx : idx + len(datetimes)].values
+    variable_idx = expected_variables.index(variable_name)
+    is_empty[variable_idx, :] = 0
+    cf_coordinates.add(
+        "is_empty",
+        dims=(
+            "num_variables",
+            "time",
+        ),
+        data=is_empty,
+        dtype=np.int8,
+        attributes={"long_name": "Indicates if the time step is empty (1) has been filled with data (0)"},
+    )
+    zarr_ds.close()
+    ds_output = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs=cf_attrs)
+    ds_output = ds_output.drop_vars(["rlat", "rlon", "lat", "lon", "rotated_pole", "variable_names"])
+    ds_output.to_zarr(path_output, region={"time": slice(idx, idx + len(datetimes))})
 
 
 def hrdps_grid_spec_from_ds(

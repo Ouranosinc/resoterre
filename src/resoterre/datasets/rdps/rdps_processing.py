@@ -143,6 +143,7 @@ def save_rdps_coarse(
             )
         Path(path_output).parent.mkdir(parents=True, exist_ok=True)
         ds_output = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs=cf_attrs)
+        # ToDo: variable encoding for all expected variables, not just the one being saved
         ds_output.to_zarr(
             path_output,
             mode="w",

@@ -244,6 +244,8 @@ class RDPSToHRDPSConfig:
         Path to the HRDPS geophysical data directory.
     path_rdps : Path, optional
         Path to the raw RDPS data directory.
+    experiment_name: str, optional
+        Name of the experiment.
     global_start_datetime : datetime, optional
         Global start datetime for data processing.
     global_end_datetime : datetime, optional
@@ -346,6 +348,7 @@ class RDPSToHRDPSConfig:
     path_hrdps: Path | None = None
     path_hrdps_geophysical: Path | None = None
     path_rdps: Path | None = None
+    experiment_name: str | None = None
     global_start_datetime: datetime | None = None
     global_end_datetime: datetime | None = None
     coarsen_factor: int | None = None

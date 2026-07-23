@@ -117,7 +117,7 @@ def ml_sample_figure(
     nd_ax_plot(ax_mid, fig, output_plot_data, title="Output", vmin=-1, vmax=1, reverse_i=True)
     ax_right = fig.add_subplot(gs[0, 2])
     nd_ax_plot(ax_right, fig, target_plot_data, title="Target", vmin=-1, vmax=1, reverse_i=True)
-    plt.savefig(Path(path_output, f"training_visualization_{count:07d}_{output_label}.png"), bbox_inches="tight")
+    plt.savefig(Path(path_output, f"training_{count:07d}_{output_label}.png"), bbox_inches="tight")
     plt.close(fig)
 
 
