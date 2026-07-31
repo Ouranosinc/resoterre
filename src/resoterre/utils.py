@@ -3,6 +3,7 @@
 import datetime
 import hashlib
 import os
+from collections.abc import Callable
 from string import Template
 from typing import Any
 
@@ -179,3 +180,85 @@ def unique_hex_digest(unique_elements: Any, length: int = 8) -> str:
         A hexadecimal digest string of the specified length.
     """
     return hashlib.sha256(str(unique_elements).encode()).hexdigest()[0:length]
+
+
+class ActionScheduler:
+    """
+    Class to schedule actions based on steps.
+
+    Parameters
+    ----------
+    steps : list[int] | None
+        List of specific steps to trigger the action.
+    every : int | None
+        Trigger the action every 'every' steps.
+    every_progression : list[tuple[int, int]] | list[list[int]] | None
+        List of tuples specifying step progressions for triggering the action.
+    """
+
+    def __init__(
+        self,
+        steps: list[int] | None = None,
+        every: int | None = None,
+        every_progression: list[tuple[int, int]] | list[list[int]] | None = None,
+    ) -> None:
+        self.steps = steps
+        self.every = every
+        self.every_progression = every_progression
+
+    def __call__(self, step: int) -> bool:
+        """
+        Check if the action should be triggered for the given step.
+
+        Parameters
+        ----------
+        step : int
+            The current step.
+
+        Returns
+        -------
+        bool
+            True if the action should be triggered, False otherwise.
+        """
+        if (self.steps is not None) and (step in self.steps):
+            return True
+        if (self.every is not None) and (step % self.every == 0):
+            return True
+        if self.every_progression is not None:
+            every = None
+            for progression in self.every_progression:
+                if len(progression) != 2:
+                    raise ValueError("Each progression must be a tuple or list of length 2.")
+                step_from, step_every = progression
+                if (step < step_from) and (every is not None):
+                    continue
+                if step >= step_from:
+                    every = step_every
+            if (every is not None) and (step % every == 0):
+                return True
+        return False
+
+
+def load_from_str(input_str: str, convert_fn: Callable[[str], Any] | None = None, allow_none: bool = False) -> Any:
+    """
+    Load a value from a string, optionally converting it using a provided function.
+
+    Parameters
+    ----------
+    input_str : str
+        The input string to load the value from.
+    convert_fn : Callable[[str], Any] | None
+        A function to convert the input string to the desired type. If None, no conversion is performed.
+    allow_none : bool
+        If True, the string "none" (case-insensitive) will be converted to None.
+
+    Returns
+    -------
+    Any
+        The loaded value, either converted or as the original string.
+    """
+    if convert_fn is None:
+        return input_str
+    if allow_none and (input_str.lower() == "none"):
+        return None
+    return convert_fn(input_str)

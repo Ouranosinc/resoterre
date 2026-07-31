@@ -1,5 +1,7 @@
-"""Module for managing time series data with compression capabilities."""
+"""Module for managing time series data."""
 
+from bisect import bisect_left, bisect_right
+from datetime import datetime
 from typing import Any
 
 from resoterre.logging_utils import readable_value
@@ -316,3 +318,47 @@ class MultiTimeseries(dict[str, Timeseries]):
             weights = [count / total_count for count in timeseries.count]
             mean_values[key] = sum(value * weight for value, weight in zip(timeseries.values, weights, strict=True))
         return mean_values
+
+
+def overlapping_datetimes_indices(
+    datetimes_1: list[datetime], datetimes_2: list[datetime]
+) -> tuple[tuple[int, int], tuple[int, int]]:
+    """
+    Find the overlapping indices of two lists of datetimes.
+
+    Parameters
+    ----------
+    datetimes_1 : list[datetime]
+        The first list of datetimes.
+    datetimes_2 : list[datetime]
+        The second list of datetimes.
+
+    Returns
+    -------
+    tuple[tuple[int, int], tuple[int, int]]
+        A tuple containing the start and end indices of the overlapping period in both lists.
+
+    Raises
+    ------
+    ValueError
+        If there is not overlap between the two lists or if one of the lists is empty.
+    """
+    if len(datetimes_1) == 0 or len(datetimes_2) == 0:
+        raise ValueError("One of the datetime lists is empty")
+
+    overlap_start = max(datetimes_1[0], datetimes_2[0])
+    overlap_end = min(datetimes_1[-1], datetimes_2[-1])
+
+    if overlap_start > overlap_end:
+        raise ValueError("No temporal overlap between the two datetime lists")
+
+    start_1 = bisect_left(datetimes_1, overlap_start)
+    end_1 = bisect_right(datetimes_1, overlap_end) - 1
+
+    start_2 = bisect_left(datetimes_2, overlap_start)
+    end_2 = bisect_right(datetimes_2, overlap_end) - 1
+
+    if start_1 > end_1 or start_2 > end_2:
+        raise RuntimeError("Unexpected error in calculating overlapping indices")
+
+    return (start_1, end_1), (start_2, end_2)
