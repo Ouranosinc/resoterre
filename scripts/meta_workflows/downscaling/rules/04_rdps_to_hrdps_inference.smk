@@ -13,6 +13,8 @@ from resoterre.experiments.rdps_to_hrdps_workflow import RDPSToHRDPSConfig
 snakefile_dir = Path(str(workflow.snakefile)).parent
 workflow_dir = Path.cwd()
 config_obj = config_from_yaml(RDPSToHRDPSConfig, config["config_yaml"])
+upstream_manifest = config.get("upstream_manifest")
+upstream_input = [upstream_manifest] if upstream_manifest else []
 
 
 def expected_manifests(wildcards):
@@ -29,6 +31,8 @@ rule all:
 
 
 rule inference:
+    input:
+        upstream_input
     output:
         touch("manifests/rdps_to_hrdps_inference_{variable_name}.done")
     params:

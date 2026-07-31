@@ -6,12 +6,11 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import xarray
 from safetensors.torch import save_file
 from torch.utils import data as td
-from torchmetrics.image import MultiScaleStructuralSimilarityIndexMeasure
+from torchmetrics.image import StructuralSimilarityIndexMeasure
 
-from resoterre.datasets.hrdps.hrdps_processing import hrdps_grid_spec_from_ds
+from resoterre.datasets.hrdps.hrdps_processing import create_hrdps_grid_spec
 from resoterre.experiments import rdps_to_hrdps_workflow
 from resoterre.hybrid_data_loaders.rdps_to_hrdps import RDPSToHRDPSZarrDataset
 from resoterre.logging_utils import readable_value
@@ -43,16 +42,13 @@ class RDPSToHRDPSTrainingFromConfig:
             raise ValueError("Coarsen factor is not specified in the configuration.")
         self.config = config
 
-        ds_hrdps = xarray.open_dataset(rdps_to_hrdps_workflow.find_hrdps_sample_file(config))
-        hrdps_grid_spec = hrdps_grid_spec_from_ds(
-            ds=ds_hrdps,
+        hrdps_grid_spec = create_hrdps_grid_spec(
             tile_size=config.tile_size,
             coarsen_factor=config.coarsen_factor,
             tile_center_lon=config.tiles_center_lon[0],
             tile_center_lat=config.tiles_center_lat[0],
             switch_to_positive_longitudes=True,
         )
-        ds_hrdps.close()
         i_start = hrdps_grid_spec.i_slice.start
         j_start = hrdps_grid_spec.j_slice.start
         path_hrdps_zarr = Path(
@@ -111,7 +107,8 @@ class RDPSToHRDPSTrainingFromConfig:
         self.minimum_validation_loss_model: Path | None = None
         self.total_iterations = 0
         self.mse_loss = nn.MSELoss()
-        self.ssim_loss = MultiScaleStructuralSimilarityIndexMeasure(data_range=(-1.0, 1.0))
+        # self.ssim_loss = MultiScaleStructuralSimilarityIndexMeasure(data_range=(-1.0, 1.0))
+        self.ssim_loss = StructuralSimilarityIndexMeasure(data_range=(-1.0, 1.0))
 
     def save_state(self, epoch: int, include_safetensors: bool = False, new_validation_minimum: bool = False) -> None:
         """
@@ -213,22 +210,24 @@ class RDPSToHRDPSTrainingFromConfig:
             The computed weighted loss.
         """
         loss_components = ["mse", "mae", "mass", "ssim"]
-        loss_weights = [getattr(self.config, f"{loss_term}_loss_weight", 0.0) for loss_term in loss_components]
-        total_weight = sum(loss_weights)
-        loss_terms = {}
-        for loss_term in loss_components:
-            if loss_term == "mse" and self.config.mse_loss_weight > 0:
-                loss_terms["mse_loss"] = self.mse_loss(output, target_data)
-            elif loss_term == "mae" and self.config.mae_loss_weight > 0:
+        loss_weights = {
+            loss_name: getattr(self.config, f"{loss_name}_loss_weight", 0.0) for loss_name in loss_components
+        }
+        total_weight = sum(loss_weights.values())
+        losses = {}
+        for loss_name in loss_components:
+            if loss_name == "mse" and self.config.mse_loss_weight > 0:
+                losses[loss_name] = self.mse_loss(output, target_data)
+            elif loss_name == "mae" and self.config.mae_loss_weight > 0:
                 raise NotImplementedError("MAE loss is not implemented yet.")
-            elif loss_term == "mass" and self.config.mass_loss_weight > 0:
-                loss_terms["mass_loss"] = self.mse_loss(output.mean(dim=(2, 3)), target_data.mean(dim=(2, 3)))
-            elif loss_term == "ssim" and self.config.ssim_loss_weight > 0:
-                loss_terms["ssim_loss"] = 1 - self.ssim_loss(output, target_data)
+            elif loss_name == "mass" and self.config.mass_loss_weight > 0:
+                losses[loss_name] = self.mse_loss(output.mean(dim=(2, 3)), target_data.mean(dim=(2, 3)))
+            elif loss_name == "ssim" and self.config.ssim_loss_weight > 0:
+                losses[loss_name] = 1 - self.ssim_loss(output, target_data)
 
         loss = None
-        for value, weight in zip(loss_terms.values(), loss_weights, strict=True):
-            weight /= total_weight
+        for key, value in losses.items():
+            weight = loss_weights[key] / total_weight
             if loss is None:
                 loss = value * weight
             else:
@@ -328,7 +327,7 @@ class RDPSToHRDPSTrainingFromConfig:
                     else:
                         input_last_layer = None
                     output = self.unet(input_data, x_last_layer=input_last_layer)
-                    validation_losses.append(self.mse_loss(output, target_data).item())
+                    validation_losses.append(self.loss_computation(output, target_data).item())
                 validation_loss = sum(validation_losses) / len(validation_losses)
                 new_minima = self.minima_tracker.update_minima(
                     iteration=len(self.losses),

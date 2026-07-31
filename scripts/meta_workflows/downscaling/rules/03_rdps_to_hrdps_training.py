@@ -29,7 +29,7 @@ if __name__ == "__main__":
                     args.workflow_dir,
                     "logs",
                     "bucket",
-                    f"rdps_to_hrdps_training_epoch_{args.epoch}.log",
+                    f"rdps_to_hrdps_training_epoch_{args.epoch:03d}.log",
                 )
             )
         },
@@ -42,6 +42,7 @@ if __name__ == "__main__":
             "PIL.PngImagePlugin",
             "matplotlib.pyplot",
             "numcodecs",
+            "pyproj",
         ],
     )
 

@@ -22,7 +22,7 @@ class CFVariables(dict[str, xarray.Variable]):
         name: str,
         data: np.ndarray,
         dims: tuple[str, ...] | None = None,
-        attributes: dict[str, str] | None = None,
+        attributes: dict[str, Any] | None = None,
         dtype: object = _notset,
         zlib: bool | object = _notset,
         complevel: int | object = _notset,
@@ -39,7 +39,7 @@ class CFVariables(dict[str, xarray.Variable]):
             Data for the variable.
         dims : tuple[str, ...], optional
             Dimensions of the variable. If None, use the variable name as dimension.
-        attributes : dict[str, str], optional
+        attributes : dict[str, Any], optional
             Attributes for the variable. If None, use an empty dictionary.
         dtype : object
             Data type for the variable. If not set, use the default data type.

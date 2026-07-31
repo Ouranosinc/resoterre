@@ -3,10 +3,12 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import dask.array as da
 import numpy as np
 import xarray
+from pyproj import CRS, Transformer
 
 from resoterre.data_management.geo_utils import GridSpecification
 from resoterre.data_management.netcdf_utils import CFVariables
@@ -74,6 +76,141 @@ class HRDPSToZarrConfig:
     debug_hrdps_to_zarr_figures: list[list[str | int]] = field(default_factory=list)
 
 
+def hrdps_grid_coordinates() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Get the HRDPS grid coordinates.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+        Tuple containing the rotated longitude, rotated latitude, longitude, and latitude arrays.
+    """
+    delta_lon = 0.02250000089406967
+    delta_lat = 0.02250000275671482
+    crs_rotated = CRS.from_cf(
+        {
+            "grid_mapping_name": "rotated_latitude_longitude",
+            "grid_north_pole_latitude": 36.088523864746094,
+            "grid_north_pole_longitude": 65.3051528930664,
+            "earth_radius": 6371220.0,
+            "north_pole_grid_longitude": 0.0,
+        }
+    )
+
+    rlon = np.arange(-14.821219444274902, 42.30628204345703 + delta_lon / 2.0, delta_lon)
+    rlat = np.arange(-12.30250072479248, 16.700000762939453 + delta_lat / 2.0, delta_lat)
+
+    crs_geo = CRS.from_epsg(4326)
+    transformer = Transformer.from_crs(crs_rotated, crs_geo, always_xy=True)
+    rlon2d, rlat2d = np.meshgrid(rlon, rlat)
+    lon, lat = transformer.transform(rlon2d, rlat2d)
+    return rlon, rlat, lon, lat
+
+
+def initialize_hrdps_from_origin(
+    path_output: Path | str,
+    i_slice: slice,
+    j_slice: slice,
+    cf_coordinates: CFVariables,
+    cf_attrs: dict[str, Any],
+    expected_variables: list[str] | None = None,
+    start_datetime: datetime | None = None,
+    end_datetime: datetime | None = None,
+    path_hrdps_geophysical: Path | None = None,
+) -> None:
+    """
+    Initialize a Zarr file for HRDPS data from the original dataset.
+
+    Parameters
+    ----------
+    path_output : Path | str
+        Path to the output Zarr file.
+    i_slice : slice
+        Slice for the i (latitude) dimension.
+    j_slice : slice
+        Slice for the j (longitude) dimension.
+    cf_coordinates : CFVariables
+        CFVariables object containing the coordinates for the Zarr dataset.
+    cf_attrs : dict[str, Any]
+        Dictionary containing the attributes for the Zarr dataset.
+    expected_variables : list of str, optional
+        List of expected variable names. If None, only the specified variable will be saved.
+    start_datetime : datetime, optional
+        Start datetime for the time dimension. Required if creating a new Zarr file.
+    end_datetime : datetime, optional
+        End datetime for the time dimension. Required if creating a new Zarr file.
+    path_hrdps_geophysical : Path, optional
+        Path to the HRDPS geophysical data directory.
+    """
+    expected_variables = expected_variables or []
+    list_of_datetimes = []
+    current_datetime = start_datetime
+    if current_datetime is None or end_datetime is None:
+        raise ValueError("Both start_datetime and end_datetime must be specified when creating a new Zarr file.")
+    while current_datetime <= end_datetime:
+        list_of_datetimes.append(current_datetime)
+        current_datetime += timedelta(hours=1)
+    cf_coordinates.add(
+        "time",
+        data=np.array(list_of_datetimes, dtype="datetime64[ns]"),
+        dtype=np.float64,
+        attributes={"long_name": "time", "standard_name": "time", "axis": "T"},
+    )
+    is_empty_chunking = {}
+    if expected_variables:
+        cf_coordinates.add(
+            "is_empty",
+            dims=("num_variables", "time"),
+            data=np.array(np.ones((len(expected_variables), len(list_of_datetimes))), dtype=np.int8),
+            dtype=np.int8,
+            attributes={"long_name": "Indicates if the time step is empty (1) has been filled with data (0)"},
+        )
+        is_empty_chunking = {"is_empty": {"chunks": (len(expected_variables), 8)}}
+    cf_variables = CFVariables()
+    for local_variable_name in expected_variables:
+        cf_variables.add(
+            local_variable_name,
+            dims=("time", "rlat", "rlon"),
+            data=da.empty(
+                (len(list_of_datetimes), i_slice.stop - i_slice.start, j_slice.stop - j_slice.start),
+                dtype=np.float32,
+                chunks=(8, i_slice.stop - i_slice.start, j_slice.stop - j_slice.start),
+            ),
+            attributes={key: value for key, value in hrdps_netcdf_attrs[local_variable_name].items()},
+        )
+    geophysical_encodings = {}
+    if path_hrdps_geophysical is not None:
+        for geophysical_variable_name in ["orog", "sftlf"]:
+            if Path(path_hrdps_geophysical, f"{geophysical_variable_name}.nc").is_file():
+                ds_geophysical = xarray.open_dataset(Path(path_hrdps_geophysical, f"{geophysical_variable_name}.nc"))
+                cf_variables.add(
+                    geophysical_variable_name,
+                    dims=("rlat", "rlon"),
+                    data=ds_geophysical[f"HRDPS_{geophysical_variable_name}"][i_slice, j_slice].values,
+                    attributes={},
+                )
+                geophysical_encodings[geophysical_variable_name] = {"chunks": (512, 512)}
+    Path(path_output).parent.mkdir(parents=True, exist_ok=True)
+    ds_output = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs=cf_attrs)
+    variable_encodings = {x: {"chunks": (8, 512, 512)} for x in expected_variables}
+    ds_output.to_zarr(
+        path_output,
+        mode="w",
+        compute=False,
+        encoding={
+            **variable_encodings,
+            "lat": {"chunks": (512, 512)},
+            "lon": {"chunks": (512, 512)},
+            "time": {"chunks": (8,)},
+            **is_empty_chunking,
+            **geophysical_encodings,
+        },
+    )
+    del cf_coordinates["time"]
+    if expected_variables:
+        del cf_coordinates["is_empty"]
+
+
 def save_hrdps_from_origin(
     path_output: Path | str,
     ds: xarray.Dataset,
@@ -112,8 +249,12 @@ def save_hrdps_from_origin(
     path_hrdps_geophysical : Path, optional
         Path to the HRDPS geophysical data directory.
     """
+    geophysical_variables = ["orog", "sftlf"]
     # ToDo: add overwrite option and check is_empty to see if there is a need to write
     expected_variables = expected_variables or [variable_name]
+    # Special case when the requested variable is a geophysical field, only initialize the geophysical zarr file
+    if variable_name in geophysical_variables:
+        expected_variables = []
     cf_attrs = {
         "Conventions": "CF-1.13",
         "title": "HRDPS",
@@ -154,76 +295,27 @@ def save_hrdps_from_origin(
         data=np.array(0, dtype=np.int8),
         attributes={key: value for key, value in ds["rotated_pole"].attrs.items()},
     )
-    cf_coordinates.add(
-        "variable_names",
-        dims=("num_variables",),
-        data=np.array(expected_variables, dtype=object),
-    )
+    if expected_variables:
+        cf_coordinates.add(
+            "variable_names",
+            dims=("num_variables",),
+            data=np.array(expected_variables, dtype=object),
+        )
     if not Path(path_output).exists():
-        list_of_datetimes = []
-        current_datetime = start_datetime
-        if current_datetime is None or end_datetime is None:
-            raise ValueError("Both start_datetime and end_datetime must be specified when creating a new Zarr file.")
-        while current_datetime <= end_datetime:
-            list_of_datetimes.append(current_datetime)
-            current_datetime += timedelta(hours=1)
-        cf_coordinates.add(
-            "time",
-            data=np.array(list_of_datetimes, dtype="datetime64[ns]"),
-            dtype=np.float64,
-            attributes={key: value for key, value in ds["time"].attrs.items()},
+        initialize_hrdps_from_origin(
+            path_output=path_output,
+            i_slice=i_slice,
+            j_slice=j_slice,
+            expected_variables=expected_variables,
+            start_datetime=start_datetime,
+            end_datetime=end_datetime,
+            path_hrdps_geophysical=path_hrdps_geophysical,
+            cf_coordinates=cf_coordinates,
+            cf_attrs=cf_attrs,
         )
-        cf_coordinates.add(
-            "is_empty",
-            dims=("num_variables", "time"),
-            data=np.array(np.ones((len(expected_variables), len(list_of_datetimes))), dtype=np.int8),
-            dtype=np.int8,
-            attributes={"long_name": "Indicates if the time step is empty (1) has been filled with data (0)"},
-        )
-        cf_variables = CFVariables()
-        for local_variable_name in expected_variables:
-            cf_variables.add(
-                local_variable_name,
-                dims=("time", "rlat", "rlon"),
-                data=da.empty(
-                    (len(list_of_datetimes), i_slice.stop - i_slice.start, j_slice.stop - j_slice.start),
-                    dtype=np.float32,
-                    chunks=(8, i_slice.stop - i_slice.start, j_slice.stop - j_slice.start),
-                ),
-                attributes={key: value for key, value in hrdps_netcdf_attrs[local_variable_name].items()},
-            )
-        geophysical_encodings = {}
-        if path_hrdps_geophysical is not None:
-            for geophysical_variable_name in ["orog", "sftlf"]:
-                if Path(path_hrdps_geophysical, f"{geophysical_variable_name}.nc").is_file():
-                    ds_geophysical = xarray.open_dataset(
-                        Path(path_hrdps_geophysical, f"{geophysical_variable_name}.nc")
-                    )
-                    cf_variables.add(
-                        geophysical_variable_name,
-                        dims=("rlat", "rlon"),
-                        data=ds_geophysical[f"HRDPS_{geophysical_variable_name}"][i_slice, j_slice].values,
-                        attributes={},
-                    )
-                    geophysical_encodings[geophysical_variable_name] = {"chunks": (512, 512)}
-        Path(path_output).parent.mkdir(parents=True, exist_ok=True)
-        ds_output = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs=cf_attrs)
-        # ToDo: variable encoding for all expected variables, not just the one being saved
-        ds_output.to_zarr(
-            path_output,
-            mode="w",
-            compute=False,
-            encoding={
-                variable_name: {"chunks": (8, 512, 512)},
-                "lat": {"chunks": (512, 512)},
-                "lon": {"chunks": (512, 512)},
-                "time": {"chunks": (8,)},
-                "is_empty": {"chunks": (len(expected_variables), 8)},
-                **geophysical_encodings,
-            },
-        )
-        del cf_coordinates["time"]
-        del cf_coordinates["is_empty"]
+
+    if variable_name in geophysical_variables:
+        return  # No need to write data for geophysical variables, they are already initialized
 
     cf_coordinates.add(
         "time",
@@ -425,7 +517,7 @@ def save_hrdps_zarr_format(
         variable_name,
         dims=("time", "rlat", "rlon"),
         data=data,
-        attributes={key: value for key, value in ds[variable_name].attrs.items()},
+        attributes={key: value for key, value in hrdps_netcdf_attrs[variable_name].items()},
     )
 
     zarr_ds = xarray.open_zarr(path_output)
@@ -449,8 +541,7 @@ def save_hrdps_zarr_format(
     ds_output.to_zarr(path_output, region={"time": slice(idx, idx + len(datetimes))})
 
 
-def hrdps_grid_spec_from_ds(
-    ds: xarray.Dataset,
+def create_hrdps_grid_spec(
     tile_size: int,
     coarsen_factor: int,
     tile_center_lon: float,
@@ -462,8 +553,6 @@ def hrdps_grid_spec_from_ds(
 
     Parameters
     ----------
-    ds : xarray.Dataset
-        HRDPS dataset.
     tile_size : int
         Size of the tile.
     coarsen_factor : int
@@ -480,7 +569,7 @@ def hrdps_grid_spec_from_ds(
     GridSpecification
         Grid specification for the HRDPS dataset.
     """
-    lon = ds["lon"].values
+    _, _, lon, lat = hrdps_grid_coordinates()
     if switch_to_positive_longitudes:
         if lon.min() < 0.0 and lon.max() < 0.0:
             lon = lon + 360.0
@@ -490,7 +579,7 @@ def hrdps_grid_spec_from_ds(
             )
         if tile_center_lon < 0.0:
             tile_center_lon = tile_center_lon + 360.0
-    hrdps_grid_spec = GridSpecification(lon, ds["lat"].values)
+    hrdps_grid_spec = GridSpecification(lon, lat)
     hrdps_grid_spec.sub_tile(
         key="high_res",
         tile_center_lon=tile_center_lon,
@@ -541,21 +630,13 @@ class HRDPSToZarr:
         self.hrdps_grid_spec: GridSpecification | None = None
         self.path_hrdps_zarr: Path | str | None = None
 
-    def init_grid_spec(self, ds: xarray.Dataset) -> None:
-        """
-        Initialize the grid specification for HRDPS data based on the provided dataset.
-
-        Parameters
-        ----------
-        ds : xarray.Dataset
-            HRDPS dataset used to initialize the grid specification.
-        """
+    def init_grid_spec(self) -> None:
+        """Initialize the grid specification for HRDPS data based on the provided dataset."""
         if self.config.tile_size is None:
             raise ValueError("tile_size must be specified in the configuration.")
         if self.config.coarsen_factor is None:
             raise ValueError("coarsen_factor must be specified in the configuration.")
-        self.hrdps_grid_spec = hrdps_grid_spec_from_ds(
-            ds,
+        self.hrdps_grid_spec = create_hrdps_grid_spec(
             tile_size=self.config.tile_size,
             coarsen_factor=self.config.coarsen_factor,
             tile_center_lon=self.config.tiles_center_lon[0],
@@ -586,23 +667,26 @@ class HRDPSToZarr:
             Forecast hour for the data.
         """
         if self.config.path_hrdps is None:
-            raise ValueError("path_hrdps must be specified in the configuration.")
-        path_hrdps_file = Path(
-            self.config.path_hrdps,
-            "0-12",
-            variable_name,
-            str(current_datetime.year),
-            f"{current_datetime.year}{current_datetime.month:02d}{current_datetime.day:02d}{forecast_hour:02d}.nc",
-        )
-        hrdps_caspar_file = hrdps_integrity_check.HRDPSCasparFile(path_hrdps_file)
-        dataset_info = hrdps_integrity_check.hrdps_caspar_individual_file_check(
-            hrdps_caspar_file, forecast_hours=[7, 8, 9, 10, 11, 12]
-        )
-        if not dataset_info._properties.get("valid_for_ml", [False, False, False])[2]:
-            return
-        ds = xarray.open_dataset(path_hrdps_file)
+            if self.config.path_hrdps_geophysical is None:
+                raise ValueError("Either path_hrdps or path_hrdps_geophysical must be specified in the configuration.")
+            ds = xarray.open_dataset(Path(self.config.path_hrdps_geophysical, f"{variable_name}.nc"))
+        else:
+            path_hrdps_file = Path(
+                self.config.path_hrdps,
+                "0-12",
+                variable_name,
+                str(current_datetime.year),
+                f"{current_datetime.year}{current_datetime.month:02d}{current_datetime.day:02d}{forecast_hour:02d}.nc",
+            )
+            hrdps_caspar_file = hrdps_integrity_check.HRDPSCasparFile(path_hrdps_file)
+            dataset_info = hrdps_integrity_check.hrdps_caspar_individual_file_check(
+                hrdps_caspar_file, forecast_hours=[7, 8, 9, 10, 11, 12]
+            )
+            if not dataset_info._properties.get("valid_for_ml", [False, False, False])[2]:
+                return
+            ds = xarray.open_dataset(path_hrdps_file)
         if self.hrdps_grid_spec is None:
-            self.init_grid_spec(ds)
+            self.init_grid_spec()
         if self.hrdps_grid_spec is None:
             raise RuntimeError("hrdps_grid_spec is None. This should not happen.")
         if self.path_hrdps_zarr is None:

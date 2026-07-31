@@ -14,6 +14,8 @@ from resoterre.experiments.rdps_to_hrdps_workflow import RDPSToHRDPSConfig
 snakefile_dir = Path(str(workflow.snakefile)).parent
 workflow_dir = Path.cwd()
 config_obj = config_from_yaml(RDPSToHRDPSConfig, config["config_yaml"])
+upstream_manifest = config.get("upstream_manifest")
+upstream_input = [upstream_manifest] if upstream_manifest else []
 start_datetime = config_obj.hrdps_preprocessing_start_datetime
 end_datetime = config_obj.hrdps_preprocessing_end_datetime
 start_year = start_datetime.year
@@ -32,6 +34,9 @@ def expected_manifests(wildcards):
                 continue
             list_of_expected_manifests.append(
                 f"manifests/hrdps_to_zarr_{hrdps_variable}_{year}{month:02d}.done")
+    if not list_of_expected_manifests and config_obj.hrdps_variables[0] in ["orog", "sftlf"]:
+        list_of_expected_manifests.append(
+            f"manifests/hrdps_to_zarr_init.done")
     return list_of_expected_manifests
 
 
@@ -42,6 +47,8 @@ rule all:
 
 # This initialization rule ensures the initial zarr files is not created multiple time in parallel.
 rule hrdps_to_zarr_init:
+    input:
+        upstream_input
     output:
         touch("manifests/hrdps_to_zarr_init.done"),
         touch(f"manifests/hrdps_to_zarr_{config_obj.hrdps_variables[0]}_{start_year}{start_month:02d}.done")

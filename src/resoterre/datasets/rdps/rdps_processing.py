@@ -19,7 +19,6 @@ def save_rdps_coarse(
     lon: np.ndarray,
     data: da.Array | np.ndarray,
     ds_rdps: xarray.Dataset,
-    ds_hrdps: xarray.Dataset,
     variable_name: str,
     expected_variables: list[str] | None = None,
     start_datetime: datetime | None = None,
@@ -44,8 +43,6 @@ def save_rdps_coarse(
         Data array to save.
     ds_rdps : xarray.Dataset
         RDPS dataset.
-    ds_hrdps : xarray.Dataset
-        HRDPS dataset.
     variable_name : str
         Name of the variable to save.
     expected_variables : list of str, optional
@@ -74,33 +71,65 @@ def save_rdps_coarse(
         "rlat",
         data=rlat,
         dtype=np.float32,
-        attributes={key: value for key, value in ds_hrdps["rlat"].attrs.items()},
+        attributes={
+            "long_name": "latitude in rotated pole grid",
+            "units": "degrees",
+            "standard_name": "grid_latitude",
+            "axis": "Y",
+            "eccc_grid_definition": "grtyp: E, ig1: 1430, ig2: 500, ig3: 56000, ig4: 44000",
+        },
     )
     cf_coordinates.add(
         "rlon",
         data=rlon,
         dtype=np.float32,
-        attributes={key: value for key, value in ds_hrdps["rlon"].attrs.items()},
+        attributes={
+            "long_name": "longitude in rotated pole grid",
+            "units": "degrees",
+            "standard_name": "grid_longitude",
+            "axis": "X",
+            "eccc_grid_definition": "grtyp: E, ig1: 1430, ig2: 500, ig3: 56000, ig4: 44000",
+        },
     )
     cf_coordinates.add(
         "lat",
         dims=("rlat", "rlon"),
         data=lat,
         dtype=np.float32,
-        attributes={key: value for key, value in ds_hrdps["lat"].attrs.items()},
+        attributes={
+            "long_name": "latitude",
+            "units": "degrees_north",
+            "standard_name": "latitude",
+            "axis": "Y",
+            "eccc_grid_definition": "grtyp: Z, ig1: 76826, ig2: 74520, ig3: 1, ig4: 0",
+        },
     )
     cf_coordinates.add(
         "lon",
         dims=("rlat", "rlon"),
         data=lon,
         dtype=np.float32,
-        attributes={key: value for key, value in ds_hrdps["lon"].attrs.items()},
+        attributes={
+            "long_name": "longitude",
+            "units": "degrees_east",
+            "standard_name": "longitude",
+            "axis": "X",
+            "eccc_grid_definition": "grtyp: Z, ig1: 76826, ig2: 74520, ig3: 1, ig4: 0",
+        },
     )
     cf_coordinates.add(
         "rotated_pole",
         dims=(),
         data=np.array(0, dtype=np.int8),
-        attributes={key: value for key, value in ds_hrdps["rotated_pole"].attrs.items()},
+        attributes={
+            "long_name": "coordinates of the rotated North Pole",
+            "grid_mapping_name": "rotated_latitude_longitude",
+            "earth_radius": 6371220.0,
+            "grid_north_pole_latitude": 36.08852,
+            "grid_north_pole_longitude": 65.30515,
+            "north_pole_grid_longitude": 0.0,
+            "longitude_of_prime_meridian": 0.0,
+        },
     )
     cf_coordinates.add(
         "variable_names",

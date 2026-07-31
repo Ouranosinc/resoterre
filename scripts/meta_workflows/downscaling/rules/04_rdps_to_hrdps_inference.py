@@ -42,6 +42,7 @@ if __name__ == "__main__":
             "PIL.PngImagePlugin",
             "matplotlib.pyplot",
             "numcodecs",
+            "pyproj",
         ],
     )
 
@@ -49,6 +50,7 @@ if __name__ == "__main__":
     try:
         rdps_to_hrdps_inference_from_config = RDPSToHRDPSInferenceFromConfig(rdps_to_hrdps_parse_config(args.config))
         rdps_to_hrdps_inference_from_config(inference_variables_subset=[args.variable_name])
+        rdps_to_hrdps_inference_from_config.close()
     except Exception:
-        logger.exception("Error calling RDPSToHRDPSTrainingFromConfig")
+        logger.exception("Error calling RDPSToHRDPSInferenceFromConfig")
         raise

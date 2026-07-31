@@ -350,13 +350,19 @@ class RDPSToHRDPSZarrDataset(Dataset):  # type: ignore[misc]
         ds_rdps.close()
         rdps_is_empty = rdps_is_empty.max(axis=0)
 
-        hrdps_variables_map = {v: i for i, v in enumerate(ds_hrdps["variable_names"].values)}
-        hrdps_variables_idx = [hrdps_variables_map[v] for v in self.hrdps_variables]
-        hrdps_is_empty = ds_hrdps["is_empty"][hrdps_variables_idx, hrdps_slice].values
-        ds_hrdps.close()
-        hrdps_is_empty = hrdps_is_empty.max(axis=0)
+        if "variable_names" in ds_hrdps:
+            hrdps_variables_map = {v: i for i, v in enumerate(ds_hrdps["variable_names"].values)}
+            hrdps_variables_idx = [hrdps_variables_map[v] for v in self.hrdps_variables]
+            hrdps_is_empty = ds_hrdps["is_empty"][hrdps_variables_idx, hrdps_slice].values
+            ds_hrdps.close()
+            hrdps_is_empty = hrdps_is_empty.max(axis=0)
+            self.has_training_data = True
+            combined_is_empty = np.logical_not(np.logical_or(rdps_is_empty, hrdps_is_empty))
+        else:
+            ds_hrdps.close()
+            self.has_training_data = False
+            combined_is_empty = np.logical_not(rdps_is_empty)
 
-        combined_is_empty = np.logical_not(np.logical_or(rdps_is_empty, hrdps_is_empty))
         self.valid_time_idx: list[int] = np.where(combined_is_empty)[0].tolist()
         if debug_num_samples is not None:
             self.valid_time_idx = self.valid_time_idx[:debug_num_samples]
@@ -494,20 +500,23 @@ class RDPSToHRDPSZarrDataset(Dataset):  # type: ignore[misc]
                 log_normalize=rdps_variables_collection[rdps_variable].log_normalize,
                 log_offset=rdps_variables_collection[rdps_variable].normalize_log_offset,
             )
-        if self.ds_hrdps is None:
-            self.ds_hrdps = xarray.open_zarr(self.path_zarr_hrdps)
-        target = np.zeros(
-            (len(self.hrdps_variables), self.ds_hrdps.sizes["rlat"], self.ds_hrdps.sizes["rlon"]), dtype=np.float32
-        )
-        for i, hrdps_variable in enumerate(self.hrdps_variables):
-            hrdps_data = self.ds_hrdps.isel(time=hrdps_idx)[hrdps_variable].values
-            target[i, :, :] = normalize(
-                hrdps_data,
-                valid_min=hrdps_variables_collection[hrdps_variable].normalize_min,
-                valid_max=hrdps_variables_collection[hrdps_variable].normalize_max,
-                log_normalize=hrdps_variables_collection[hrdps_variable].log_normalize,
-                log_offset=hrdps_variables_collection[hrdps_variable].normalize_log_offset,
+        if self.has_training_data:
+            if self.ds_hrdps is None:
+                self.ds_hrdps = xarray.open_zarr(self.path_zarr_hrdps)
+            target = np.zeros(
+                (len(self.hrdps_variables), self.ds_hrdps.sizes["rlat"], self.ds_hrdps.sizes["rlon"]), dtype=np.float32
             )
+            for i, hrdps_variable in enumerate(self.hrdps_variables):
+                hrdps_data = self.ds_hrdps.isel(time=hrdps_idx)[hrdps_variable].values
+                target[i, :, :] = normalize(
+                    hrdps_data,
+                    valid_min=hrdps_variables_collection[hrdps_variable].normalize_min,
+                    valid_max=hrdps_variables_collection[hrdps_variable].normalize_max,
+                    log_normalize=hrdps_variables_collection[hrdps_variable].log_normalize,
+                    log_offset=hrdps_variables_collection[hrdps_variable].normalize_log_offset,
+                )
+        else:
+            target = np.zeros((0, self.ds_rdps.sizes["rlat"], self.ds_rdps.sizes["rlon"]), dtype=np.float32)
         current_datetime = self.ds_rdps["time"].values[rdps_idx]
         current_datetime = current_datetime.astype("datetime64[us]").astype(object)
         return {

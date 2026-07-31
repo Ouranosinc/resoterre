@@ -16,7 +16,12 @@ from resoterre.config_utils import config_from_yaml, known_configs
 from resoterre.data_management.geo_utils import GridSpecification, compute_grids_area_weights
 from resoterre.data_management.netcdf_utils import CFVariables
 from resoterre.datasets.hrdps.hrdps_integrity_check import HRDPSCasparFile, hrdps_caspar_individual_file_check
-from resoterre.datasets.hrdps.hrdps_processing import HRDPSToZarr, HRDPSToZarrConfig, hrdps_grid_spec_from_ds
+from resoterre.datasets.hrdps.hrdps_processing import (
+    HRDPSToZarr,
+    HRDPSToZarrConfig,
+    create_hrdps_grid_spec,
+    hrdps_grid_coordinates,
+)
 from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables
 from resoterre.datasets.rdps.rdps_integrity_check import RDPSML1File, rdps_ml1_data, rdps_ml1_individual_file_check
 from resoterre.datasets.rdps.rdps_processing import save_rdps_coarse
@@ -322,6 +327,10 @@ class RDPSToHRDPSConfig:
         Start datetime for inference.
     inference_end_datetime : datetime, optional
         End datetime for inference.
+    path_inference_model : Path | str, optional
+        Path to the inference model.
+    inference_device : str, optional
+        Device to use for inference (e.g., "cpu" or "cuda").
     diagnostics : list
         List of diagnostics to perform.
     diagnostic_variables : list
@@ -387,6 +396,8 @@ class RDPSToHRDPSConfig:
     inference_variables: list[str] = field(default_factory=list)
     inference_start_datetime: datetime | None = None
     inference_end_datetime: datetime | None = None
+    path_inference_model: Path | str | None = None
+    inference_device: str | None = None
     diagnostics: list[str] = field(default_factory=list)
     diagnostic_variables: list[str] = field(default_factory=list)
     diagnostic_time_groupings: list[str] = field(default_factory=list)
@@ -805,7 +816,6 @@ def rdps_regrid_to_zarr_single_file_processing(
     j_start: int,
     year: int,
     month: int,
-    ds_hrdps: xarray.Dataset,
 ) -> None:
     """
     Process a single RDPS file and regrid it to Zarr format.
@@ -836,15 +846,11 @@ def rdps_regrid_to_zarr_single_file_processing(
         Year of the data being processed.
     month : int
         Month of the data being processed.
-    ds_hrdps : xarray.Dataset
-        HRDPS dataset corresponding to the regridding operation.
     """
     if config.path_output is None:
         raise ValueError("path_output must be specified in the configuration.")
-    if config.path_rdps is None or config.path_hrdps is None or config.path_preprocessed_zarr is None:
-        raise ValueError(
-            "Both path_rdps, path_hrdps, and path_preprocessed_zarr must be specified in the configuration."
-        )
+    if config.path_rdps is None or config.path_preprocessed_zarr is None:
+        raise ValueError("Both path_rdps and path_preprocessed_zarr must be specified in the configuration.")
     rdps_ml1_file = RDPSML1File(rdps_candidate_file)
     rdps_variable_handler = rdps_variables_collection[variable_name]
     rdps_parent_variable_name = rdps_parent_variables.get(variable_name, variable_name)
@@ -883,11 +889,10 @@ def rdps_regrid_to_zarr_single_file_processing(
         lon=hrdps_grid_spec.tile_lon,
         data=result_reshaped[np.newaxis, :, :],
         ds_rdps=ds,
-        ds_hrdps=ds_hrdps,
         variable_name=variable_name,
         expected_variables=config.rdps_variables,
-        start_datetime=config.rdps_preprocessing_start_datetime,
-        end_datetime=config.rdps_preprocessing_end_datetime,
+        start_datetime=config.global_start_datetime,
+        end_datetime=config.global_end_datetime,
     )
 
     rdps_regrid_to_zarr_debug_figures(
@@ -923,10 +928,8 @@ def rdps_regrid_to_zarr_from_config(
     """
     if config.path_output is None:
         raise ValueError("path_output must be specified in the configuration.")
-    if config.path_rdps is None or config.path_hrdps is None or config.path_preprocessed_zarr is None:
-        raise ValueError(
-            "Both path_rdps, path_hrdps, and path_preprocessed_zarr must be specified in the configuration."
-        )
+    if config.path_rdps is None or config.path_preprocessed_zarr is None:
+        raise ValueError("Both path_rdps and path_preprocessed_zarr must be specified in the configuration.")
     if config.coarsen_factor is None:
         raise ValueError("coarsen_factor must be specified in the configuration.")
     if config.tiles_center_lat is None or config.tiles_center_lon is None or config.tile_size is None:
@@ -960,9 +963,7 @@ def rdps_regrid_to_zarr_from_config(
         set_to_active=True,
     )
 
-    ds_hrdps = xarray.open_dataset(find_hrdps_sample_file(config))
-    hrdps_grid_spec = hrdps_grid_spec_from_ds(
-        ds=ds_hrdps,
+    hrdps_grid_spec = create_hrdps_grid_spec(
         tile_size=config.tile_size,
         coarsen_factor=config.coarsen_factor,
         tile_center_lon=config.tiles_center_lon[0],
@@ -970,13 +971,14 @@ def rdps_regrid_to_zarr_from_config(
         switch_to_positive_longitudes=True,
     )
     hrdps_grid_spec.active_tile = "coarse"
-    # ToDo: find a unique name for the coo_matrix with tiles centers as well
+    # Assuming that 2 significant digits are enough for common regridding matrices.
+    center_str = f"lon_{config.tiles_center_lon[0]:.2f}_lat_{config.tiles_center_lat[0]:.2f}"
     path_csr_matrix_output = Path(
-        config.path_output, f"rdps_to_hrdps_csr_matrix_{config.tile_size}_{config.coarsen_factor}.npz"
+        config.path_output, f"rdps_to_hrdps_csr_matrix_{center_str}_{config.tile_size}_{config.coarsen_factor}.npz"
     )
     if not path_csr_matrix_output.is_file():
         path_coo_matrix_output = Path(
-            config.path_output, f"rdps_to_hrdps_coo_matrix_{config.tile_size}_{config.coarsen_factor}.npz"
+            config.path_output, f"rdps_to_hrdps_coo_matrix_{center_str}_{config.tile_size}_{config.coarsen_factor}.npz"
         )
         if not path_coo_matrix_output.is_file():
             rdps_to_hrdps_coo_matrix = compute_grids_area_weights(ds["lon"].values, ds["lat"].values, hrdps_grid_spec)
@@ -990,15 +992,16 @@ def rdps_regrid_to_zarr_from_config(
     else:
         rdps_to_hrdps_csr_matrix = load_npz(path_csr_matrix_output)
 
+    hrdps_rlon, hrdps_rlat, hrdps_lon, hrdps_lat = hrdps_grid_coordinates()
     hrdps_grid_spec.active_tile = "high_res"
     i_start = hrdps_grid_spec.i_slice.start
     j_start = hrdps_grid_spec.j_slice.start
-    rlat_original = ds_hrdps["rlat"].values[hrdps_grid_spec.i_slice]
+    rlat_original = hrdps_rlat[hrdps_grid_spec.i_slice]
     rlat_left = rlat_original[config.coarsen_factor // 2 - 1 :: config.coarsen_factor]
     rlat_right = rlat_original[config.coarsen_factor // 2 :: config.coarsen_factor]
     rlat_coarse = (rlat_left + rlat_right) / 2
 
-    rlon_original = ds_hrdps["rlon"].values[hrdps_grid_spec.j_slice]
+    rlon_original = hrdps_rlon[hrdps_grid_spec.j_slice]
     rlon_left = rlon_original[config.coarsen_factor // 2 - 1 :: config.coarsen_factor]
     rlon_right = rlon_original[config.coarsen_factor // 2 :: config.coarsen_factor]
     rlon_coarse = (rlon_left + rlon_right) / 2
@@ -1020,5 +1023,4 @@ def rdps_regrid_to_zarr_from_config(
             j_start=j_start,
             year=year,
             month=month,
-            ds_hrdps=ds_hrdps,
         )

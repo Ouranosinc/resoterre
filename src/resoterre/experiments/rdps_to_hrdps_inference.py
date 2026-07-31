@@ -6,11 +6,12 @@ from pathlib import Path
 import numpy as np
 import torch
 import xarray
+from safetensors.torch import load_file
 from torch.utils.data import DataLoader
 
-from resoterre.datasets.hrdps.hrdps_processing import hrdps_grid_spec_from_ds, save_hrdps_zarr_format
+from resoterre.datasets.hrdps.hrdps_processing import create_hrdps_grid_spec, save_hrdps_zarr_format
 from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables as hrdps_variables_collection
-from resoterre.experiments.rdps_to_hrdps_workflow import RDPSToHRDPSConfig, find_hrdps_sample_file
+from resoterre.experiments.rdps_to_hrdps_workflow import RDPSToHRDPSConfig
 from resoterre.hybrid_data_loaders.rdps_to_hrdps import RDPSToHRDPSZarrDataset
 from resoterre.ml.data_loader_utils import inverse_normalize
 from resoterre.ml.neural_networks_unet import UNet
@@ -35,17 +36,13 @@ class RDPSToHRDPSInferenceFromConfig:
         if config.path_preprocessed_zarr is None:
             raise ValueError("Path to preprocessed Zarr files must be specified in the configuration.")
 
-        # ToDo: obtain the information from HRDPS grid knowledge rather than open dataset.
-        ds_hrdps = xarray.open_dataset(find_hrdps_sample_file(config))
-        hrdps_grid_spec = hrdps_grid_spec_from_ds(
-            ds=ds_hrdps,
+        hrdps_grid_spec = create_hrdps_grid_spec(
             tile_size=config.tile_size,
             coarsen_factor=config.coarsen_factor,
             tile_center_lon=config.tiles_center_lon[0],
             tile_center_lat=config.tiles_center_lat[0],
             switch_to_positive_longitudes=True,
         )
-        ds_hrdps.close()
         i_start = hrdps_grid_spec.i_slice.start
         j_start = hrdps_grid_spec.j_slice.start
         self.path_hrdps_zarr = Path(
@@ -91,23 +88,41 @@ class RDPSToHRDPSInferenceFromConfig:
             num_last_layer_input_channels=len(config.hrdps_geophysical_variables_for_training),
             reduction_ratio=config.reduction_ratio,
         )
-        if config.path_output is None:
+        # ToDo: move the model retrieval logic to its own function
+        if config.path_inference_model is not None:
+            if Path(config.path_inference_model).suffix.lower() == ".safetensors":
+                model_state_dict = load_file(config.path_inference_model)
+            else:
+                model_state_dict = torch.load(config.path_inference_model, weights_only=False)["model_state_dict"]
+        elif config.path_output is None:
             raise ValueError("Output path is not specified in the configuration.")
-        experiment_name = "skeleton"
-        pth_files = list(Path(config.path_output).glob(f"{experiment_name}_unet_epoch_*.pth"))
-        pth_files = sorted(pth_files, key=lambda x: x.stat().st_mtime, reverse=True)
-        if not pth_files:
-            raise FileNotFoundError(f"No pth files found in {config.path_output} for experiment {experiment_name}.")
-        input_path = pth_files[0]
-        checkpoint = torch.load(input_path, weights_only=False)
-        minimum_validation_loss_model = checkpoint.get("minimum_validation_loss_model", str(input_path))
-        if minimum_validation_loss_model != str(input_path):
-            if not Path(minimum_validation_loss_model).is_file():
-                raise FileNotFoundError(f"Checkpoint file {minimum_validation_loss_model} not found.")
-            checkpoint = torch.load(minimum_validation_loss_model, weights_only=False)
-        self.unet.load_state_dict(checkpoint["model_state_dict"])
-        self.unet.to(config.device)
+        else:
+            pth_files = list(Path(config.path_output).glob(f"unet_epoch_{self.config.experiment_name}_*.pth"))
+            pth_files = sorted(pth_files, key=lambda x: x.stat().st_mtime, reverse=True)
+            if not pth_files:
+                raise FileNotFoundError(
+                    f"No pth files found in {config.path_output} for experiment {self.config.experiment_name}."
+                )
+            input_path = pth_files[0]
+            checkpoint = torch.load(input_path, weights_only=False)
+            minimum_validation_loss_model = checkpoint.get("minimum_validation_loss_model", str(input_path))
+            if minimum_validation_loss_model != str(input_path):
+                if not Path(minimum_validation_loss_model).is_file():
+                    raise FileNotFoundError(f"Checkpoint file {minimum_validation_loss_model} not found.")
+                checkpoint = torch.load(minimum_validation_loss_model, weights_only=False)
+            model_state_dict = checkpoint["model_state_dict"]
+        self.unet.load_state_dict(model_state_dict)
+        self.device = config.inference_device or config.device
+        self.unet.to(self.device)
         self.unet.train(False)
+
+    def close(self) -> None:
+        """Close the data loader and release resources."""
+        if hasattr(self.data_loader, "dataset"):
+            self.data_loader.dataset.close()
+        if hasattr(self.data_loader, "persistent_workers") and self.data_loader.persistent_workers:
+            self.data_loader._iterator._shutdown_workers()
+        self.data_loader = None
 
     def inference_step(
         self, item: dict[str, torch.Tensor], inference_variables_subset: list[str] | None = None
@@ -130,9 +145,9 @@ class RDPSToHRDPSInferenceFromConfig:
             inference_variables_subset = self.config.inference_variables
         hrdps_variables = self.config.hrdps_variables_for_training or self.config.hrdps_variables
         ds_hrdps_zarr = xarray.open_dataset(self.path_hrdps_zarr)
-        input_data = item["input_first_block"].to(self.config.device, non_blocking=True)
+        input_data = item["input_first_block"].to(self.device, non_blocking=True)
         if "input_last_layer" in item:
-            input_last_layer = item["input_last_layer"].to(self.config.device, non_blocking=True)
+            input_last_layer = item["input_last_layer"].to(self.device, non_blocking=True)
         else:
             input_last_layer = None
         result = self.unet(input_data, x_last_layer=input_last_layer)
@@ -152,7 +167,7 @@ class RDPSToHRDPSInferenceFromConfig:
                 )
                 # ToDo: remove dependency on an open HRDPS Zarr dataset.
                 save_hrdps_zarr_format(
-                    path_output=Path(self.config.path_output, "unet_output.zarr"),
+                    path_output=Path(self.config.path_output, f"inference_{self.config.experiment_name}.zarr"),
                     title="U-Net Inference Output",
                     institution="Ouranos",
                     source="U-Net",
