@@ -2,7 +2,7 @@
 
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Self  # type: ignore[attr-defined]
+from typing import Any, Self
 
 import torch
 from torch import nn
