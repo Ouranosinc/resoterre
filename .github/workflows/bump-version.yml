@@ -7,6 +7,8 @@ on:
     paths-ignore:
       - .cruft.json
       - .editorconfig
+      - .github/*.txt
+      - .github/*.in
       - .github/*.md
       - .github/*.yml
       - .github/*/*.md
@@ -44,7 +46,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: automation
     permissions:
-      actions: read
       contents: write
     strategy:
       matrix:
@@ -66,6 +67,7 @@ jobs:
         with:
           app-id: ${{ secrets.OURANOS_HELPER_BOT_ID }}
           private-key: ${{ secrets.OURANOS_HELPER_BOT_KEY }}
+          permission-contents: write
       - name: Checkout Repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -85,7 +87,7 @@ jobs:
           trust_level: 5
       - name: Install CI libraries
         run: |
-          python -m pip install --require-hashes -r CI/requirements_ci.txt
+          python -m pip install --require-hashes -r .github/requirements_ci.txt
       - name: Conditional Bump
         run: |
           CURRENT_VERSION=$(bump-my-version show current_version)
