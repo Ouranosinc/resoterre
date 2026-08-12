@@ -1,6 +1,6 @@
 {
   "template": "https://github.com/Ouranosinc/cookiecutter-pypackage",
-  "commit": "046cfc9212f388df523344329c679a987fc5271f",
+  "commit": "ca71222b12478c5123bb4f1d973ccbec53b965eb",
   "checkout": null,
   "context": {
     "cookiecutter": {
@@ -12,7 +12,7 @@
       "project_slug": "resoterre",
       "project_short_description": "Machine learning tools and extensions for climate science.",
       "pypi_username": "bstdenis",
-      "version": "0.1.3-dev.4",
+      "version": "0.1.3-dev.6",
       "use_pytest": "y",
       "use_conda": "y",
       "make_docs": "y",
@@ -35,7 +35,7 @@
         ".github/workflows/workflow-warning.yml"
       ],
       "_template": "https://github.com/Ouranosinc/cookiecutter-pypackage",
-      "_commit": "046cfc9212f388df523344329c679a987fc5271f"
+      "_commit": "ca71222b12478c5123bb4f1d973ccbec53b965eb"
     }
   },
   "directory": null
