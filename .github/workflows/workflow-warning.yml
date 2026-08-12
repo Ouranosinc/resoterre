@@ -38,7 +38,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          
+
           MARKER="<!-- workflow-changes-warning -->"
 
           BODY=$(cat <<EOF
