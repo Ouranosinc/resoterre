@@ -10,7 +10,8 @@ dependencies:
   - ipython
   - jupyter_client
   - nbsphinx >=0.9.5
-  - sphinx >=8.2
+  - sphinx >=8.2.0
+  - sphinx-autobuild >=2024.4.16
   - sphinx-click
   - sphinx-codeautolink >=0.16.2
   - sphinx-copybutton >=0.5.2

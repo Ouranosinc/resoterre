@@ -7,6 +7,8 @@ on:
     paths-ignore:
       - .cruft.json
       - .editorconfig
+      - .github/*.txt
+      - .github/*.in
       - .github/*.md
       - .github/*.yml
       - .github/*/*.md
@@ -44,7 +46,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: automation
     permissions:
-      actions: read
       contents: write
     strategy:
       matrix:
@@ -85,7 +86,7 @@ jobs:
           trust_level: 5
       - name: Install CI libraries
         run: |
-          python -m pip install --require-hashes -r CI/requirements_ci.txt
+          python -m pip install --require-hashes -r .github/requirements_ci.txt
       - name: Conditional Bump
         run: |
           CURRENT_VERSION=$(bump-my-version show current_version)
