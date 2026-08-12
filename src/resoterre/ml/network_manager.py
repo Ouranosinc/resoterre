@@ -2,14 +2,7 @@
 
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
-
-
-# ToDo: remove typing_extensions when phasing out Python < 3.11
-try:
-    from typing import Self  # type: ignore[attr-defined]
-except ImportError:
-    from typing_extensions import Self
+from typing import Any, Self  # type: ignore[attr-defined]
 
 import torch
 from torch import nn
