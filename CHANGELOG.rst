@@ -9,6 +9,7 @@ Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:us
 
 Changes
 ^^^^^^^
+* Drop support for Python 3.10. (:pull:`76`).
 * Add support for Python 3.14. (:pull:`65`).
 * Add ``netcdf_utils`` module. (:pull:`47`).
 * Add ``timeseries`` module. (:pull:`47`).
@@ -74,6 +75,10 @@ Internal changes
     * `tox.toml` now uses `dependency-groups` and Makefile
     * `pytest` has been updated to v9.0. Now uses TOML-based configuration spec
     * Linting tools now include `vulture`, `deptry`, `yamllint`, and `codespell`
+* Updated the cookiecutter template. (:pull:`76`):
+    * Restrict token permissions in some overly-permissive workflows.
+    * Replace the PyPI source for `types-pyyaml` with the conda package equibalent in `environment.yml`.
+    * Update documentation and AI-related guides based on internal discussions.
 
 .. _changes_0.1.2:
 
