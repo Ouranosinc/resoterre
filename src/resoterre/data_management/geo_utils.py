@@ -150,9 +150,9 @@ class GridSpecification:
     def sub_tile(
         self,
         key: str,
-        tile_center_lon: float,
-        tile_center_lat: float,
-        tile_size: int,
+        tile_center_lon: float | None = None,
+        tile_center_lat: float | None = None,
+        tile_size: int | None = None,
         compute_corners: bool = True,
         set_to_active: bool = False,
     ) -> None:
@@ -174,25 +174,41 @@ class GridSpecification:
         set_to_active : bool, optional
             Whether to set the sub-tile as the active tile.
         """
+        if tile_size is None:
+            raise NotImplementedError("Tile size must be specified for sub-tile creation")
         if key in self.tiles:
             raise ValueError(f"Tile with key {key} already exists")
         if len(self.lon.shape) != 2:
             raise ValueError("Only 2D lon and lat are supported for now")
         if len(self.lat.shape) != 2:
             raise ValueError("Only 2D lon and lat are supported for now")
-        tile_half_size = tile_size // 2
-        distances = haversine(self.lon, self.lat, tile_center_lon, tile_center_lat)
-        if isinstance(distances, float):
-            raise ValueError("Distances should be a numpy array, not a float")
-        indices = np.unravel_index(np.argmin(distances), distances.shape)
-        self.tiles[key] = Tile(
-            i_center=indices[0],
-            j_center=indices[1],
-            i_start=max(indices[0] - tile_half_size, 0),
-            j_start=max(indices[1] - tile_half_size, 0),
-            i_end=min(indices[0] + tile_half_size, self.lon.shape[0]),
-            j_end=min(indices[1] + tile_half_size, self.lon.shape[1]),
-        )
+        if tile_center_lon is None and tile_center_lat is None:
+            i_buffer = (self.lat.shape[0] - tile_size) // 2
+            j_buffer = (self.lat.shape[1] - tile_size) // 2
+            if i_buffer < 0 or j_buffer < 0:
+                raise ValueError(f"Tile size {tile_size} is too large for the CRCM grid size.")
+            self.tiles[key] = Tile(
+                i_start=i_buffer,
+                j_start=j_buffer,
+                i_end=i_buffer + tile_size,
+                j_end=j_buffer + tile_size,
+            )
+        elif tile_center_lon is not None and tile_center_lat is not None:
+            tile_half_size = tile_size // 2
+            distances = haversine(self.lon, self.lat, tile_center_lon, tile_center_lat)
+            if isinstance(distances, float):
+                raise ValueError("Distances should be a numpy array, not a float")
+            indices = np.unravel_index(np.argmin(distances), distances.shape)
+            self.tiles[key] = Tile(
+                i_center=indices[0],
+                j_center=indices[1],
+                i_start=max(indices[0] - tile_half_size, 0),
+                j_start=max(indices[1] - tile_half_size, 0),
+                i_end=min(indices[0] + tile_half_size, self.lon.shape[0]),
+                j_end=min(indices[1] + tile_half_size, self.lon.shape[1]),
+            )
+        else:
+            raise ValueError("Both tile_center_lon and tile_center_lat must be specified together")
         self.tiles[key].lon = self.lon[self.tiles[key].i_slice, self.tiles[key].j_slice]
         self.tiles[key].lat = self.lat[self.tiles[key].i_slice, self.tiles[key].j_slice]
         if compute_corners:
