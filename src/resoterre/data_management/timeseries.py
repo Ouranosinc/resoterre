@@ -271,7 +271,11 @@ class MultiTimeseries(dict[str, Timeseries]):
         return {key: timeseries.values[-1] for key, timeseries in self.items()}
 
     def last_values_str(
-        self, metadata: dict[str, dict[str, Any]] | None = None, excludes: list[str] | None = None
+        self,
+        metadata: dict[str, dict[str, Any]] | None = None,
+        excludes: list[str] | None = None,
+        max_line_length: int | None = None,
+        padding: int = 0,
     ) -> str:
         """
         Retrieve a string representation of the latest values from all timeseries.
@@ -282,6 +286,10 @@ class MultiTimeseries(dict[str, Timeseries]):
             Metadata for formatting the values.
         excludes : list[str], optional
             List of keys to exclude from the output.
+        max_line_length : int, optional
+            Maximum length of the output line.
+        padding : int
+            Number of spaces to pad the output.
 
         Returns
         -------
@@ -294,10 +302,17 @@ class MultiTimeseries(dict[str, Timeseries]):
             metadata = {}
         last_values_dict = self.last_values()
         s = ""
+        if padding > 0:
+            s += " " * padding
+        num_lines = 1
         for key, value in last_values_dict.items():
             if key in excludes:
                 continue
             value_str = readable_value(value, **metadata.get(key, {}).get("readable_value", {}))
+            line_addition = f"{key}: {value_str}, "
+            if max_line_length is not None and len(s) + len(line_addition) > max_line_length:
+                s += "\n" + " " * padding
+                num_lines += 1
             s += f"{key}: {value_str}, "
         return s[:-2]
 
