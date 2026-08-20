@@ -39,6 +39,7 @@ from resoterre.utils import TemplateStore
 logger = logging.getLogger(__name__)
 
 
+# ToDo: obsolete, replaced by RDPSToHRDPConfig
 @dataclass(frozen=True, slots=True)
 class RDPSToHRDPSOnDiskConfig:
     """
@@ -167,6 +168,7 @@ class RDPSToHRDPSOnDiskConfig:
     debug_figures_return_period: int = 0  # 0 means no debug return period.
 
 
+# ToDo: obsolete, replaced by RDPSToHRDPConfig
 @dataclass(frozen=True, slots=True)
 class RDPSToHRDPSInferenceConfig:
     """
@@ -687,6 +689,7 @@ def hrdps_to_zarr_from_config(config: RDPSToHRDPSConfig, variable_name: str, yea
     if config.hrdps_preprocessing_skip:
         logger.info("HRDPS preprocessing is disabled in the configuration. Skipping HRDPS to Zarr conversion.")
         return
+    logger.info("Starting HRDPS to Zarr conversion for variable %s for %d-%02d.", variable_name, year, month)
     subtask_config = HRDPSToZarrConfig(
         path_output=config.path_output,
         path_preprocessed_zarr=config.path_preprocessed_zarr,
@@ -926,6 +929,10 @@ def rdps_regrid_to_zarr_from_config(
     days : list[int], optional
         List of days to process. If None, all days in the month will be processed.
     """
+    if config.hrdps_preprocessing_skip:
+        logger.info("RDPS preprocessing is disabled in the configuration. Skipping RDPS to Zarr conversion.")
+        return
+    logger.info("Starting RDPS regrid to Zarr for variable %s for %d-%02d.", variable_name, year, month)
     if config.path_output is None:
         raise ValueError("path_output must be specified in the configuration.")
     if config.path_rdps is None or config.path_preprocessed_zarr is None:
