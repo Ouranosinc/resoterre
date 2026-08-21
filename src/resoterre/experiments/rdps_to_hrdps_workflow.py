@@ -245,6 +245,8 @@ class RDPSToHRDPSConfig:
         Path to the output directory where results will be saved.
     path_preprocessed_zarr : Path, optional
         Path to the preprocessed Zarr data directory.
+    path_regridding_weights : Path, optional
+        Path to the regridding weights directory. If None, defaults to path_output
     path_hrdps : Path, optional
         Path to the raw HRDPS data directory.
     path_hrdps_geophysical: Path, optional
@@ -356,6 +358,7 @@ class RDPSToHRDPSConfig:
     path_logs: Path | None = None
     path_output: Path | None = None
     path_preprocessed_zarr: Path | None = None
+    path_regridding_weights: Path | None = None
     path_hrdps: Path | None = None
     path_hrdps_geophysical: Path | None = None
     path_rdps: Path | None = None
@@ -980,12 +983,17 @@ def rdps_regrid_to_zarr_from_config(
     hrdps_grid_spec.active_tile = "coarse"
     # Assuming that 2 significant digits are enough for common regridding matrices.
     center_str = f"lon_{config.tiles_center_lon[0]:.2f}_lat_{config.tiles_center_lat[0]:.2f}"
+    if config.path_regridding_weights is not None:
+        path_regridding_weights = config.path_regridding_weights
+    else:
+        path_regridding_weights = config.path_output
     path_csr_matrix_output = Path(
-        config.path_output, f"rdps_to_hrdps_csr_matrix_{center_str}_{config.tile_size}_{config.coarsen_factor}.npz"
+        path_regridding_weights, f"rdps_to_hrdps_csr_matrix_{center_str}_{config.tile_size}_{config.coarsen_factor}.npz"
     )
     if not path_csr_matrix_output.is_file():
         path_coo_matrix_output = Path(
-            config.path_output, f"rdps_to_hrdps_coo_matrix_{center_str}_{config.tile_size}_{config.coarsen_factor}.npz"
+            path_regridding_weights,
+            f"rdps_to_hrdps_coo_matrix_{center_str}_{config.tile_size}_{config.coarsen_factor}.npz",
         )
         if not path_coo_matrix_output.is_file():
             rdps_to_hrdps_coo_matrix = compute_grids_area_weights(ds["lon"].values, ds["lat"].values, hrdps_grid_spec)
