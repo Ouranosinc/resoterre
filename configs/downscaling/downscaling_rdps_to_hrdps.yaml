@@ -1,4 +1,4 @@
-preprocessing_command: |
+workflow_command: |
   snakemake -s scripts/meta_workflows/downscaling/rdps_to_hrdps.smk \
     --config config_yaml=/path/to/downscaling_rdps_to_hrdps.yaml \
     -j1 \
@@ -7,6 +7,7 @@ preprocessing_command: |
 path_logs: /path/to/logs
 path_output: /path/to/output
 path_preprocessed_zarr: /path/to/preprocessed_zarr
+path_regridding_weights: /path/to/regridding_weights
 path_hrdps: /path/to/hrdps/data  # Not required for inference
 path_hrdps_geophysical: /path/to/hrdps/geophysical/fields
 path_rdps: /path/to/rdps/data

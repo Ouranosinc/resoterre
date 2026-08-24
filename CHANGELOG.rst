@@ -11,6 +11,20 @@ Changes
 ^^^^^^^
 * Drop support for Python 3.10. (:pull:`76`).
 * Add support for Python 3.14. (:pull:`65`).
+* Add ``data_info`` module. (:pull:`52`).
+* Add ``data_io`` module. (:pull:`52`).
+* Add ``forecast_utils`` module. (:pull:`52`).
+* Add ``geo_utils`` module. (:pull:`52`).
+* Add ``hrdps_integrity_check`` module. (:pull:`52`).
+* Add ``hrdps_processing`` module. (:pull:`52`).
+* Add ``rdps_integrity_check`` module. (:pull:`52`).
+* Add ``rdps_processing`` module. (:pull:`52`).
+* Add ``rdps_to_hrdps_inference`` module. (:pull:`52`)
+* Add ``rdps_to_hrdps_training`` module. (:pull:`52`).
+* Add ``nd_plots`` module. (:pull:`52`).
+* Add ``calendar_utils`` module. (:pull:`52`).
+* Add ``type_checker_utils`` module. (:pull:`52`).
+* Add snakemake workflow for RDPS to HRDPS downscaling task. (:pull:`52`).
 * Add ``netcdf_utils`` module. (:pull:`47`).
 * Add ``timeseries`` module. (:pull:`47`).
 * Add ``rdps_to_hrdps`` module. (:pull:`47`).
@@ -24,7 +38,6 @@ Changes
 * Add ``logging_utils`` module. (:pull:`47`).
 * Add ``memory_utils`` module. (:pull:`47`).
 * Add ``utils`` module. (:pull:`47`).
-    * Add ``save_to_netcdf`` function to save inference results to NetCDF files.
 * Add ``override_config_paths`` function to ``io_utils.py`` to allow overriding config values at runtime. (:pull:`47`).
 * Update ``downscaling_inference_rdps_to_hrdps.py`` CLI to support the following arguments for overriding config values. (:pull:`47`).
     * ``--preprocess_batch``: Path to the preprocessed batch file (overrides ``path_preprocessed_batch`` in config).

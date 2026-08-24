@@ -3,7 +3,7 @@
 
 def type_check_slice(x: slice | None) -> slice:
     """
-    Check if the input is a slice or None.
+    Validate a slice input.
 
     Parameters
     ----------
@@ -13,7 +13,7 @@ def type_check_slice(x: slice | None) -> slice:
     Returns
     -------
     slice
-        The input if it is a slice or None.
+        The input if it is a slice.
 
     Raises
     ------

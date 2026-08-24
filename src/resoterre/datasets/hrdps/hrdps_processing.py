@@ -1,5 +1,6 @@
 """Module for processing HRDPS data."""
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -15,6 +16,9 @@ from resoterre.data_management.netcdf_utils import CFVariables
 from resoterre.datasets.hrdps import hrdps_integrity_check
 from resoterre.datasets.hrdps.hrdps_variables import hrdps_netcdf_attrs
 from resoterre.plots.nd_plots import CustomPColorMesh
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -521,7 +525,10 @@ def save_hrdps_zarr_format(
     )
 
     zarr_ds = xarray.open_zarr(path_output)
-    idx = int(np.where(zarr_ds["time"].values == np.array(datetimes, dtype="datetime64[ns]")[0])[0][0])
+    time_intersection = np.where(zarr_ds["time"].values == np.array(datetimes, dtype="datetime64[ns]")[0])[0]
+    if not time_intersection:
+        logger.warning("datetime not found in target zarr: %s", datetimes[0])
+    idx = int(time_intersection[0])
     is_empty = zarr_ds["is_empty"][:, idx : idx + len(datetimes)].values
     variable_idx = expected_variables.index(variable_name)
     is_empty[variable_idx, :] = 0
