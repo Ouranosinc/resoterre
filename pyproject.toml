@@ -54,6 +54,11 @@ dependencies = [
   "xarray >=2024.6.0"
 ]
 
+[project.optional-dependencies]
+workflow = [
+  "snakemake>=9.13.2"
+]
+
 [project.scripts]
 resoterre = "resoterre.cli:app"
 

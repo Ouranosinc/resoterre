@@ -123,9 +123,13 @@ class RDPSToHRDPSTrainingFromConfig:
         new_validation_minimum : bool
             Whether the current epoch has achieved a new minimum validation loss.
         """
-        if self.config.path_output is None:
-            raise ValueError("Output path is not specified in the configuration.")
-        output_path = Path(self.config.path_output, f"unet_epoch_{self.config.experiment_name}_{epoch:03d}.pth")
+        if self.config.path_models is None:
+            if self.config.path_output is None:
+                raise ValueError("Output path is not specified in the configuration.")
+            path_models = Path(self.config.path_output)
+        else:
+            path_models = Path(self.config.path_models)
+        output_path = Path(path_models, f"unet_epoch_{self.config.experiment_name}_{epoch:03d}.pth")
         if new_validation_minimum:
             self.minimum_validation_loss_model = output_path
         torch.save(
@@ -140,9 +144,7 @@ class RDPSToHRDPSTrainingFromConfig:
         )
         if include_safetensors:
             metadata: dict[str, str] = {}
-            output_path = Path(
-                self.config.path_output, f"unet_epoch_{self.config.experiment_name}_{epoch:03d}.safetensors"
-            )
+            output_path = Path(path_models, f"unet_epoch_{self.config.experiment_name}_{epoch:03d}.safetensors")
             save_file(self.unet.state_dict(), output_path, metadata=metadata)
 
     def load_state(self, epoch: int | None) -> None:
@@ -154,18 +156,22 @@ class RDPSToHRDPSTrainingFromConfig:
         epoch : int | None
             Epoch number to load. If None, the latest checkpoint will be loaded.
         """
-        if self.config.path_output is None:
-            raise ValueError("Output path is not specified in the configuration.")
+        if self.config.path_models is None:
+            if self.config.path_output is None:
+                raise ValueError("Output path is not specified in the configuration.")
+            path_models = Path(self.config.path_output)
+        else:
+            path_models = Path(self.config.path_models)
         if epoch is None:
-            pth_files = list(Path(self.config.path_output).glob(f"unet_epoch_{self.config.experiment_name}_*.pth"))
+            pth_files = list(path_models.glob(f"unet_epoch_{self.config.experiment_name}_*.pth"))
             pth_files = sorted(pth_files, key=lambda x: x.stat().st_mtime, reverse=True)
             if not pth_files:
                 raise FileNotFoundError(
-                    f"No pth files found in {self.config.path_output} for experiment {self.config.experiment_name}."
+                    f"No pth files found in {path_models} for experiment {self.config.experiment_name}."
                 )
             input_path = pth_files[0]
         else:
-            input_path = Path(self.config.path_output, f"unet_epoch_{self.config.experiment_name}_{epoch:03d}.pth")
+            input_path = Path(path_models, f"unet_epoch_{self.config.experiment_name}_{epoch:03d}.pth")
             if not input_path.is_file():
                 raise FileNotFoundError(f"Pth file {input_path} does not exist.")
         checkpoint = torch.load(input_path, weights_only=False)

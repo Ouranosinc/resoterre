@@ -247,6 +247,8 @@ class RDPSToHRDPSConfig:
         Path to the preprocessed Zarr data directory.
     path_regridding_weights : Path, optional
         Path to the regridding weights directory. If None, defaults to path_output
+    path_models : Path, optional
+        Path to the directory containing the trained models. If None, defaults to path_output
     path_hrdps : Path, optional
         Path to the raw HRDPS data directory.
     path_hrdps_geophysical: Path, optional
@@ -359,6 +361,7 @@ class RDPSToHRDPSConfig:
     path_output: Path | None = None
     path_preprocessed_zarr: Path | None = None
     path_regridding_weights: Path | None = None
+    path_models: Path | None = None
     path_hrdps: Path | None = None
     path_hrdps_geophysical: Path | None = None
     path_rdps: Path | None = None
