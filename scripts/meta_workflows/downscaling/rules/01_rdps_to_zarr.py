@@ -44,5 +44,5 @@ if __name__ == "__main__":
             month=args.month,
         )
     except Exception:
-        logger.exception("Error calling hrdps_to_zarr_from_config")
+        logger.exception("Error calling rdps_regrid_to_zarr_from_config")
         raise

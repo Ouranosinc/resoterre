@@ -59,9 +59,9 @@ def num_free_dimensions(
     n = 0
     for data_array in dict_arrays.values():
         if first_dimension_is_batch_size:
-            n += len(list(np.ndindex(data_array.shape[1:-num_trailing_dimensions])))
+            n += int(np.prod(data_array.shape[1:-num_trailing_dimensions]))
         else:
-            n += len(list(np.ndindex(data_array.shape[:-num_trailing_dimensions])))
+            n += int(np.prod(data_array.shape[:-num_trailing_dimensions]))
     return n
 
 

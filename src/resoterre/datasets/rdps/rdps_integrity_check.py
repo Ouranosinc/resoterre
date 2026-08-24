@@ -49,7 +49,7 @@ class RDPSML1File:
         if (path_nc_file is None) and (path_data is None) and (datetime_input is None):
             raise ValueError("Either path_nc_file or path_data must be provided.")
         if (path_data is not None) and ((datetime_input is None) or (forecast_hour is None)):
-            raise ValueError("If path_data is provided, datetime_input and forecast_horizon must also be provided.")
+            raise ValueError("If path_data is provided, datetime_input and forecast_hour must also be provided.")
         if path_nc_file is not None:
             self.path_nc_file = Path(path_nc_file)
             self.path_data = self.path_nc_file.parent.parent

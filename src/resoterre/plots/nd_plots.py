@@ -204,6 +204,8 @@ class NDPlot:
         strings_kwargs = strings_kwargs or {}
         local_file_name = file_name if file_name is not None else self.file_name
         local_file_name = local_file_name.format(**strings_kwargs)
+        if not local_file_name:
+            return
         if (self.path_figures is None) and (local_file_name[0] != "/"):
             return
         if self.force_underscores_in_file_name:

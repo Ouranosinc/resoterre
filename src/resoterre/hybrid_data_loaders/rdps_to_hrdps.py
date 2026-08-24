@@ -208,6 +208,7 @@ def post_process_model_output(
                     strings_kwargs={"variable_name": variable_name, "context": "after adding climatology"},
                     enabled=(debug and j == 0),
                 )
+                ds_climatology.close()
     return output_variables
 
 

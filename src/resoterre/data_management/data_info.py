@@ -271,7 +271,7 @@ class DatasetInfo:
         Any
             Metadata value(s) for the specified key and index or indices.
         """
-        if isinstance(idx, int | np.int64):
+        if isinstance(idx, int | np.integer):
             return self._metadata[metadata_key][idx]
         return [self._metadata[metadata_key][i] for i in idx]
 
