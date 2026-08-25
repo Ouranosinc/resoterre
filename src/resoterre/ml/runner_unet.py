@@ -47,6 +47,8 @@ class UNetReconstructionRunnerConfig:
         Configuration for the neural networks manager.
     networks : dict
         Dictionary of network configurations. Default is an empty dictionary.
+    loss_components : dict
+        Dictionary of loss component configurations.
     optimizers : dict
         Dictionary of optimizer configurations. Default is an empty dictionary.
     lr_schedulers : dict
@@ -84,6 +86,7 @@ class UNetReconstructionRunnerConfig:
     target_channel_sub_selection: list[int] = field(default_factory=list)
     networks_manager: NeuralNetworksManagerConfig = NeuralNetworksManagerConfig()
     networks: dict[str, Any] = field(default_factory=dict)
+    loss_components: dict[str, Any] = field(default_factory=dict)
     optimizers: dict[str, Any] = field(default_factory=dict)
     lr_schedulers: dict[str, Any] = field(default_factory=dict)
     loops: NeuralNetworkLoopConfig = NeuralNetworkLoopConfig(

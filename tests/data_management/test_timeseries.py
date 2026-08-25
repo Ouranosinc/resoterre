@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 import pytest
 
 from resoterre.data_management import timeseries
@@ -92,3 +94,13 @@ def test_multi_timeseries_version_change_1_0_to_1_1():
     assert mt.default_value_method == "mean"
     assert mt.default_nb_of_kept_starting_values == 0
     assert mt.default_nb_of_kept_final_values == 10
+
+
+def test_overlapping_datetimes_indices():
+    datetimes_1 = [datetime(2024, 1, 1) + timedelta(days=i) for i in range(10)]
+    datetimes_2 = [datetime(2024, 1, 5) + timedelta(days=i) for i in range(10)]
+
+    indices_1, indices_2 = timeseries.overlapping_datetimes_indices(datetimes_1=datetimes_1, datetimes_2=datetimes_2)
+
+    assert indices_1 == (4, 9)
+    assert indices_2 == (0, 5)
