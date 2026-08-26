@@ -69,6 +69,18 @@ class CRCMEmulatorConfig:
         Emulator model type to use for training.
     training_batch_size : int
         Batch size for training the emulator.
+    unet_kernel_size : int | None
+        Kernel size for the U-Net model used in training the emulator.
+    unet_initial_num_of_hidden_channels : int | None
+        Initial number of hidden channels for the U-Net model used in training the emulator.
+    unet_depth : int | None
+        Depth of the U-Net model used in training the emulator.
+    unet_reduction_ratio : int | bool | None
+        Reduction ratio for the U-Net model used in training the emulator.
+    mse_loss_weight : float | None
+        Weight for the mean squared error loss during training the emulator.
+    ssim_loss_weight : float | None
+        Weight for the structural similarity index loss during training the emulator.
     learning_rate : float
         Learning rate for training the emulator.
     weight_decay : float
@@ -123,8 +135,16 @@ class CRCMEmulatorConfig:
     test_periods: list[list[datetime]] = field(default_factory=list)
     training_method: str | None = None
     training_batch_size: int = field(default=32, metadata={"is_hyperparameter": True})
+    unet_kernel_size: int | None = field(default=3, metadata={"is_hyperparameter": True})
+    unet_initial_num_of_hidden_channels: int | None = field(default=16, metadata={"is_hyperparameter": True})
+    unet_depth: int | None = field(default=2, metadata={"is_hyperparameter": True})
+    unet_reduction_ratio: int | bool | None = field(
+        default=None, metadata={"is_hyperparameter": True, "display_name": "S&E"}
+    )
     learning_rate: float = field(default=0.01, metadata={"is_hyperparameter": True, "display_name": "lr"})
     weight_decay: float = field(default=0.0, metadata={"is_hyperparameter": True})
+    mse_loss_weight: float | None = field(default=1.0, metadata={"is_hyperparameter": True})
+    ssim_loss_weight: float | None = field(default=0.0, metadata={"is_hyperparameter": True})
     nb_of_epochs: int = 10
     num_workers: int = 2
     num_threads: int = 2
