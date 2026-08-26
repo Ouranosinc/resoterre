@@ -4,6 +4,7 @@ channels:
   - nodefaults
 dependencies:
   - python >=3.11,<3.15
+  - cftime >=1.6.4
   - dacite >=1.8.1
   - dask >=2024.11.2
   - h5netcdf >=1.3
