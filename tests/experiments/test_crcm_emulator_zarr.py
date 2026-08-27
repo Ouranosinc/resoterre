@@ -18,6 +18,17 @@ def test_crcm_emulator_output_format():
         assert np.isnan(xarray_dataset["tas"].values[0, 0, 0])
 
 
+def test_crcm_emulator_input_format():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path_zarr = Path(tmp_dir, "test_crcm_emulator_input.zarr")
+        crcm_emulator_zarr.crcm_emulator_input_format(
+            path_zarr, 1994, 4, ["tas", "pr"], institution="undefined", tile_size=608, coarsen_factor=8
+        )
+        xarray_dataset = xarray.open_dataset(path_zarr)
+        assert xarray_dataset["tas"].shape == (30, 76, 76)
+        assert np.isnan(xarray_dataset["tas"].values[0, 0, 0])
+
+
 def test_write_crcm_time_slice_of_data():
     with tempfile.TemporaryDirectory() as tmp_dir:
         path_zarr = Path(tmp_dir, "test_crcm_emulator_output.zarr")
