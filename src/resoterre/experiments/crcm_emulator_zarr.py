@@ -149,3 +149,52 @@ def crcm_emulator_output_format(
         encoding_dict[variable_name] = {"chunks": (8, len(rlat), len(rlon)), "_FillValue": np.float32(np.nan)}
     xarray_dataset = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs=cf_attrs)
     xarray_dataset.to_zarr(path_output, mode="w", encoding=encoding_dict, compute=False)
+
+
+def write_crcm_time_slice_of_data(
+    path_output: Path | str,
+    variable_name: str,
+    data: np.ndarray,
+    time_slice: slice,
+) -> None:
+    """
+    Write a slice of data for a specific variable and time range into the CRCM emulator zarr dataset.
+
+    Parameters
+    ----------
+    path_output : Path | str
+        Path to the output zarr dataset.
+    variable_name : str
+        Name of the variable to write.
+    data : np.ndarray
+        Data array to write, should match the shape of the time slice and spatial dimensions.
+    time_slice : slice
+        Slice object indicating the time range to write into the dataset.
+    """
+    xarray_dataset = xarray.open_zarr(path_output)
+    is_computed = xarray_dataset["is_computed"].values
+    variable_idx = list(xarray_dataset["variable_names"].values).index(variable_name)
+    xarray_dataset.close()
+
+    cf_coordinates = CFVariables()
+    is_computed[variable_idx, time_slice] = 1
+    cf_coordinates.add(
+        "is_computed",
+        dims=("num_variables", "time"),
+        data=is_computed[:, time_slice],
+        dtype=np.int8,
+        attributes={"long_name": "Indicates if the dimensions are empty (0) or have been filled with data (1)"},
+    )
+    cf_variables = CFVariables()
+    cf_variables.add(
+        variable_name,
+        dims=("time", "rlat", "rlon"),
+        data=data,
+        attributes={
+            "grid_mapping": "crs",
+            "coordinates": "lon lat",
+            "units": crcm_variables[variable_name].units,
+        },
+    )
+    xarray_dataset = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs={})
+    xarray_dataset.to_zarr(path_output, region={"time": time_slice})
