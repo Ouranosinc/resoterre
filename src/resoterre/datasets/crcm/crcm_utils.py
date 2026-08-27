@@ -1,7 +1,14 @@
 """Module for CRCM utilities."""
 
+import logging
+
 import numpy as np
 from pyproj import CRS, Transformer
+
+from resoterre.datasets.crcm.crcm_variables import crcm_variables
+
+
+logger = logging.getLogger(__name__)
 
 
 def crcm_north_america_crs() -> CRS:
@@ -69,3 +76,52 @@ def crcm_north_america_custom_grid_coordinates(rlon: np.ndarray, rlat: np.ndarra
     rlon2d, rlat2d = np.meshgrid(rlon, rlat)
     lon, lat = transformer.transform(rlon2d, rlat2d)
     return lon, lat
+
+
+def validate_crcm_data(data: np.ndarray, variable_name: str) -> bool:
+    """
+    Validate CRCM data against predefined variable constraints.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        The CRCM data to validate.
+    variable_name : str
+        The name of the variable to validate.
+
+    Returns
+    -------
+    bool
+        True if the data is valid, False otherwise.
+    """
+    variable_handler = crcm_variables[variable_name]
+    is_valid = True
+    if data.min() < variable_handler.min:
+        is_valid = False
+        logger.warning(
+            "Data for variable '%s' contains values below the minimum allowed value of %s. Minimum value found: %s",
+            variable_name,
+            variable_handler.min,
+            data.min(),
+        )
+    if data.max() > variable_handler.max:
+        is_valid = False
+        logger.warning(
+            "Data for variable '%s' contains values above the maximum allowed value of %s. Maximum value found: %s",
+            variable_name,
+            variable_handler.max,
+            data.max(),
+        )
+    if data.mean() < variable_handler.mean_min or data.mean() > variable_handler.mean_max:
+        is_valid = False
+        logger.warning(
+            "Data for variable '%s' has a mean value of %s, which is outside the expected range of [%s, %s]",
+            variable_name,
+            data.mean(),
+            variable_handler.mean_min,
+            variable_handler.mean_max,
+        )
+    if np.isnan(data).any():
+        is_valid = False
+        logger.warning("Data for variable '%s' contains NaN values.", variable_name)
+    return is_valid
