@@ -193,7 +193,7 @@ def write_crcm_time_slice_of_data(
         attributes={
             "grid_mapping": "crs",
             "coordinates": "lon lat",
-            "units": crcm_variables[variable_name].units,
+            # "units": crcm_variables[variable_name].units,  # ToDo: this function is also used by cmip6 regridded data
         },
     )
     xarray_dataset = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs={})
