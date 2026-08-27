@@ -10,6 +10,11 @@ from resoterre.datasets.crcm.crcm_variables import crcm_variables
 
 logger = logging.getLogger(__name__)
 
+# unlisted entries should default to "v1-r1"
+version_realization_mapping: dict[tuple[str, str, str], str] = {
+    ("CNRM-ESM2-1", "historical", "r1i1p1f2"): "v2-r1",
+}
+
 
 def crcm_north_america_crs() -> CRS:
     """
