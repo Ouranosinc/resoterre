@@ -35,9 +35,13 @@ def read_emission_file(path_emissions: Path | str) -> tuple[list[int], list[list
     """
     path_emissions = Path(path_emissions)
     with path_emissions.open() as f:
-        for _ in range(6):
-            _ = f.readline().strip().split()
-        rows = [line.strip().split() for line in f.readlines()]
+        rows = []
+        for _ in range(10):  # The number of lines before the data is not the same in all files, overshooting...
+            line_items = f.readline().strip().split()
+            if line_items[0] in ["1750", "2015"]:
+                rows.append(line_items)
+                break
+        rows.extend([line.strip().split() for line in f.readlines()])
     years = [int(row[0]) for row in rows]
     return years, rows
 

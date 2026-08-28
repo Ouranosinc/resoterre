@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import xarray
 
-from resoterre.experiments import crcm_emulator_zarr
+from resoterre.experiments.crcm_emulator import crcm_emulator_zarr
 
 
 def test_crcm_emulator_output_format():

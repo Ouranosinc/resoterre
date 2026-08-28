@@ -75,7 +75,7 @@ class GCMToZarrFromConfig:
             raise ValueError("config.path_gcm_preprocessing is None")
         return Path(self.config.path_gcm_preprocessing, model_str, f"{model_str}_{year}{month:02d}.zarr")
 
-    def emission_path(self, gcm_simulation: list[str]) -> Path:
+    def emission_path(self, gcm_simulation: list[str], year: int | None = None) -> Path:
         """
         Get the path to the emission data file for a given GCM simulation.
 
@@ -83,6 +83,8 @@ class GCMToZarrFromConfig:
         ----------
         gcm_simulation : list[str]
             List containing the GCM name, emission scenario, and ensemble member.
+        year : int, optional
+            Year of the data, to force historical path retrieval.
 
         Returns
         -------
@@ -91,7 +93,12 @@ class GCMToZarrFromConfig:
         """
         if self.config.path_emission_data is None:
             raise ValueError("config.path_emission_data is None")
-        if gcm_simulation[1] == "historical":
+        if year is not None and year < 2015:
+            return Path(self.config.path_emission_data, "greenhouse_gases_hist3.dat")
+        elif year is not None and year >= 2015 and gcm_simulation[1] == "historical":
+            # ToDo: this is a hack because historical files are initialized beyond 2015.
+            return Path(self.config.path_emission_data, "GHG_SSP245.dat")
+        elif gcm_simulation[1] == "historical":
             return Path(self.config.path_emission_data, "greenhouse_gases_hist3.dat")
         else:
             return Path(self.config.path_emission_data, f"GHG_{gcm_simulation[1].upper()}.dat")
@@ -123,7 +130,7 @@ class GCMToZarrFromConfig:
                 tile_size=self.config.tile_size,
                 coarsen_factor=self.config.coarsen_factor,
                 calendar=gcm_calendars[gcm_simulation[0]],
-                path_emissions=self.emission_path(gcm_simulation),
+                path_emissions=self.emission_path(gcm_simulation, year=year),
             )
 
     def nc_files(self, gcm_simulation: list[str], variable_name: str) -> list[Path]:
@@ -169,11 +176,12 @@ class GCMToZarrFromConfig:
         if self.config.coarsen_factor is None:
             raise ValueError("config.coarsen_factor is None")
         grid_str = f"tile_size_{self.config.tile_size}_coarsen_factor_{self.config.coarsen_factor}"
-        if self.config.path_gcm_preprocessing is None:
-            raise ValueError("config.path_gcm_preprocessing is None")
-        path_coo_matrix_output = Path(
-            self.config.path_gcm_preprocessing, "csr_matrix", f"{gcm_simulation[0]}_to_crcm_{grid_str}_coo_matrix.npz"
-        )
+        path_regridding_weights = self.config.path_regridding_weights
+        if path_regridding_weights is None:
+            if self.config.path_gcm_preprocessing is None:
+                raise ValueError("config.path_gcm_preprocessing is None")
+            path_regridding_weights = Path(self.config.path_gcm_preprocessing, "csr_matrix")
+        path_coo_matrix_output = Path(path_regridding_weights, f"{gcm_simulation[0]}_to_crcm_{grid_str}_coo_matrix.npz")
         if not path_coo_matrix_output.is_file():
             nc_files = self.nc_files(gcm_simulation, variable_name)
             if len(nc_files) == 0:
@@ -200,9 +208,7 @@ class GCMToZarrFromConfig:
             path_coo_matrix_output_tmp.replace(path_coo_matrix_output)
         else:
             gcm_to_crcm_coo_matrix = load_npz(path_coo_matrix_output)
-        path_csr_matrix_output = Path(
-            self.config.path_gcm_preprocessing, "csr_matrix", f"{gcm_simulation[0]}_to_crcm_{grid_str}_csr_matrix.npz"
-        )
+        path_csr_matrix_output = Path(path_regridding_weights, f"{gcm_simulation[0]}_to_crcm_{grid_str}_csr_matrix.npz")
         if not path_csr_matrix_output.is_file():
             gcm_to_crcm_csr_matrix = gcm_to_crcm_coo_matrix.tocsr()
             path_csr_matrix_output.parent.mkdir(parents=True, exist_ok=True)

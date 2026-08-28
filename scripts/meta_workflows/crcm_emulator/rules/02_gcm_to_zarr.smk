@@ -1,7 +1,7 @@
-"""Snakemake workflow for CRCM daily to zarr conversion for machine learning workflows.
+"""Snakemake workflow for GCM daily regridded to zarr conversion for machine learning workflows.
 
 To run this workflow, use the command:
-snakemake -s 01_crcm_to_zarr.smk -j1 --config config_yaml=config.yaml --directory=/workflow_directory
+snakemake -s 02_gcm_to_zarr.smk -j1 --config config_yaml=config.yaml --directory=/workflow_directory
 """
 
 from pathlib import Path
@@ -13,11 +13,11 @@ from resoterre.experiments.crcm_emulator.crcm_emulator_workflow import CRCMEmula
 snakefile_dir = Path(str(workflow.snakefile)).parent
 workflow_dir = Path.cwd()
 config_obj = config_from_yaml(CRCMEmulatorConfig, config["config_yaml"])
-init_variable = config_obj.crcm_preprocessing_variables[0]
+init_variable = config_obj.gcm_preprocessing_variables[0]
 init_gcm, init_pathway, init_realization = config_obj.preprocessing_simulations[0]
 init_gcm_str = f"{init_gcm}_{init_pathway}_{init_realization}"
-init_year = config_obj.crcm_preprocessing_start_datetime.year
-init_month = config_obj.crcm_preprocessing_start_datetime.month
+init_year = config_obj.gcm_preprocessing_start_datetime.year
+init_month = config_obj.gcm_preprocessing_start_datetime.month
 
 wildcard_constraints:
     year=r"\d{4}",
@@ -28,18 +28,18 @@ def expected_manifests(wildcards):
     list_of_expected_manifests = []
     for simulation in config_obj.preprocessing_simulations:
         simulation_str = f"{simulation[0]}_{simulation[1]}_{simulation[2]}"
-        for year, month in iter_year_month(start_datetime=config_obj.crcm_preprocessing_start_datetime,
-                                           end_datetime=config_obj.crcm_preprocessing_end_datetime):
+        for year, month in iter_year_month(start_datetime=config_obj.gcm_preprocessing_start_datetime,
+                                           end_datetime=config_obj.gcm_preprocessing_end_datetime):
             if simulation[1] == "historical" and year >= 2015:
                 continue
             if simulation[1] != "historical" and year < 2015:
                 continue
-            for variable_name in config_obj.crcm_preprocessing_variables:
-                full_manifest = f"manifests/crcm_to_zarr_{simulation_str}_{variable_name}_{year}_{month:02d}.done"
+            for variable_name in config_obj.gcm_preprocessing_variables:
+                full_manifest = f"manifests/gcm_to_zarr_{simulation_str}_{variable_name}_{year}_{month:02d}.done"
                 list_of_expected_manifests.append(full_manifest)
-    init_manifest = f"manifests/crcm_to_zarr_{init_gcm_str}_{init_variable}_{init_year}_{init_month:02d}.done"
+    init_manifest = f"manifests/gcm_to_zarr_{init_gcm_str}_{init_variable}_{init_year}_{init_month:02d}.done"
     if not list_of_expected_manifests:
-        list_of_expected_manifests.append("manifests/crcm_to_zarr.init.done")
+        list_of_expected_manifests.append("manifests/gcm_to_zarr.init.done")
     elif init_manifest in list_of_expected_manifests:
         list_of_expected_manifests.remove(init_manifest)
     return list_of_expected_manifests
@@ -51,11 +51,11 @@ rule all:
 
 
 # This initialization rule ensures the initial zarr files are not created multiple times in parallel.
-rule crcm_to_zarr_init:
+rule gcm_to_zarr_init:
     output:
-        touch("manifests/crcm_to_zarr.init.done")
+        touch("manifests/gcm_to_zarr.init.done")
     params:
-        path_script=Path(snakefile_dir, "01_crcm_to_zarr.py"),
+        path_script=Path(snakefile_dir, "02_gcm_to_zarr.py"),
         workflow_dir=workflow_dir,
         config_yaml=config["config_yaml"],
         init_variable_name=init_variable,
@@ -79,13 +79,13 @@ rule crcm_to_zarr_init:
         """
 
 
-rule crcm_to_zarr:
+rule gcm_to_zarr:
     input:
-        "manifests/crcm_to_zarr.init.done"
+        "manifests/gcm_to_zarr.init.done"
     output:
-        touch("manifests/crcm_to_zarr_{gcm}_{pathway}_{realization}_{variable_name}_{year}_{month}.done")
+        touch("manifests/gcm_to_zarr_{gcm}_{pathway}_{realization}_{variable_name}_{year}_{month}.done")
     params:
-        path_script=Path(snakefile_dir, "01_crcm_to_zarr.py"),
+        path_script=Path(snakefile_dir, "02_gcm_to_zarr.py"),
         workflow_dir=workflow_dir,
         config_yaml=config["config_yaml"],
     shell:
@@ -93,10 +93,10 @@ rule crcm_to_zarr:
         python3 {params.path_script} \
             --workflow_dir {params.workflow_dir} \
             --config {params.config_yaml} \
-            --gcm {wildcards.gcm} \
             --pathway {wildcards.pathway} \
-            --realization {wildcards.realization} \
             --variable_name {wildcards.variable_name} \
+            --gcm {wildcards.gcm} \
+            --realization {wildcards.realization} \
             --year {wildcards.year} \
             --month {wildcards.month}
         """
