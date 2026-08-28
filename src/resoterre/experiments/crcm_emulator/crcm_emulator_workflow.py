@@ -17,7 +17,10 @@ from resoterre.datasets.crcm.crcm_utils import (
     validate_crcm_data,
     version_realization_mapping,
 )
-from resoterre.experiments.crcm_emulator_zarr import crcm_emulator_output_format, write_crcm_time_slice_of_data
+from resoterre.experiments.crcm_emulator.crcm_emulator_zarr import (
+    crcm_emulator_output_format,
+    write_crcm_time_slice_of_data,
+)
 from resoterre.plots.nd_plots import CustomPColorMesh
 
 
@@ -46,7 +49,7 @@ class CRCMEmulatorConfig:
         Path to the directory containing CRCM data.
     tile_size : int
         Size of the CRCM domain (number of grid points on each side) for processing.
-    coarsen_factor : int
+    coarsen_factor : int, optional
         Factor between the GCM resolution and CRCM resolution for the emulation task.
     path_gcm_preprocessing : Path | None
         Path to the directory containing preprocessed GCM data.
@@ -132,7 +135,7 @@ class CRCMEmulatorConfig:
     path_emission_data: Path | None = None
     path_crcm_data: Path | None = None
     tile_size: int = 608
-    coarsen_factor: int = 4
+    coarsen_factor: int | None = 4
     path_gcm_preprocessing: Path | None = None
     preprocessing_simulations: list[list[str]] = field(default_factory=list)
     gcm_preprocessing_start_datetime: datetime | None = None
@@ -223,7 +226,7 @@ class CRCMToZarrFromConfig:
 
     def zarr_path(self, gcm_simulation: list[str], year: int, month: int) -> Path:
         """
-        Get the path to the zarr dataset for a given GCM simulation, year, and month.
+        Get the path to the zarr dataset for a given CRCM simulation, year, and month.
 
         Parameters
         ----------
