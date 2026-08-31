@@ -1,0 +1,81 @@
+experiment_name: test
+executing_institution: unknown
+path_output: /path/to/output
+path_regridding_weights: /path/to/regridding_weights
+path_gcm_data: /path/to/GCMs
+path_emission_data: /path/to/GHGs
+path_crcm_data: /path/to/MRCC5-CMIP6
+
+# Global parameters
+tile_size: 608
+coarsen_factor: 8
+
+# GCM preprocessing
+path_gcm_preprocessing: /path/to/gcm_preprocessing
+preprocessing_simulations:
+  -
+    - CNRM-ESM2-1
+    - historical
+    - r1i1p1f2
+  -
+    - CNRM-ESM2-1
+    - ssp245
+    - r1i1p1f2
+gcm_preprocessing_start_datetime: "1991-01-01"
+gcm_preprocessing_end_datetime: "2030-12-31"
+gcm_preprocessing_variables:
+  - hus
+  - psl
+  - ta
+  - ua
+  - uas
+  - vas
+  - va
+  - zg
+gcm_preprocessing_allow_overwrite: false
+
+# CRCM preprocessing (uses preprocessing_simulations from GCM preprocessing)
+path_crcm_preprocessing: /path/to/crcm_preprocessing
+crcm_preprocessing_start_datetime: "1991-01-01"
+crcm_preprocessing_end_datetime: "2030-12-31"
+crcm_preprocessing_variables:
+  - tas
+  - pr
+  - uas
+  - vas
+crcm_preprocessing_allow_overwrite: false
+
+# DataLoader parameters
+gcm_training_variables:
+  - ta1000
+  - ta850
+crcm_training_variables:
+  - tas
+training_periods:
+  -
+    - "1991-01-01"
+    - "2020-12-31"
+validation_periods:
+  -
+    - "2021-01-01"
+    - "2025-12-31"
+test_periods:
+  -
+    - "2026-01-01"
+    - "2030-12-31"
+
+# Training parameters
+training_batch_size: 2
+learning_rate: 0.01
+weight_decay: 0.001
+nb_of_epochs: 8
+num_workers: 2
+num_threads: 2
+training_device: cuda
+
+debug_crcm_figures:
+  - [ "CNRM-ESM2-1", "historical", "r1i1p1f2", "tas", 2000, 1, 2 ]
+  - [ "CNRM-ESM2-1", "ssp245", "r1i1p1f2", "uas", 2025, 7, 24 ]
+debug_gcm_figures:
+  - [ "CNRM-ESM2-1", "historical", "r1i1p1f2", "ta850", 2000, 1, 2 ]
+  - [ "CNRM-ESM2-1", "ssp245", "r1i1p1f2", "psl", 2025, 7, 24 ]
