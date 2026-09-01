@@ -255,6 +255,8 @@ class RDPSToHRDPSConfig:
         Path to the HRDPS geophysical data directory.
     path_rdps : Path, optional
         Path to the raw RDPS data directory.
+    use_flat_rdps_directory_structure : bool, optional
+        Whether to use a flat directory structure for RDPS files.
     experiment_name: str, optional
         Name of the experiment.
     global_start_datetime : datetime, optional
@@ -365,6 +367,7 @@ class RDPSToHRDPSConfig:
     path_hrdps: Path | None = None
     path_hrdps_geophysical: Path | None = None
     path_rdps: Path | None = None
+    use_flat_rdps_directory_structure: bool = False
     experiment_name: str | None = None
     global_start_datetime: datetime | None = None
     global_end_datetime: datetime | None = None
@@ -1020,7 +1023,7 @@ def rdps_regrid_to_zarr_from_config(
                 rdps_candidate_files.append(
                     Path(
                         config.path_rdps,
-                        f"{year}{month:02d}",
+                        "" if config.use_flat_rdps_directory_structure else f"{year}{month:02d}",  # Weaver integration
                         f"{year}{month:02d}{day:02d}{forecast_hour:02d}_{forecast_step:03d}.nc",
                     )
                 )
