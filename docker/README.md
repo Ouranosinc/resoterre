@@ -15,6 +15,7 @@ This directory contains Docker configurations for running **Resoterre inference*
 
 * The model file (`.safetensors` format) is copied into the container as `/app/model/model.safetensors` during build.
 * The regridding weight matrices are copied into the container at `/app/matrix/` during build.
+* The geophysical files (`orog.nc`, `sftlf.nc`) are copied into the container at `/app/geophysical/` during build.
 * **Configuration files must be mounted at runtime** via `-v $(pwd)/configs:/app/configs:ro`.
 * The inference workflow is executed via snakemake using `scripts/meta_workflows/downscaling/rdps_to_hrdps.smk`.
 * To change the model or matrix files, rebuild the inference image with new build arguments.
@@ -25,7 +26,7 @@ Your config YAML file must specify these key paths:
 
 * `path_inference_model`: Path to the trained model file (use `/app/model/model.safetensors` in container)
 * `path_rdps`: Path to input RDPS data (e.g., `/app/inputs` - must be mounted at runtime)
-* `path_hrdps_geophysical`: Path to geophysical files like `orog.nc` and `sftlf.nc` (e.g., `/app/geophysical` - must be mounted at runtime)
+* `path_hrdps_geophysical`: Path to geophysical files like `orog.nc` and `sftlf.nc` (use `/app/geophysical` - already baked into the image)
 * `path_regridding_weights`: Path to regridding weight matrices (use `/app/matrix` - already baked into the image)
 * `path_output`: Output directory for inference results (e.g., `/app/outputs` - must be mounted at runtime)
 * `path_logs`: Directory for log files (e.g., `/app/logs` - must be mounted at runtime)
@@ -57,6 +58,7 @@ The inference image uses a build argument to specify which trained model file to
 * `MODEL_PATH`: Path to the model file (default: `model/model.safetensors`). The model will be copied into the container as `model.safetensors`.
 
 The matrix files are always copied from the root of the matrix build context (the two `.npz` files are hardcoded in the Dockerfile).
+The geophysical files (`orog.nc`, `sftlf.nc`) are always copied from the root of the geophysical build context.
 
 Use `--build-context` flags to specify directories.
 
@@ -66,17 +68,18 @@ For example, if your trained model is at:
 model/unet_epoch_mebojo_018.safetensors
 ```
 
-And your matrix files are in the default `matrix/` directory, build the inference image:
+And your matrix files are in the default `matrix/` directory, and your geophysical files are in the default `geophysical/` directory, build the inference image:
 
 ```bash
 docker build -f docker/Dockerfile.inference \
   --build-arg MODEL_PATH='unet_epoch_mebojo_018.safetensors' \
   --build-context model=./model \
   --build-context matrix=./matrix \
+  --build-context geophysical=./geophysical \
   -t resoterre-inference:latest .
 ```
 
-This will copy the specified model file into the image as `/app/model/model.safetensors` and the matrix files into `/app/matrix/`.
+This will copy the specified model file into the image as `/app/model/model.safetensors`, the matrix files into `/app/matrix/`, and the geophysical files into `/app/geophysical/`.
 
 ---
 
@@ -99,7 +102,7 @@ Inside Docker, inference is handled automatically via the snakemake `ENTRYPOINT`
 
 ### Run Inference with Docker (CPU or GPU)
 
-**Required mounts**: configs, inputs, geophysical data, outputs, and logs. The matrix files are already baked into the image.
+**Required mounts**: configs, inputs, outputs, and logs. The matrix and geophysical files are already baked into the image.
 
 **Important**: Your config YAML must use container paths:
 - `path_inference_model: /app/model/model.safetensors`
@@ -123,7 +126,6 @@ Then run:
 docker run --rm \
   -v $(pwd)/configs:/app/configs:ro \
   -v $(pwd)/inputs:/app/inputs:ro \
-  -v $(pwd)/geophysical:/app/geophysical:ro \
   -v $(pwd)/outputs:/app/outputs \
   -v $(pwd)/logs:/app/logs \
   resoterre-inference:latest \
@@ -151,7 +153,6 @@ Then run (requires NVIDIA Container Toolkit):
 docker run --rm --gpus all \
   -v $(pwd)/configs:/app/configs:ro \
   -v $(pwd)/inputs:/app/inputs:ro \
-  -v $(pwd)/geophysical:/app/geophysical:ro \
   -v $(pwd)/outputs:/app/outputs \
   -v $(pwd)/logs:/app/logs \
   resoterre-inference:latest \
