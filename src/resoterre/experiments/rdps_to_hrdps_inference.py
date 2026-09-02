@@ -97,7 +97,7 @@ class RDPSToHRDPSInferenceFromConfig:
         elif config.path_output is None:
             raise ValueError("Output path is not specified in the configuration.")
         else:
-            pth_files = list(Path(config.path_output).glob(f"unet_epoch_{self.config.experiment_name}_*.pth"))
+            pth_files = list(Path(config.path_output).glob(f"{self.config.experiment_name}_UNet_*.pth"))
             pth_files = sorted(pth_files, key=lambda x: x.stat().st_mtime, reverse=True)
             if not pth_files:
                 raise FileNotFoundError(

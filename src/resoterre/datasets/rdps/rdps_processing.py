@@ -1,5 +1,6 @@
 """Module for processing RDPS data."""
 
+import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -9,6 +10,9 @@ import xarray
 
 from resoterre.data_management.netcdf_utils import CFVariables
 from resoterre.datasets.rdps.rdps_variables import rdps_netcdf_attrs
+
+
+logger = logging.getLogger(__name__)
 
 
 def save_rdps_coarse(
@@ -207,6 +211,7 @@ def save_rdps_coarse(
     idx = int(np.where(zarr_ds["time"].values == ds_rdps["time"].values[0])[0][0])
     is_empty = zarr_ds["is_empty"][:, idx : idx + 1].values
     variable_idx = expected_variables.index(variable_name)
+    logger.info("Updating is_empty flag for variable '%s' at time index %d", variable_name, idx)
     is_empty[variable_idx, :] = 0
     cf_coordinates.add(
         "is_empty",

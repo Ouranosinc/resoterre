@@ -389,21 +389,38 @@ class RDPSToHRDPSConfig:
     hrdps_geophysical_variables_for_training: list[str] = field(default_factory=list)
     validation_period_start: datetime | None = None
     test_period_start: datetime | None = None
-    training_batch_size: int = 32
+    training_batch_size: int = field(
+        default=32, metadata={"is_hyperparameter": True, "display_name": "batch_size", "hp_type": "training"}
+    )
     kernel_size: int = 3
-    initial_nb_of_hidden_channels: int = 16
-    depth: int = 2
-    reduction_ratio: int | None = None
-    learning_rate: float = 0.001
-    weight_decay: float | None = None
-    mse_loss_weight: float = 1.0
-    mae_loss_weight: float = 0.0
-    mass_loss_weight: float = 0.0
-    ssim_loss_weight: float = 0.0
+    initial_nb_of_hidden_channels: int = field(
+        default=16, metadata={"is_hyperparameter": True, "display_name": "init_chan", "hp_type": "architecture"}
+    )
+    depth: int = field(default=2, metadata={"is_hyperparameter": True, "hp_type": "architecture"})
+    reduction_ratio: int | None = field(
+        default=None, metadata={"is_hyperparameter": True, "display_name": "S&E", "hp_type": "architecture"}
+    )
+    learning_rate: float = field(
+        default=0.001, metadata={"is_hyperparameter": True, "display_name": "lr", "hp_type": "training"}
+    )
+    weight_decay: float | None = field(default=None, metadata={"is_hyperparameter": True, "hp_type": "training"})
+    # mse_loss_weight: float = 1.0
+    mse_loss_weight: float = field(
+        default=1.0, metadata={"is_hyperparameter": True, "display_name": "weight_mse", "hp_type": "objective"}
+    )
+    mae_loss_weight: float = field(
+        default=0.0, metadata={"is_hyperparameter": True, "display_name": "weight_mae", "hp_type": "objective"}
+    )
+    mass_loss_weight: float = field(
+        default=0.0, metadata={"is_hyperparameter": True, "display_name": "weight_mass", "hp_type": "objective"}
+    )
+    ssim_loss_weight: float = field(
+        default=0.0, metadata={"is_hyperparameter": True, "display_name": "weight_ssim", "hp_type": "objective"}
+    )
     nb_of_epochs: int = 10
-    num_workers: int = 2
-    num_threads: int = 2
-    device: str = "cpu"
+    num_workers: int = field(default=2, metadata={"is_setting": True})
+    num_threads: int = field(default=2, metadata={"is_setting": True})
+    device: str = field(default="cpu", metadata={"is_setting": True})
     inference_variables: list[str] = field(default_factory=list)
     inference_start_datetime: datetime | None = None
     inference_end_datetime: datetime | None = None
@@ -893,6 +910,7 @@ def rdps_regrid_to_zarr_single_file_processing(
         config.path_preprocessed_zarr,
         f"rdps_coarse_i_{i_start:04d}_j_{j_start:04d}_size_{config.tile_size:04d}.zarr",
     )
+    logger.info("Saving RDPS coarse data to Zarr: %s", path_rdps_coarse_zarr)
     save_rdps_coarse(
         path_rdps_coarse_zarr,
         rlat=rlat_coarse,
@@ -1014,21 +1032,18 @@ def rdps_regrid_to_zarr_from_config(
     if config.tiles_center_lat is None or config.tiles_center_lon is None or config.tile_size is None:
         raise ValueError("tiles_center_lat, tiles_center_lon, and tile_size must be specified in the configuration.")
     days = days or list(range(1, calendar.monthrange(year, month)[1] + 1))
-    forecast_steps = [7, 8, 9, 10, 11, 12]
-    rdps_candidate_files = []
+    rdps_candidate_files = rdps_datetimes_to_forecast_files(
+        start_datetime=datetime(year, month, days[0]),
+        end_datetime=datetime(year, month, days[-1], 23, 59, 59),
+        first_valid_forecast_step=7,
+        requires_previous_forecast_step=False,
+        include_year_month_subdirectory=not config.use_flat_rdps_directory_structure,
+    )
+    rdps_candidate_files = [Path(config.path_rdps, x) for x in rdps_candidate_files]
     rdps_sample_file = None
-    for day in days:
-        for forecast_hour in [0, 6, 12, 18]:
-            for forecast_step in forecast_steps:
-                rdps_candidate_files.append(
-                    Path(
-                        config.path_rdps,
-                        "" if config.use_flat_rdps_directory_structure else f"{year}{month:02d}",  # Weaver integration
-                        f"{year}{month:02d}{day:02d}{forecast_hour:02d}_{forecast_step:03d}.nc",
-                    )
-                )
-                if rdps_sample_file is None and rdps_candidate_files[-1].is_file():
-                    rdps_sample_file = rdps_candidate_files[-1]
+    for rdps_candidate_file in rdps_candidate_files:
+        if rdps_sample_file is None and rdps_candidate_file.is_file():
+            rdps_sample_file = rdps_candidate_file
     if rdps_sample_file is None:
         logger.debug("No RDPS files found for year=%s, month=%02d.", year, month)
         return
