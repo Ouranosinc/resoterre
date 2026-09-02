@@ -255,6 +255,8 @@ class RDPSToHRDPSConfig:
         Path to the HRDPS geophysical data directory.
     path_rdps : Path, optional
         Path to the raw RDPS data directory.
+    use_flat_rdps_directory_structure : bool, optional
+        Whether to use a flat directory structure for RDPS files.
     experiment_name: str, optional
         Name of the experiment.
     global_start_datetime : datetime, optional
@@ -365,6 +367,7 @@ class RDPSToHRDPSConfig:
     path_hrdps: Path | None = None
     path_hrdps_geophysical: Path | None = None
     path_rdps: Path | None = None
+    use_flat_rdps_directory_structure: bool = False
     experiment_name: str | None = None
     global_start_datetime: datetime | None = None
     global_end_datetime: datetime | None = None
@@ -916,6 +919,69 @@ def rdps_regrid_to_zarr_single_file_processing(
     )
 
 
+def rdps_datetimes_to_forecast_files(
+    start_datetime: datetime,
+    end_datetime: datetime,
+    first_valid_forecast_step: int = 7,
+    requires_previous_forecast_step: bool = False,
+    include_year_month_subdirectory: bool = True,
+) -> list[Path]:
+    """
+    Generate a list of RDPS files required to retrieve the requested datetime range.
+
+    Parameters
+    ----------
+    start_datetime : datetime
+        Start of the datetime range.
+    end_datetime : datetime
+        End of the datetime range.
+    first_valid_forecast_step : int, optional
+        The first valid forecast step.
+    requires_previous_forecast_step : bool, optional
+        Whether the previous forecast step is required.
+    include_year_month_subdirectory : bool, optional
+        Whether to include the year/month subdirectory in the file paths.
+
+    Returns
+    -------
+    list[Path]
+        List of paths to RDPS files.
+    """
+    current_datetime = start_datetime
+    rdps_files: list[Path] = []
+    while current_datetime <= end_datetime:
+        year = current_datetime.year
+        month = current_datetime.month
+        day = current_datetime.day
+        hour = current_datetime.hour
+        forecast_step = hour % 6
+        forecast_hour = datetime(year, month, day, hour - forecast_step)
+        while forecast_step < first_valid_forecast_step:
+            forecast_step += 6
+            forecast_hour = forecast_hour - timedelta(hours=6)
+        year_month_str = f"{forecast_hour.year}{forecast_hour.month:02d}"
+        if requires_previous_forecast_step:
+            if not rdps_files or (forecast_step == first_valid_forecast_step):
+                if forecast_step == 0:
+                    raise ValueError("Cannot require previous forecast step when the first forecast step is 0.")
+                rdps_files.append(
+                    Path(
+                        f"{year_month_str}{forecast_hour.day:02d}{forecast_hour.hour:02d}_{forecast_step - 1:03d}.nc",
+                    )
+                )
+                if include_year_month_subdirectory:
+                    rdps_files[-1] = Path(year_month_str, rdps_files[-1].name)
+        rdps_files.append(
+            Path(
+                f"{year_month_str}{forecast_hour.day:02d}{forecast_hour.hour:02d}_{forecast_step:03d}.nc",
+            )
+        )
+        if include_year_month_subdirectory:
+            rdps_files[-1] = Path(year_month_str, rdps_files[-1].name)
+        current_datetime += timedelta(hours=1)
+    return rdps_files
+
+
 def rdps_regrid_to_zarr_from_config(
     config: RDPSToHRDPSConfig, variable_name: str, year: int, month: int, days: list[int] | None = None
 ) -> None:
@@ -957,7 +1023,7 @@ def rdps_regrid_to_zarr_from_config(
                 rdps_candidate_files.append(
                     Path(
                         config.path_rdps,
-                        f"{year}{month:02d}",
+                        "" if config.use_flat_rdps_directory_structure else f"{year}{month:02d}",  # Weaver integration
                         f"{year}{month:02d}{day:02d}{forecast_hour:02d}_{forecast_step:03d}.nc",
                     )
                 )
