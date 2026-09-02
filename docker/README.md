@@ -16,7 +16,8 @@ This directory contains Docker configurations for running **Resoterre inference*
 * The model file (`.safetensors` format) is copied into the container as `/app/model/model.safetensors` during build.
 * The regridding weight matrices are copied into the container at `/app/matrix/` during build.
 * The geophysical files (`orog.nc`, `sftlf.nc`) are copied into the container at `/app/geophysical/` during build.
-* **Configuration files must be mounted at runtime** via `-v $(pwd)/configs:/app/configs:ro`.
+* The default downscaling configurations are copied into the image under `/app/configs/downscaling/`.
+* Custom configuration files can be mounted at runtime via `-v $(pwd)/configs:/app/configs:ro`.
 * The inference workflow is executed via snakemake using `scripts/meta_workflows/downscaling/rdps_to_hrdps.smk`.
 * To change the model or matrix files, rebuild the inference image with new build arguments.
 
@@ -26,6 +27,7 @@ Your config YAML file must specify these key paths:
 
 * `path_inference_model`: Path to the trained model file (use `/app/model/model.safetensors` in container)
 * `path_rdps`: Path to input RDPS data (e.g., `/app/inputs` - must be mounted at runtime)
+* `use_flat_rdps_directory_structure`: Set to `true` when RDPS input files are stored directly in `path_rdps`, for example `/app/inputs/2024050100_007.nc`. Set to `false` when files are organized in month subdirectories, for example `/app/inputs/202405/2024050100_007.nc`.
 * `path_hrdps_geophysical`: Path to geophysical files like `orog.nc` and `sftlf.nc` (use `/app/geophysical` - already baked into the image)
 * `path_regridding_weights`: Path to regridding weight matrices (use `/app/matrix` - already baked into the image)
 * `path_output`: Output directory for inference results (e.g., `/app/outputs` - must be mounted at runtime)
@@ -34,7 +36,7 @@ Your config YAML file must specify these key paths:
 * `inference_device`: Set to `cpu` or `cuda` depending on availability
 * `inference_variables`: List of variables to generate (e.g., `HRDPS_P_TT_10000`, `HRDPS_P_PR_SFC`, etc.)
 
-An example Docker-ready config is available at [examples/docker/downscaling_rdps_to_hrdps_docker.yaml](../examples/docker/downscaling_rdps_to_hrdps_docker.yaml).
+For Docker inference, use `configs/downscaling/downscaling_rdps_to_hrdps_docker.yaml`, which uses `/app/...` paths. The separate `downscaling_rdps_to_hrdps_cwl.yaml` is for CWL execution and uses staged relative paths. An example Docker-ready config is available at [examples/docker/downscaling_rdps_to_hrdps_docker.yaml](../examples/docker/downscaling_rdps_to_hrdps_docker.yaml).
 
 ---
 
@@ -102,7 +104,7 @@ Inside Docker, inference is handled automatically via the snakemake `ENTRYPOINT`
 
 ### Run Inference with Docker (CPU or GPU)
 
-**Required mounts**: configs, inputs, outputs, and logs. The matrix and geophysical files are already baked into the image.
+**Required mounts**: inputs, outputs, and logs. The default config, matrix, and geophysical files are already baked into the image. Mount configs only when using a custom YAML file.
 
 **Important**: Your config YAML must use container paths:
 - `path_inference_model: /app/model/model.safetensors`
@@ -129,13 +131,25 @@ docker run --rm \
   -v $(pwd)/outputs:/app/outputs \
   -v $(pwd)/logs:/app/logs \
   resoterre-inference:latest \
-  --config config_yaml=/app/configs/downscaling/your_config.yaml --directory=/app/outputs
+  -j1 --config config_yaml=/app/configs/downscaling/downscaling_rdps_to_hrdps_docker.yaml --directory=/app/outputs
 ```
 
 > **Notes**:
-> - Config directory MUST be mounted: `-v $(pwd)/configs:/app/configs:ro`
-> - Specify your config file: `--config config_yaml=/app/configs/downscaling/your_config.yaml`
+> - The image uses `/app/configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml` by default.
+> - For a custom config, mount the config directory and pass `--config config_yaml=/app/configs/downscaling/your_config.yaml`.
 > - To change the output directory: `--directory=/app/your_output_dir`
+
+To use a custom configuration instead of the baked-in default, mount the configs directory and provide its path explicitly:
+
+```bash
+docker run --rm \
+  -v $(pwd)/configs:/app/configs:ro \
+  -v $(pwd)/inputs:/app/inputs:ro \
+  -v $(pwd)/outputs:/app/outputs \
+  -v $(pwd)/logs:/app/logs \
+  resoterre-inference:latest \
+  -j1 --config config_yaml=/app/configs/downscaling/your_config.yaml --directory=/app/outputs
+```
 
 ---
 
@@ -156,6 +170,6 @@ docker run --rm --gpus all \
   -v $(pwd)/outputs:/app/outputs \
   -v $(pwd)/logs:/app/logs \
   resoterre-inference:latest \
-  --config config_yaml=/app/configs/downscaling/your_config.yaml --directory=/app/outputs
+  -j1 --directory=/app/outputs
 ```
 ---

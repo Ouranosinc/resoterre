@@ -1,7 +1,10 @@
-config:
-  class: File
-  path: ../../configs/downscaling/downscaling_rdps_to_hrdps.yaml # when using weaver use fileserver path
-  format: "https://www.iana.org/assignments/media-types/application/yaml"
+# Optional configuration override. Leave this commented to use the default
+# CWL-ready configuration included in the Docker image.
+# config:
+#   class: File
+#   path: ../../configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml
+#   format: "https://www.iana.org/assignments/media-types/application/yaml"
+
 input_data:
   class: Directory
-  path: ../../inputs # directory containing the input NetCDF files, preserving their parent folder structure (e.g., 202405/2024050100_007.nc)
+  path: ../../inputs # directory containing the input NetCDF files.

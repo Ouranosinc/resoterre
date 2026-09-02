@@ -1,0 +1,138 @@
+path_logs: logs
+path_output: outputs
+path_preprocessed_zarr: outputs
+path_regridding_weights: /app/matrix
+path_hrdps: null  # Not required for inference
+path_hrdps_geophysical: /app/geophysical
+path_rdps: inputs
+
+# Global settings
+experiment_name: cwl
+global_start_datetime: "2017-05-22 07:00:00"
+global_end_datetime: "2024-09-01 12:00:00"
+coarsen_factor: 4
+
+# HRDPS Preprocessing
+hrdps_preprocessing_skip: false
+hrdps_variables:
+    - "orog"  # Providing orog here will generate the default geophysical fields in zarr format in inference mode
+tile_size: 512
+tiles_center_lon:
+    - 284.30
+tiles_center_lat:
+    - 45.42
+hrdps_preprocessing_start_datetime: "2017-05-22 07:00:00"
+hrdps_preprocessing_end_datetime: "2017-05-22 08:00:00"
+hrdps_compute_upscaled_version: false
+
+use_flat_rdps_directory_structure: true  # Set to true if the RDPS input files are in a flat directory structure (e.g., 2024050100_007.nc) instead of a nested structure (e.g., 202405/2024050100_007.nc)
+
+# RDPS Preprocessing
+rdps_preprocessing_skip: false
+rdps_variables:
+    - "TT_model_levels"
+    - "PR"
+    - "UU_model_levels"
+    - "VV_model_levels"
+    - "PC"
+    - "PN"
+    - "TT850"  # end of tier 1
+    - "GZ500"
+    - "GZ850"
+    - "HU850"
+    - "HU700"
+    - "TD"
+    - "UU850"
+    - "VV850"  # end of tier 2
+rdps_preprocessing_start_datetime: "2024-05-01 07:00:00"
+rdps_preprocessing_end_datetime: "2024-05-01 08:00:00"
+
+# Training
+rdps_variables_for_training:
+    - "TT_model_levels"
+    - "PR"
+    - "UU_model_levels"
+    - "VV_model_levels"
+    - "PC"
+    - "PN"
+    - "TT850"
+    - "GZ500"
+    - "GZ850"
+    - "HU850"
+    - "HU700"
+    - "TD"
+    - "UU850"
+    - "VV850"
+hrdps_variables_for_training:
+    - "HRDPS_P_TT_10000"
+    - "HRDPS_P_PR_SFC"
+    - "HRDPS_P_UUC_10000"
+    - "HRDPS_P_VVC_10000"
+hrdps_geophysical_variables_for_training:
+    - "orog"
+    - "sftlf"
+validation_period_start: "2023-01-10 00:00:00"
+test_period_start: "2023-06-01 00:00:00"
+training_batch_size: 32
+kernel_size: 3
+initial_nb_of_hidden_channels: 144
+depth: 2
+reduction_ratio: 4
+learning_rate: 0.002
+weight_decay: 0.00001
+mse_loss_weight: 0.5
+mae_loss_weight: 0.0
+mass_loss_weight: 0.1
+ssim_loss_weight: 0.4
+nb_of_epochs: 0  # 0 epochs for inference only
+num_workers: 8
+num_threads: 16
+device: cpu
+
+# Inference
+inference_variables:
+    - "HRDPS_P_TT_10000"
+    - "HRDPS_P_PR_SFC"
+    - "HRDPS_P_UUC_10000"
+    - "HRDPS_P_VVC_10000"
+inference_start_datetime: "2024-05-01 07:00:00"
+inference_end_datetime: "2024-05-01 08:00:00"
+path_inference_model: /app/model/model.safetensors
+inference_device: cpu  # cpu or cuda
+
+# Additional metadata
+hrdps_extent_coordinates:
+    lat_min: 27.284586
+    lat_max: 70.6115
+    lon_min: -152.73064
+    lon_max: -40.708557
+hrdps_shape:
+    rlat_size: 1290
+    rlon_size: 2540
+rdps_extent_coordinates:
+    lat_min: -7.7491064
+    lat_max: 89.96573
+    lon_min: 0.00029021563
+    lon_max: 359.9995
+rdps_shape:
+    rlat_size: 1076
+    rlon_size: 1102
+rdps_coarse_i_0237_j_1568_grid_extent_coordinates:
+    lat_min: 37.57
+    lat_max: 53.21
+    lon_min: -86.39
+    lon_max: -64.23
+rdps_coarse_i_0237_j_1568_grid_shape:
+    rlat_size: 128
+    rlon_size: 128
+hrdps_i_0237_j_1568_grid_extent_coordinates:
+    lat_min: 37.52
+    lat_max: 53.25
+    lon_min: -86.45
+    lon_max: -64.16
+hrdps_i_0237_j_1568_grid_shape:
+    rlat_size: 512
+    rlon_size: 512
+
+framework: pytorch
+framework_version: '2.9.0+cu130'

@@ -36,16 +36,17 @@ baseCommand: []
 
 arguments:
   - -j1 # Define the number of cores to use for inference (1 core in this case)
-  - --config
-  - config_yaml=config.yaml
 
 inputs:
   config:
-    type: File
+    type: ["null", File]
     format:
     - "iana:application/yaml"
     - "edam:format_3750"
     doc: Inference configuration YAML
+    inputBinding:
+      prefix: --config
+      valueFrom: config_yaml=config.yaml
 
   input_data:
     type: Directory

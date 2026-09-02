@@ -25,18 +25,18 @@ The `unet.cwl` file describes a Common Workflow Language (CWL) CommandLineTool f
 ### Key Components
 
 - **Inputs:**
-	- `config` (File): Inference configuration YAML file.
-	- `input_data` (Directory): Directory containing the input NetCDF files, preserving their parent folder structure (e.g., `202405/2024050100_007.nc`).
+  - `config` (File, optional): Inference configuration YAML file. When no custom file is supplied, the Docker image uses its built-in `downscaling_rdps_to_hrdps_cwl.yaml` configuration.
+  - `input_data` (Directory): Directory containing the input NetCDF files.
 
 - **Outputs:**
 	- `inference_output` (Directory): The `inference_<experiment_name>.zarr` directory containing the downscaled inference results.
 
 ### Requirements & Hints
 
-- `DockerRequirement`: Runs the process in a specified Docker image. See [docker/README.md](../../docker/README.md) for instructions on preparing the Docker image referenced by the CWL. If using a different tag, adjust the image name in the CWL under `DockerRequirement`. The image's `ENTRYPOINT` already runs snakemake with the downscaling workflow; the CWL only appends `-j1` and `--config`.
+- `DockerRequirement`: Runs the process in a specified Docker image. See [docker/README.md](../../docker/README.md) for instructions on preparing the Docker image referenced by the CWL. If using a different tag, adjust the image name in the CWL under `DockerRequirement`. The image includes the default `downscaling_rdps_to_hrdps_cwl.yaml` configuration for CWL execution. A custom config file can be supplied to override that default.
 - `cwltool:CUDARequirement`: Specifies GPU requirements for CUDA-enabled execution (provided as a hint, not required).
 - `EnvVarRequirement`: Sets environment variables for compatibility (e.g., PyTorch caching).
-- `InitialWorkDirRequirement`: Stages the `config` file as `config.yaml` and the `input_data` directory as `inputs` in the container's working directory.
+- `InitialWorkDirRequirement`: Stages a supplied custom `config` file as `config.yaml` and the `input_data` directory as `inputs` in the container's working directory.
 
 > **Note:**
 > The `--enable-ext` flag is required when using `cwltool` to enable extension features such as `cwltool:CUDARequirement`.
@@ -44,7 +44,7 @@ The `unet.cwl` file describes a Common Workflow Language (CWL) CommandLineTool f
 
 ## Prepare Inference Configuration
 
-Before running the UNet process, you should update the configuration file at `configs/downscaling/downscaling_rdps_to_hrdps.yaml` to match your environment and data locations.
+The Docker image is ready for CWL execution with the built-in `configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml` configuration. Supplying a configuration file is optional when the default settings are suitable. Provide a custom config only when you need to change paths, dates, variables, or other inference settings.
 
 Similar to the Docker example config ([examples/docker/downscaling_rdps_to_hrdps_docker.yaml](../docker/downscaling_rdps_to_hrdps_docker.yaml)), the paths should be relative to the container's working directory (since CWL stages `config` as `config.yaml` and `input_data` as `inputs` there), and `experiment_name` should be set to `cwl` so the output is named `inference_cwl.zarr`.
 
@@ -57,6 +57,7 @@ path_preprocessed_zarr: outputs
 path_regridding_weights: /app/matrix                # baked into the image
 path_hrdps_geophysical: /app/geophysical            # baked into the image
 path_rdps: inputs
+use_flat_rdps_directory_structure: true              # true for inputs/2024050100_007.nc; false for inputs/202405/2024050100_007.nc
 path_inference_model: /app/model/model.safetensors  # baked into the image
 
 experiment_name: cwl # used to name the output zarr: inference_<experiment_name>.zarr
@@ -71,9 +72,11 @@ inference_variables:
 inference_device: cpu  # cpu or cuda
 ```
 
+Set `use_flat_rdps_directory_structure` to `true` when the RDPS files are stored directly in `path_rdps`, such as `inputs/2024050100_007.nc`. Set it to `false` when the files are stored in month subdirectories, such as `inputs/202405/2024050100_007.nc`. This setting must match the directory structure supplied through `input_data`.
+
 See [examples/docker/downscaling_rdps_to_hrdps_docker.yaml](../docker/downscaling_rdps_to_hrdps_docker.yaml) for a complete, working example to adapt (remember to switch the `/app/...` absolute paths to the relative ones shown above, and set `experiment_name: cwl`).
 
-Adjust the paths and parameters as needed for your setup. This file is referenced as the `config` input in the CWL tool and should be provided using the execute YAML [file](execute_unet_cwl_schema.yml).
+Adjust the paths and parameters as needed for your setup. A custom file is referenced as the `config` input in the CWL tool and can be provided using the execute YAML [file](execute_unet_cwl_schema.yml) to override the built-in default.
 
 **GPU vs CPU Configuration:**
 
@@ -123,7 +126,7 @@ python3 -m http.server 4004 -b <ip> -d <PATH_TO_FOLDER>/
 python3 -m http.server 4004 -b <ip> -d /tmp/inference
 ```
 
-In this example, the `/tmp/inference` directory contains a `/config` folder with `downscaling_rdps_to_hrdps.yaml` and an `/inputs` folder with the NetCDF files for inference, preserving their parent folder structure (e.g., `inputs/202405/2024050100_007.nc`).
+In this example, the `/tmp/inference` directory contains a `/config` folder with `downscaling_rdps_to_hrdps.yaml` and an `/inputs` folder with the NetCDF files for inference. The example uses the flat layout, so set `use_flat_rdps_directory_structure: true` and place files directly in `/inputs` (e.g., `inputs/2024050100_007.nc`).
 
 When referencing files hosted on a file server in [execute_unet_cwl_schema.yml](execute_unet_cwl_schema.yml), use the full HTTP URL. For example, if serving from `http://localhost:4004`, the input directory would be referenced as:
 ```yaml
@@ -138,9 +141,8 @@ inference/
 ├── config/
 │   └── downscaling_rdps_to_hrdps.yaml
 └── inputs/
-    └── 202405/
 		└── 2024050100_006.nc
-        └── 2024050100_007.nc
+        2024050100_007.nc
 ```
 
 
@@ -154,7 +156,7 @@ cwltool --enable-ext --outdir results `<PATH_TO>/unet.cwl` `<PATH_TO>/execute_un
 
 This will execute the workflow and store the results in the `results/` directory as `results/inference_<experiment_name>.zarr`.
 
-A ready-to-use example job file is also provided at [execute_unet_test.yml](execute_unet_test.yml), which references the local `inputs/`, and `configs/downscaling/downscaling_rdps_to_hrdps.yaml`:
+A ready-to-use example job file is also provided at [execute_unet_cwl_schema.yml](execute_unet_cwl_schema.yml), which references the local `inputs/`, and `configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml`:
 
 ```bash
 cwltool --outdir=<PATH_TO_OUTPUT_DIR> examples/deploy/unet.cwl examples/deploy/execute_unet_test.yml
