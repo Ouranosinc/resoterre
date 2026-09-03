@@ -36,7 +36,7 @@ Your config YAML file must specify these key paths:
 * `inference_device`: Set to `cpu` or `cuda` depending on availability
 * `inference_variables`: List of variables to generate (e.g., `HRDPS_P_TT_10000`, `HRDPS_P_PR_SFC`, etc.)
 
-For Docker inference, use `configs/downscaling/downscaling_rdps_to_hrdps_docker.yaml`, which uses `/app/...` paths. The separate `downscaling_rdps_to_hrdps_cwl.yaml` is for CWL execution and uses staged relative paths. An example Docker-ready config is available at [examples/docker/downscaling_rdps_to_hrdps_docker.yaml](../examples/docker/downscaling_rdps_to_hrdps_docker.yaml).
+The image uses `configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml` by default. It is ready for direct Docker execution from `/app`, and its relative paths resolve to the mounted `/app/inputs`, `/app/outputs`, and `/app/logs` directories. A custom config can be mounted and passed explicitly when needed.
 
 ---
 
@@ -104,7 +104,7 @@ Inside Docker, inference is handled automatically via the snakemake `ENTRYPOINT`
 
 ### Run Inference with Docker (CPU or GPU)
 
-**Required mounts**: inputs, outputs, and logs. The default config, matrix, and geophysical files are already baked into the image. Mount configs only when using a custom YAML file.
+**Required mounts**: inputs, outputs, and logs. The default config, matrix, and geophysical files are already baked into the image, so the default Docker command does not require a config mount.
 
 **Important**: Your config YAML must use container paths:
 - `path_inference_model: /app/model/model.safetensors`
@@ -126,16 +126,15 @@ Then run:
 
 ```bash
 docker run --rm \
-  -v $(pwd)/configs:/app/configs:ro \
   -v $(pwd)/inputs:/app/inputs:ro \
   -v $(pwd)/outputs:/app/outputs \
   -v $(pwd)/logs:/app/logs \
   resoterre-inference:latest \
-  -j1 --config config_yaml=/app/configs/downscaling/downscaling_rdps_to_hrdps_docker.yaml --directory=/app/outputs
+  -j1 --directory=/app
 ```
 
 > **Notes**:
-> - The image uses `/app/configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml` by default.
+> - The image uses the built-in `/app/configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml` by default.
 > - For a custom config, mount the config directory and pass `--config config_yaml=/app/configs/downscaling/your_config.yaml`.
 > - To change the output directory: `--directory=/app/your_output_dir`
 
@@ -148,7 +147,7 @@ docker run --rm \
   -v $(pwd)/outputs:/app/outputs \
   -v $(pwd)/logs:/app/logs \
   resoterre-inference:latest \
-  -j1 --config config_yaml=/app/configs/downscaling/your_config.yaml --directory=/app/outputs
+  -j1 --config config_yaml=/app/configs/downscaling/your_config.yaml --directory=/app
 ```
 
 ---
@@ -165,11 +164,10 @@ Then run (requires NVIDIA Container Toolkit):
 
 ```bash
 docker run --rm --gpus all \
-  -v $(pwd)/configs:/app/configs:ro \
   -v $(pwd)/inputs:/app/inputs:ro \
   -v $(pwd)/outputs:/app/outputs \
   -v $(pwd)/logs:/app/logs \
   resoterre-inference:latest \
-  -j1 --directory=/app/outputs
+  -j1 --directory=/app
 ```
 ---

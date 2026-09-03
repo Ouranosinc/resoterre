@@ -41,4 +41,4 @@ ENV PYTHONPATH=/app
 ENTRYPOINT ["snakemake", "-s", "/app/scripts/meta_workflows/downscaling/rdps_to_hrdps.smk", "--config", "config_yaml=/app/configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml"]
 
 # Default core count and output directory (can be overridden at runtime)
-CMD ["-j1", "--directory=/app/outputs"]
+CMD ["-j1", "--directory=/app"]

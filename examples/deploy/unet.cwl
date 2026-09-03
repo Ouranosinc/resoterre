@@ -36,6 +36,8 @@ baseCommand: []
 
 arguments:
   - -j1 # Define the number of cores to use for inference (1 core in this case)
+  # The runner picks the working directory at runtime, so it cannot be hardcoded in the image.
+  - --directory=$(runtime.outdir)
 
 inputs:
   config:
@@ -57,4 +59,4 @@ outputs:
     type: Directory
     doc: Zarr output directory containing inference results
     outputBinding:
-      glob: outputs/inference_cwl.zarr
+      glob: outputs/inference_*.zarr
