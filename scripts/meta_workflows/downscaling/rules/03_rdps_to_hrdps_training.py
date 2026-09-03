@@ -7,8 +7,11 @@ from pathlib import Path
 import numcodecs  # noqa: F401  # Imported to register logger for disabling
 import torch.multiprocessing as mp
 
-from resoterre.experiments.rdps_to_hrdps_training import RDPSToHRDPSTrainingFromConfig
-from resoterre.experiments.rdps_to_hrdps_workflow import rdps_to_hrdps_parse_config
+from resoterre.experiments.rdps_to_hrdps_downscaling.rdps_to_hrdps_training import RDPSToHRDPSTrainingFromConfig
+from resoterre.experiments.rdps_to_hrdps_downscaling.rdps_to_hrdps_workflow import (
+    rdps_to_hrdps_config_replace_for_inference,
+    rdps_to_hrdps_parse_config,
+)
 from resoterre.logging_utils import start_root_logger
 
 
@@ -20,6 +23,10 @@ if __name__ == "__main__":
     parser.add_argument("--workflow_dir", type=str, required=True, help="Path to the workflow output directory")
     parser.add_argument("--config", type=str, required=True, help="Path to the configuration file")
     parser.add_argument("--epoch", type=int, required=True, help="Epoch to train")
+    parser.add_argument(
+        "--start_datetime", type=str, default=argparse.SUPPRESS, help="Start datetime for config overwrite"
+    )
+    parser.add_argument("--end_datetime", type=str, default=argparse.SUPPRESS, help="End datetime for config overwrite")
     args = parser.parse_args()
 
     log_file = start_root_logger(
@@ -48,7 +55,9 @@ if __name__ == "__main__":
 
     mp.set_start_method("spawn", force=True)
     try:
-        rdps_to_hrdps_training_from_config = RDPSToHRDPSTrainingFromConfig(rdps_to_hrdps_parse_config(args.config))
+        config = rdps_to_hrdps_parse_config(args.config)
+        config = rdps_to_hrdps_config_replace_for_inference(config, args)
+        rdps_to_hrdps_training_from_config = RDPSToHRDPSTrainingFromConfig(config)
         rdps_to_hrdps_training_from_config(epoch=args.epoch)
     except Exception:
         logger.exception("Error calling RDPSToHRDPSTrainingFromConfig")

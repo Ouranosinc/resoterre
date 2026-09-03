@@ -1,5 +1,6 @@
 """Module for processing RDPS data."""
 
+import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -9,6 +10,9 @@ import xarray
 
 from resoterre.data_management.netcdf_utils import CFVariables
 from resoterre.datasets.rdps.rdps_variables import rdps_netcdf_attrs
+
+
+logger = logging.getLogger(__name__)
 
 
 def save_rdps_coarse(
@@ -182,11 +186,12 @@ def save_rdps_coarse(
                 "lat": {"chunks": (128, 128)},
                 "lon": {"chunks": (128, 128)},
                 "time": {"chunks": (24,)},
-                "is_empty": {"chunks": (len(expected_variables), 24)},
+                "is_empty": {"chunks": (1, 24)},
             },
         )
         del cf_coordinates["time"]
         del cf_coordinates["is_empty"]
+        del cf_variables[variable_name]
 
     cf_coordinates.add(
         "time",
@@ -205,9 +210,15 @@ def save_rdps_coarse(
 
     zarr_ds = xarray.open_zarr(path_output)
     idx = int(np.where(zarr_ds["time"].values == ds_rdps["time"].values[0])[0][0])
-    is_empty = zarr_ds["is_empty"][:, idx : idx + 1].values
     variable_idx = expected_variables.index(variable_name)
-    is_empty[variable_idx, :] = 0
+    cf_coordinates.add(
+        "variable_names",
+        dims=("num_variables",),
+        data=np.array(expected_variables[variable_idx : variable_idx + 1], dtype=object),
+    )
+    is_empty = zarr_ds["is_empty"][variable_idx : variable_idx + 1, idx : idx + 1].values
+    logger.info("Updating is_empty flag for variable '%s' at time index %d", variable_name, idx)
+    is_empty[:, :] = 0
     cf_coordinates.add(
         "is_empty",
         dims=(
@@ -221,4 +232,6 @@ def save_rdps_coarse(
     zarr_ds.close()
     ds_output = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs=cf_attrs)
     ds_output = ds_output.drop_vars(["rlat", "rlon", "lat", "lon", "rotated_pole", "variable_names"])
-    ds_output.to_zarr(path_output, region={"time": slice(idx, idx + 1)})
+    ds_output.to_zarr(
+        path_output, region={"time": slice(idx, idx + 1), "num_variables": slice(variable_idx, variable_idx + 1)}
+    )
