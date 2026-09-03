@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 
 from resoterre.datasets.hrdps.hrdps_processing import create_hrdps_grid_spec, save_hrdps_zarr_format
 from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables as hrdps_variables_collection
-from resoterre.experiments.rdps_to_hrdps_workflow import RDPSToHRDPSConfig
+from resoterre.experiments.rdps_to_hrdps_downscaling.rdps_to_hrdps_workflow import RDPSToHRDPSConfig
 from resoterre.hybrid_data_loaders.rdps_to_hrdps import RDPSToHRDPSZarrDataset
 from resoterre.ml.data_loader_utils import inverse_normalize
 from resoterre.ml.neural_networks_unet import UNet

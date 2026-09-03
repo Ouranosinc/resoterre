@@ -1,10 +1,12 @@
 """Workflow utilities for RDPS to HRDPS downscaling."""
 
+import argparse
 import calendar
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -456,6 +458,42 @@ def rdps_to_hrdps_parse_config(config: RDPSToHRDPSConfig | Path | str) -> RDPSTo
         return config
     else:
         return config_from_yaml(RDPSToHRDPSConfig, config)
+
+
+def rdps_to_hrdps_config_replace_for_inference(
+    config: RDPSToHRDPSConfig,
+    args: argparse.Namespace | SimpleNamespace,
+) -> RDPSToHRDPSConfig:
+    """
+    Replace the dates in the configuration for inference.
+
+    Parameters
+    ----------
+    config : RDPSToHRDPSConfig
+        Original configuration for the RDPS to HRDPS workflow.
+    args : argparse.Namespace | SimpleNamespace
+        Command-line arguments containing potential overrides for the start and end datetimes.
+
+    Returns
+    -------
+    RDPSToHRDPSConfig
+        Configuration object modified for inference.
+    """
+    if hasattr(args, "start_datetime") and hasattr(args, "end_datetime"):
+        start_replace = datetime.fromisoformat(args.start_datetime)
+        end_replace = datetime.fromisoformat(args.end_datetime)
+        config = replace(
+            config,
+            global_start_datetime=datetime(start_replace.year, start_replace.month, start_replace.day),
+            global_end_datetime=datetime(end_replace.year, end_replace.month, end_replace.day, 23, 59, 59),
+            hrdps_preprocessing_start_datetime=start_replace,
+            hrdps_preprocessing_end_datetime=end_replace,
+            rdps_preprocessing_start_datetime=start_replace,
+            rdps_preprocessing_end_datetime=end_replace,
+            inference_start_datetime=start_replace,
+            inference_end_datetime=end_replace,
+        )
+    return config
 
 
 def preprocess_batch(path_output: Path, config: RDPSToHRDPSOnDiskConfig, input_specs: list[dict[str, Any]]) -> None:
