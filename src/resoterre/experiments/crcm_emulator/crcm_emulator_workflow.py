@@ -153,21 +153,29 @@ class CRCMEmulatorConfig:
     validation_periods: list[list[datetime]] = field(default_factory=list)
     test_periods: list[list[datetime]] = field(default_factory=list)
     training_method: str | None = None
-    training_batch_size: int = field(default=32, metadata={"is_hyperparameter": True})
-    unet_kernel_size: int | None = field(default=3, metadata={"is_hyperparameter": True})
-    unet_initial_num_of_hidden_channels: int | None = field(default=16, metadata={"is_hyperparameter": True})
-    unet_depth: int | None = field(default=2, metadata={"is_hyperparameter": True})
-    unet_reduction_ratio: int | bool | None = field(
-        default=None, metadata={"is_hyperparameter": True, "display_name": "S&E"}
+    training_batch_size: int = field(default=32, metadata={"is_hyperparameter": True, "hp_type": "training"})
+    unet_kernel_size: int | None = field(default=3, metadata={"is_hyperparameter": True, "hp_type": "architecture"})
+    unet_initial_num_of_hidden_channels: int | None = field(
+        default=16, metadata={"is_hyperparameter": True, "hp_type": "architecture"}
     )
-    learning_rate: float = field(default=0.01, metadata={"is_hyperparameter": True, "display_name": "lr"})
-    weight_decay: float = field(default=0.0, metadata={"is_hyperparameter": True})
-    mse_loss_weight: float | None = field(default=1.0, metadata={"is_hyperparameter": True})
-    ssim_loss_weight: float | None = field(default=0.0, metadata={"is_hyperparameter": True})
+    unet_depth: int | None = field(default=2, metadata={"is_hyperparameter": True, "hp_type": "architecture"})
+    unet_reduction_ratio: int | bool | None = field(
+        default=None, metadata={"is_hyperparameter": True, "display_name": "S&E", "hp_type": "architecture"}
+    )
+    learning_rate: float = field(
+        default=0.01, metadata={"is_hyperparameter": True, "display_name": "lr", "hp_type": "training"}
+    )
+    weight_decay: float = field(default=0.0, metadata={"is_hyperparameter": True, "hp_type": "training"})
+    mse_loss_weight: float | None = field(
+        default=1.0, metadata={"is_hyperparameter": True, "display_name": "weight_mse", "hp_type": "objective"}
+    )
+    ssim_loss_weight: float | None = field(
+        default=0.0, metadata={"is_hyperparameter": True, "display_name": "weight_ssim", "hp_type": "objective"}
+    )
     nb_of_epochs: int = 10
-    num_workers: int = 2
-    num_threads: int = 2
-    training_device: str = "cpu"
+    num_workers: int = field(default=2, metadata={"is_setting": True})
+    num_threads: int = field(default=2, metadata={"is_setting": True})
+    training_device: str = field(default="cpu", metadata={"is_setting": True})
     inference_variables: list[str] = field(default_factory=list)
     inference_periods: list[list[datetime]] | None = None
     inference_device: str | None = None
