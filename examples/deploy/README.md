@@ -16,7 +16,6 @@ For more details on Weaver CLI commands, see the [Weaver CLI documentation](http
 
 - `unet.cwl`: CWL description of the UNet process
 - `execute_unet_cwl_schema.yml`: Example input file for the UNet process (for use with a file server or Weaver)
-- `execute_unet_test.yml`: Example input file for running locally with `cwltool` against the repo's `inputs/` and `configs/` directories
 
 ## About `unet.cwl`
 
@@ -159,5 +158,5 @@ This will execute the workflow and store the results in the `results/` directory
 A ready-to-use example job file is also provided at [execute_unet_cwl_schema.yml](execute_unet_cwl_schema.yml), which references the local `inputs/`, and `configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml`:
 
 ```bash
-cwltool --outdir=<PATH_TO_OUTPUT_DIR> examples/deploy/unet.cwl examples/deploy/execute_unet_test.yml
+cwltool --outdir=<PATH_TO_OUTPUT_DIR> examples/deploy/unet.cwl examples/deploy/execute_unet_cwl_schema.yml
 ```
