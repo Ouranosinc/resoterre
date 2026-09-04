@@ -2,7 +2,6 @@ cwlVersion: v1.2
 class: CommandLineTool
 $namespaces:
   cwltool: "http://commonwl.org/cwltool#"
-  ogc: "http://www.opengis.net/def/media-type/ogc/1.0/"
   iana: "https://www.iana.org/assignments/media-types/"
   edam: "http://edamontology.org/"
 
@@ -15,7 +14,16 @@ requirements:
       USER: "cwluser"
 
   DockerRequirement:
-    dockerPull: resoterre-inference:2026-01-26 # Change with image containing the model
+    dockerPull: resoterre-inference:latest # Change with image containing the model
+
+  InitialWorkDirRequirement:
+    listing:
+      - entry: $(inputs.config)
+        entryname: config.yaml
+        writable: false
+      - entry: $(inputs.input_data)
+        entryname: inputs
+        writable: false
 
 hints:
   cwltool:CUDARequirement:
@@ -24,55 +32,31 @@ hints:
     cudaDeviceCountMin: 1
     cudaVersionMin: '11.4'
 
-
-  InitialWorkDirRequirement:
-    listing:
-      - entry: $(inputs.input)
-        entryname: inputs/$(inputs.input.basename)
-        writable: false
+baseCommand: []
 
 arguments:
-  - $(inputs.config.path)
-  - --preprocess_batch
-  - inputs/$(inputs.input.basename)
-  - --path_models
-  - /app/model
-  - --path_output
-  - outputs
+  - -j1 # Define the number of cores to use for inference (1 core in this case)
+  # The runner picks the working directory at runtime, so it cannot be hardcoded in the image.
+  - --directory=$(runtime.outdir)
 
 inputs:
   config:
-    type: File
+    type: ["null", File]
     format:
     - "iana:application/yaml"
     - "edam:format_3750"
     doc: Inference configuration YAML
+    inputBinding:
+      prefix: --config
+      valueFrom: config_yaml=config.yaml
 
-  input:
-    type: File
-    format:
-    - "ogc:netcdf"
-    - "iana:application/netcdf"
-    doc: Input NetCDF files
+  input_data:
+    type: Directory
+    doc: Directory containing input NetCDF files to be used for inference
 
 outputs:
-  HRDPS_P_PR_SFC:
-    type: File[]
-    format: "ogc:netcdf"
+  inference_output:
+    type: Directory
+    doc: Zarr output directory containing inference results
     outputBinding:
-      glob: outputs/HRDPS_P_PR_SFC/*.nc
-  HRDPS_P_TT_10000:
-    type: File[]
-    format: "ogc:netcdf"
-    outputBinding:
-      glob: outputs/HRDPS_P_TT_10000/*.nc
-  HRDPS_P_UUC_10000:
-    type: File[]
-    format: "ogc:netcdf"
-    outputBinding:
-      glob: outputs/HRDPS_P_UUC_10000/*.nc
-  HRDPS_P_VVC_10000:
-    type: File[]
-    format: "ogc:netcdf"
-    outputBinding:
-      glob: outputs/HRDPS_P_VVC_10000/*.nc
+      glob: outputs/inference_*.zarr

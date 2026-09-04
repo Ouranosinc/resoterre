@@ -7,20 +7,36 @@ This directory contains Docker configurations for running **Resoterre inference*
 ## Files
 
 * `Dockerfile.base`: Base image with all project dependencies installed.
-* `Dockerfile.inference`: Inference-specific image with the trained model baked in and the entrypoint configured.
+* `Dockerfile.inference`: Inference-specific image built on top of the base image, with the trained model baked in as `model.safetensors` and configured to run the downscaling workflow via snakemake.
 
 ---
 
 ## Configuration & Notes
 
-* `path_models` must point to `/model` inside the container (baked during build).
-* `experiment_name` must match the **filename of your `.pth` file**, e.g.:
-  `2026-01-26T11-06-33_rabahe_UNet_EpochNb_2`
-* `path_preprocessed_batch` must be a **preprocessed NetCDF file** (not raw RDPS data), e.g.:
-  `inputs/test_00000000.nc`
-* `path_output` must match the mounted output directory (`outputs` inside the container).
-* `path_logs` and `path_figures` must match mounted directories (`/tmp/logs`, `/tmp/figures`).
-* To change the model, rebuild the inference image with a new `MODEL_PATH`.
+* The model file (`.safetensors` format) is copied into the container as `/app/model/model.safetensors` during build.
+* The regridding weight matrices are copied into the container at `/app/matrix/` during build.
+* The geophysical files (`orog.nc`, `sftlf.nc`) are copied into the container at `/app/geophysical/` during build.
+* The default downscaling configurations are copied into the image under `/app/configs/downscaling/`.
+* Custom configuration files can be mounted at runtime via `-v $(pwd)/configs:/app/configs:ro`.
+* The inference workflow is executed via snakemake using `scripts/meta_workflows/downscaling/rdps_to_hrdps.smk`.
+* To change the model or matrix files, rebuild the inference image with new build arguments.
+
+### Important Configuration Fields
+
+Your config YAML file must specify these key paths:
+
+* `path_inference_model`: Path to the trained model file (use `/app/model/model.safetensors` in container)
+* `path_rdps`: Path to input RDPS data (e.g., `/app/inputs` - must be mounted at runtime)
+* `use_flat_rdps_directory_structure`: Set to `true` when RDPS input files are stored directly in `path_rdps`, for example `/app/inputs/2024050100_007.nc`. Set to `false` when files are organized in month subdirectories, for example `/app/inputs/202405/2024050100_007.nc`.
+* `path_hrdps_geophysical`: Path to geophysical files like `orog.nc` and `sftlf.nc` (use `/app/geophysical` - already baked into the image)
+* `path_regridding_weights`: Path to regridding weight matrices (use `/app/matrix` - already baked into the image)
+* `path_output`: Output directory for inference results (e.g., `/app/outputs` - must be mounted at runtime)
+* `path_logs`: Directory for log files (e.g., `/app/logs` - must be mounted at runtime)
+* `inference_start_datetime` / `inference_end_datetime`: Time range for inference
+* `inference_device`: Set to `cpu` or `cuda` depending on availability
+* `inference_variables`: List of variables to generate (e.g., `HRDPS_P_TT_10000`, `HRDPS_P_PR_SFC`, etc.)
+
+The image uses `configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml` by default. It is ready for direct Docker execution from `/app`, and its relative paths resolve to the mounted `/app/inputs`, `/app/outputs`, and `/app/logs` directories. A custom config can be mounted and passed explicitly when needed.
 
 ---
 
@@ -39,68 +55,100 @@ docker build -f docker/Dockerfile.base -t resoterre-base:latest .
 
 #### Build Arguments
 
-The inference image uses a build argument, `MODEL_PATH`, to specify which trained model file to include in the image. By default, this is set to `model/model.pth`, but you should override it to point to your actual model file. A `--build-context` flag can be passed to the docker command to specify a directory outside of the current repo.
+The inference image uses a build argument to specify which trained model file to include:
+
+* `MODEL_PATH`: Path to the model file (default: `model/model.safetensors`). The model will be copied into the container as `model.safetensors`.
+
+The matrix files are always copied from the root of the matrix build context (the two `.npz` files are hardcoded in the Dockerfile).
+The geophysical files (`orog.nc`, `sftlf.nc`) are always copied from the root of the geophysical build context.
+
+Use `--build-context` flags to specify directories.
 
 For example, if your trained model is at:
 
 ```
-tmp/2026-01-26T11-06-33_rabahe_UNet_EpochNb_2.pth
+model/unet_epoch_mebojo_018.safetensors
 ```
 
-Build the inference image with the model baked in by passing the build argument:
+And your matrix files are in the default `matrix/` directory, and your geophysical files are in the default `geophysical/` directory, build the inference image:
 
 ```bash
 docker build -f docker/Dockerfile.inference \
-  --build-arg MODEL_PATH='2026-01-26T11-06-33_rabahe_UNet_EpochNb_2.pth' \
-  --build-context model=/tmp \
-  -t resoterre-inference:2026-01-26 .
+  --build-arg MODEL_PATH='unet_epoch_mebojo_018.safetensors' \
+  --build-context model=./model \
+  --build-context matrix=./matrix \
+  --build-context geophysical=./geophysical \
+  -t resoterre-inference:latest .
 ```
 
-This will copy the specified model file into the image at build time. If you want to use a different model, rebuild the image with a new `MODEL_PATH` value.
+This will copy the specified model file into the image as `/app/model/model.safetensors`, the matrix files into `/app/matrix/`, and the geophysical files into `/app/geophysical/`.
 
 ---
 
-## Running Inference locally
+## Running Inference Locally
 
-
-Locally, you can run inference by executing:
+Locally, you can run inference using snakemake from the project root:
 
 ```bash
-python3 scripts/inference/downscaling_inference_rdps_to_hrdps.py \
-  configs/downscaling/downscaling_inference_rdps_to_hrdps.yaml
+snakemake -s scripts/meta_workflows/downscaling/rdps_to_hrdps.smk \
+  --config config_yaml=configs/downscaling/downscaling_rdps_to_hrdps.yaml \
+  -j1 \
+  --directory=outputs
 ```
 
-To use a different model or data locally, simply modify the relevant paths in your inference YAML config file.
+To use a different model or data locally, modify the relevant paths in your config YAML file.
 
-Inside Docker, inference is handled automatically via the `ENTRYPOINT`. See below for more instructions
+Inside Docker, inference is handled automatically via the snakemake `ENTRYPOINT`. See below for more instructions
 
 ---
 
-### Run Inference with docker (CPU or GPU)
+### Run Inference with Docker (CPU or GPU)
 
-Mount your config, inputs and outputs folders:
+**Required mounts**: inputs, outputs, and logs. The default config, matrix, and geophysical files are already baked into the image, so the default Docker command does not require a config mount.
+
+**Important**: Your config YAML must use container paths:
+- `path_inference_model: /app/model/model.safetensors`
+- `path_rdps: /app/inputs`
+- `path_hrdps_geophysical: /app/geophysical`
+- `path_regridding_weights: /app/matrix`
+- `path_output: /app/outputs`
+- `path_logs: /app/logs`
 
 #### CPU (no GPU available)
 
 If you are running on a machine **without a GPU**, make sure your YAML sets:
 
 ```yaml
-device: cpu
+inference_device: cpu
 ```
 
 Then run:
 
 ```bash
 docker run --rm \
+  -v $(pwd)/inputs:/app/inputs:ro \
+  -v $(pwd)/outputs:/app/outputs \
+  -v $(pwd)/logs:/app/logs \
+  resoterre-inference:latest \
+  -j1 --directory=/app
+```
+
+> **Notes**:
+> - The image uses the built-in `/app/configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml` by default.
+> - For a custom config, mount the config directory and pass `--config config_yaml=/app/configs/downscaling/your_config.yaml`.
+> - To change the output directory: `--directory=/app/your_output_dir`
+
+To use a custom configuration instead of the baked-in default, mount the configs directory and provide its path explicitly:
+
+```bash
+docker run --rm \
   -v $(pwd)/configs:/app/configs:ro \
   -v $(pwd)/inputs:/app/inputs:ro \
   -v $(pwd)/outputs:/app/outputs \
-  -v $(pwd)/logs:/tmp/logs \
-  -v $(pwd)/figures:/tmp/figures \
-  resoterre-inference:2026-01-26
+  -v $(pwd)/logs:/app/logs \
+  resoterre-inference:latest \
+  -j1 --config config_yaml=/app/configs/downscaling/your_config.yaml --directory=/app
 ```
-
-> Notes: If you want to use a different config, you can override it by adding the path to the config at the end of the run command , [/path/to/config]
 
 ---
 
@@ -109,18 +157,17 @@ docker run --rm \
 If you are running on a machine **with an NVIDIA GPU**, make sure your YAML sets:
 
 ```yaml
-device: cuda
+inference_device: cuda
 ```
 
 Then run (requires NVIDIA Container Toolkit):
 
 ```bash
 docker run --rm --gpus all \
-  -v $(pwd)/configs:/app/configs:ro \
   -v $(pwd)/inputs:/app/inputs:ro \
   -v $(pwd)/outputs:/app/outputs \
-  -v $(pwd)/logs:/tmp/logs \
-  -v $(pwd)/figures:/tmp/figures \
-  resoterre-inference:2026-01-26
+  -v $(pwd)/logs:/app/logs \
+  resoterre-inference:latest \
+  -j1 --directory=/app
 ```
 ---

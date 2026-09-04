@@ -1,26 +1,44 @@
 # Inference Dockerfile for resoterre
-# This image is built on top of the base image and configured for running inference
+# This image is built on top of the base image and configured for running inference with snakemake
 
 FROM resoterre-base:latest
 
+# Install snakemake
+RUN pip install snakemake
+
 # Build argument for model path (can be overridden at build time)
-ARG MODEL_PATH=model/model.pth
+ARG MODEL_PATH=model/model.safetensors
 
 # Set working directory
 WORKDIR /app
 
-# Copy the trained model
-COPY --from=model ${MODEL_PATH} /app/model/
+# Copy the trained model and rename it to model.safetensors
+COPY --from=model ${MODEL_PATH} /app/model/model.safetensors
 RUN chmod -R a+r /app/model
 
-# Copy the inference script
-COPY scripts/inference/downscaling_inference_rdps_to_hrdps.py /app/scripts/inference/
+# Copy regridding weight matrices
+COPY --from=matrix rdps_to_hrdps_coo_matrix_lon_284.30_lat_45.42_512_4.npz /app/matrix/
+COPY --from=matrix rdps_to_hrdps_csr_matrix_lon_284.30_lat_45.42_512_4.npz /app/matrix/
+RUN chmod -R a+r /app/matrix
+
+# Copy geophysical files (orog.nc, sftlf.nc)
+COPY --from=geophysical orog.nc /app/geophysical/
+COPY --from=geophysical sftlf.nc /app/geophysical/
+RUN chmod -R a+r /app/geophysical
+
+# Copy scripts directory (needed for snakemake workflows)
+COPY scripts/ /app/scripts/
+
+# Copy the default downscaling configuration files
+COPY configs/downscaling/ /app/configs/downscaling/
+RUN chmod -R a+r /app/configs
 
 # Set environment variables for inference
-ENV PYTHONPATH=/app:$PYTHONPATH
+ENV PYTHONPATH=/app
 
-# The entrypoint expects a config file path as an argument
-ENTRYPOINT ["python3", "/app/scripts/inference/downscaling_inference_rdps_to_hrdps.py"]
+# The entrypoint runs snakemake with the downscaling workflow and default config
+# (absolute paths so it works regardless of CWD)
+ENTRYPOINT ["snakemake", "-s", "/app/scripts/meta_workflows/downscaling/rdps_to_hrdps.smk", "--config", "config_yaml=/app/configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml"]
 
-# Default config (can be overridden at runtime)
-CMD ["/app/configs/downscaling/downscaling_inference_rdps_to_hrdps.yaml"]
+# Default core count and output directory (can be overridden at runtime)
+CMD ["-j1", "--directory=/app"]
