@@ -279,3 +279,25 @@ def split_glob(
             manifest_path = Path(output_directory, f"{manifest_prefix}_{str(i).zfill(8)}.txt")
             manifest_path.write_text("\n".join(str(p) for p in batch) + "\n")
     return batches
+
+
+def shell_script_args_from_config(config: dict[str, str], keys: list[str]) -> str:
+    """
+    Generate shell script arguments from a configuration dictionary.
+
+    Parameters
+    ----------
+    config : dict[str, str]
+        Configuration dictionary with string values.
+    keys : list[str]
+        List of keys to include in the shell script arguments.
+
+    Returns
+    -------
+    str
+        Shell script arguments as a string.
+    """
+    args_str = ""
+    for key in keys:
+        args_str += f" --{key} {config[key]}"
+    return args_str

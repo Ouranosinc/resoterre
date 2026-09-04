@@ -8,7 +8,7 @@ import numpy as np
 import xarray
 
 from resoterre.data_management.netcdf_utils import CFVariables
-from resoterre.experiments import rdps_to_hrdps_workflow
+from resoterre.experiments.rdps_to_hrdps_downscaling import rdps_to_hrdps_workflow
 from resoterre.ml.network_manager import AdamConfig, NeuralNetworksManager, NeuralNetworksManagerConfig
 from resoterre.ml.neural_networks_unet import UNet, UNetConfig
 
