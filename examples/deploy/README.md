@@ -16,6 +16,10 @@ For more details on Weaver CLI commands, see the [Weaver CLI documentation](http
 
 - `unet.cwl`: CWL description of the UNet process
 - `execute_unet_cwl_schema.yml`: Example input file for the UNet process (for use with a file server or Weaver)
+- `generate_file_list.cwl`: CWL description of the process listing the RDPS files required for a datetime range
+- `download_files.cwl`: CWL description of the process downloading a list of files into a local directory
+
+A workflow chaining `generate_file_list.cwl` and `unet.cwl` is available in [examples/workflow](../workflow/README.md).
 
 ## About `unet.cwl`
 

@@ -1,0 +1,5 @@
+start_datetime: "2024-05-01T07:00:00" # Start datetime in ISO 8601 format.
+end_datetime: "2024-05-01T08:00:00" # End datetime in ISO 8601 format.
+requires_previous_forecast_step: true # true when cumulative variables, such as precipitation, are needed.
+include_year_month_subdirectory: true # true for the thredds layout (202405/2024050100_007.nc), false for a flat directory.
+#data_root: "https://pavics.ouranos.ca/twitcher/ows/proxy/thredds/fileServer/birdhouse/disk3/ouranos/geoconnections/RDPS/" # prefix added to each listed file.

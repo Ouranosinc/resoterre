@@ -1,0 +1,4 @@
+file_list:
+  class: File
+  path: ../../results/rdps_forecast_files.txt # list produced by generate_file_list.cwl.
+  format: http://edamontology.org/format_3475

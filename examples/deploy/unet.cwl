@@ -52,7 +52,7 @@ inputs:
 
   input_data:
     type: Directory
-    doc: Directory containing input NetCDF files with folder structure (e.g., 202405/2024050100_007.nc)
+    doc: Directory containing input NetCDF files to be used for inference
 
 outputs:
   inference_output:
