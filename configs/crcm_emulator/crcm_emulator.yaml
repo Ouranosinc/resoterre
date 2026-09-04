@@ -5,6 +5,7 @@ path_regridding_weights: /path/to/regridding_weights
 path_gcm_data: /path/to/GCMs
 path_emission_data: /path/to/GHGs
 path_crcm_data: /path/to/MRCC5-CMIP6
+path_preprocessed: /path/to/preprocessed
 
 # Global parameters
 tile_size: 608
