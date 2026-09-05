@@ -1,18 +1,20 @@
-experiment_name: test
+experiment_name: test_chris
 executing_institution: unknown
-path_output: /path/to/output
-path_regridding_weights: /path/to/regridding_weights
-path_gcm_data: /path/to/GCMs
-path_emission_data: /path/to/GHGs
-path_crcm_data: /path/to/MRCC5-CMIP6
-path_preprocessed: /path/to/preprocessed
+
+path_data: /network/projects/amlrt_internships/ouranous/data
+path_output: output
+path_regridding_weights: regridding_weights
+path_gcm_data: GCMs
+path_emission_data: GHGs
+path_crcm_data: MRCC5-CMIP6
+path_preprocessed: preprocessed
 
 # Global parameters
 tile_size: 608
 coarsen_factor: 8
 
 # GCM preprocessing
-path_gcm_preprocessing: /path/to/gcm_preprocessing
+path_gcm_preprocessing: preprocessing
 preprocessing_simulations:
   -
     - CNRM-ESM2-1
@@ -36,7 +38,7 @@ gcm_preprocessing_variables:
 gcm_preprocessing_allow_overwrite: false
 
 # CRCM preprocessing (uses preprocessing_simulations from GCM preprocessing)
-path_crcm_preprocessing: /path/to/crcm_preprocessing
+path_crcm_preprocessing: preprocessing
 crcm_preprocessing_start_datetime: "1991-01-01"
 crcm_preprocessing_end_datetime: "2030-12-31"
 crcm_preprocessing_variables:

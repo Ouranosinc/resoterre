@@ -21,3 +21,7 @@
 __author__ = """Blaise Gauvin St-Denis"""
 __email__ = "gauvin-st-denis.blaise@ouranos.ca"
 __version__ = "0.1.3-dev.7"
+
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
