@@ -1,5 +1,6 @@
 """Module for loading CRCM emulator data from zarr files."""
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,9 @@ from torch.utils import data as td
 from resoterre.datasets.cmip6.cmip6_variables import cmip6_variables
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
 from resoterre.ml.data_loader_utils import normalize
+
+
+logger = logging.getLogger(__name__)
 
 
 class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
@@ -32,6 +36,8 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         List of CRCM variable names.
     time_periods : list[Any]
         List of time periods to consider. Each time period is a tuple of start and end times.
+    max_open_dataset : int
+        Maximum number of open xarray datasets to cache.
     """
 
     def __init__(
@@ -42,6 +48,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         gcm_variables: list[str],
         crcm_variables: list[str],
         time_periods: list[Any],
+        max_open_dataset: int = 2,
     ) -> None:
         self.path_gcm_preprocessing = path_gcm_preprocessing
         self.path_crcm_preprocessing = path_crcm_preprocessing
@@ -50,6 +57,9 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         self.valid_time_idx: dict[str, list[tuple[int, int]]] = {}
         self.gcm_zarr = {}
         self.crcm_zarr = {}
+        self.gcm_open_dataset: dict[str, xarray.Dataset] = {}
+        self.crcm_open_dataset: dict[str, xarray.Dataset] = {}
+        self.max_open_dataset = max_open_dataset
         # ToDo: Only include mask channel for variables that can be under topography at their pressure level
         self.num_input_channels = len(gcm_variables) * 2
         self.num_output_channels = len(crcm_variables)
@@ -60,15 +70,23 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
             my_path = Path(path_gcm_preprocessing, f"crcm_emulator_input_{gcm_str}")
             zarr_directories = list(sorted(my_path.glob(f"crcm_emulator_input_{gcm_str}_*.zarr")))
             self.gcm_zarr[gcm_str] = zarr_directories
-            xarray_dataset_gcm = xarray.open_mfdataset(zarr_directories)
+            xarray_dataset_gcm = xarray.open_dataset(zarr_directories[0])
             variables_in_gcm_zarr = xarray_dataset_gcm["variable_names"].values.tolist()
+            xarray_dataset_gcm.close()
+            logger.debug("Opening GCM zarr directories")
+            xarray_dataset_gcm = self.get_open_dataset("gcm", gcm_str)
+            logger.debug("Done opening GCM zarr directories")
             gcm_time_values = xarray_dataset_gcm["time"].values
 
             my_path = Path(path_crcm_preprocessing, f"crcm_emulator_output_{gcm_str}")
             zarr_directories = list(sorted(my_path.glob(f"crcm_emulator_output_{gcm_str}_*.zarr")))
             self.crcm_zarr[gcm_str] = zarr_directories
-            xarray_dataset_crcm = xarray.open_mfdataset(zarr_directories)
+            xarray_dataset_crcm = xarray.open_dataset(zarr_directories[0])
             variables_in_crcm_zarr = xarray_dataset_crcm["variable_names"].values.tolist()
+            xarray_dataset_crcm.close()
+            logger.debug("Opening CRCM zarr directories")
+            xarray_dataset_crcm = self.get_open_dataset("crcm", gcm_str)
+            logger.debug("Done opening CRCM zarr directories")
             crcm_time_values = xarray_dataset_crcm["time"].values
             for time_period in time_periods:
                 if isinstance(gcm_time_values[0], np.datetime64):
@@ -137,6 +155,41 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         """
         return len(self.valid_idx)
 
+    def get_open_dataset(self, dataset_type: str, key: str) -> xarray.Dataset:
+        """
+        Get an open xarray dataset for the specified dataset type and key.
+
+        Parameters
+        ----------
+        dataset_type : str
+            Type of the dataset ("gcm" or "crcm").
+        key : str
+            Key identifying the dataset.
+
+        Returns
+        -------
+        xarray.Dataset
+            The open xarray dataset corresponding to the specified type and key.
+        """
+        if dataset_type == "gcm":
+            if key not in self.gcm_open_dataset:
+                if len(self.gcm_open_dataset) >= self.max_open_dataset:
+                    oldest_key = next(iter(self.gcm_open_dataset))
+                    self.gcm_open_dataset[oldest_key].close()
+                    del self.gcm_open_dataset[oldest_key]
+                self.gcm_open_dataset[key] = xarray.open_mfdataset(self.gcm_zarr[key])
+            return self.gcm_open_dataset[key]
+        elif dataset_type == "crcm":
+            if key not in self.crcm_open_dataset:
+                if len(self.crcm_open_dataset) >= self.max_open_dataset:
+                    oldest_key = next(iter(self.crcm_open_dataset))
+                    self.crcm_open_dataset[oldest_key].close()
+                    del self.crcm_open_dataset[oldest_key]
+                self.crcm_open_dataset[key] = xarray.open_mfdataset(self.crcm_zarr[key])
+            return self.crcm_open_dataset[key]
+        else:
+            raise ValueError(f"Unknown dataset type: {dataset_type}")
+
     def __getitem__(self, idx: int) -> dict[str, np.ndarray]:
         """
         Get the input and target data for a given index.
@@ -151,9 +204,9 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         dict[str, np.ndarray]
             Dictionary containing the input data, target data, and associated metadata.
         """
-        # ToDo: is it better to cache opened xarray datasets? do mini-batch what come from same file?
+        # ToDo: do mini-batch that come from same file?
         gcm_str, gcm_idx, crcm_idx = self.valid_idx[idx]
-        xarray_dataset_gcm = xarray.open_mfdataset(self.gcm_zarr[gcm_str])
+        xarray_dataset_gcm = self.get_open_dataset("gcm", gcm_str)
         input_first_block = np.zeros(0)  # placeholder
         for i, variable_name in enumerate(self.gcm_variables):
             xarray_variable = xarray_dataset_gcm[variable_name]
@@ -180,7 +233,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
             "CFC11_eq": xarray_dataset_gcm["CFC11_eq"][gcm_idx].values,
         }
         xarray_dataset_gcm.close()
-        xarray_dataset_crcm = xarray.open_mfdataset(self.crcm_zarr[gcm_str])
+        xarray_dataset_crcm = self.get_open_dataset("crcm", gcm_str)
         target = np.zeros(0)  # placeholder
         for i, variable_name in enumerate(self.crcm_variables):
             xarray_variable = xarray_dataset_crcm[variable_name]
