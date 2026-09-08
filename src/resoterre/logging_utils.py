@@ -1,9 +1,10 @@
 """Utilities for logging."""
 
+import itertools
 import logging
 import queue
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from pprint import pformat
 from typing import Any
@@ -508,3 +509,31 @@ def start_root_logger(
             if (name[0 : len(disable_logger)] == disable_logger) and (hasattr(known_logger, "disabled")):
                 known_logger.disabled = True
     return str(path_log_file)
+
+
+def logging_delay_sequence(time_delays: list[int] | None = None, counts: list[int] | None = None) -> Iterator[int]:
+    """
+    Generate a sequence of time delays based on the specified counts.
+
+    Parameters
+    ----------
+    time_delays : list[int], optional
+        List of time delays in seconds.
+    counts : list[int], optional
+        List of counts for each time delay stage.
+
+    Yields
+    ------
+    int
+        The next time delay in the sequence.
+    """
+    if time_delays is None:
+        time_delays = [0, 5, 10, 60, 300]
+    if counts is None:
+        counts = [3, 10, 1000, 10000]
+    if len(counts) != len(time_delays) - 1:
+        raise ValueError("Length of counts must be one less than length of delays.")
+    counts[1:] = [c - counts[i - 1] for i, c in enumerate(counts[1:], start=1)]
+    stages = [itertools.repeat(delay, count) for delay, count in zip(time_delays[:-1], counts, strict=True)]
+    stages.append(itertools.repeat(time_delays[-1]))
+    yield from itertools.chain.from_iterable(stages)
