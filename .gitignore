@@ -211,4 +211,9 @@ __marimo__/
 # Project Files
 model/
 
+# System files
 .DS_Store
+.vscode/
+
+# Data files
+*.tar.gz
