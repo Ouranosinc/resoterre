@@ -44,14 +44,14 @@ outputs:
   forecast_files:
     type: File
     format: http://edamontology.org/format_3475
-    outputSource: generate_file_list/forecast_files
+    outputSource: downscaling_generate_file_list/forecast_files
   inference_output:
     type: Directory
-    outputSource: inference/inference_output
+    outputSource: downscaling_unet/inference_output
 
 steps:
-  generate_file_list:
-    run: ../deploy/generate_file_list.cwl
+  downscaling_generate_file_list:
+    run: ../deploy/downscaling_generate_file_list.cwl
     in:
       start_datetime: start_datetime
       end_datetime: end_datetime
@@ -60,18 +60,18 @@ steps:
       data_root: data_root
     out: [forecast_files]
 
-  download_files:
+  downscaling_download_files:
     doc: Download the listed RDPS files into a flat local directory.
-    run: ../deploy/download_files.cwl
+    run: ../deploy/downscaling_download_files.cwl
     in:
-      file_list: generate_file_list/forecast_files
+      file_list: downscaling_generate_file_list/forecast_files
     out: [input_data]
 
-  inference:
-    run: ../deploy/unet.cwl
+  downscaling_unet:
+    run: ../deploy/downscaling_unet.cwl
     in:
       config: config
-      input_data: download_files/input_data
+      input_data: downscaling_download_files/input_data
       start_datetime: start_datetime
       end_datetime: end_datetime
     out: [inference_output]

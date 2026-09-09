@@ -14,16 +14,16 @@ For more details on Weaver CLI commands, see the [Weaver CLI documentation](http
 
 ## Files
 
-- `unet.cwl`: CWL description of the UNet process
+- `downscaling_unet.cwl`: CWL description of the UNet process
 - `execute_unet_cwl_schema.yml`: Example input file for the UNet process (for use with a file server or Weaver)
-- `generate_file_list.cwl`: CWL description of the process listing the RDPS files required for a datetime range
-- `download_files.cwl`: CWL description of the process downloading a list of files into a local directory
+- `downscaling_generate_file_list.cwl`: CWL description of the process listing the RDPS files required for a datetime range
+- `downscaling_download_files.cwl`: CWL description of the process downloading a list of files into a local directory
 
-A workflow chaining `generate_file_list.cwl` and `unet.cwl` is available in [examples/workflow](../workflow/README.md).
+A workflow chaining `downscaling_generate_file_list.cwl` and `downscaling_unet.cwl` is available in [examples/workflow](../workflow/README.md).
 
-## About `unet.cwl`
+## About `downscaling_unet.cwl`
 
-The `unet.cwl` file describes a Common Workflow Language (CWL) CommandLineTool for running a UNet-based inference process. It is designed to be portable and reproducible, supporting dockerized execution, both on local machine and remote server (e.g., with Docker and CUDA for GPU acceleration).
+The `downscaling_unet.cwl` file describes a Common Workflow Language (CWL) CommandLineTool for running a UNet-based inference process. It is designed to be portable and reproducible, supporting dockerized execution, both on local machine and remote server (e.g., with Docker and CUDA for GPU acceleration).
 
 ### Key Components
 
@@ -102,7 +102,7 @@ When running without GPU, change `inference_device: cuda` to `inference_device: 
 To deploy the UNet process to a running Weaver instance:
 
 ```bash
-weaver deploy -u `<WEAVER_URL>` --cwl `<PATH_TO>/unet.cwl` --id unet
+weaver deploy -u `<WEAVER_URL>` --cwl `<PATH_TO>/downscaling_unet.cwl` --id unet
 ```
 
 
@@ -161,7 +161,7 @@ inference/
 To run the UNet process locally using cwltool:
 
 ```bash
-cwltool --enable-ext --outdir results `<PATH_TO>/unet.cwl` `<PATH_TO>/execute_unet_cwl_schema.yml`
+cwltool --enable-ext --outdir results `<PATH_TO>/downscaling_unet.cwl` `<PATH_TO>/execute_unet_cwl_schema.yml`
 ```
 
 This will execute the workflow and store the results in the `results/` directory as `results/inference_<experiment_name>.zarr`.
@@ -169,5 +169,5 @@ This will execute the workflow and store the results in the `results/` directory
 A ready-to-use example job file is also provided at [execute_unet_cwl_schema.yml](execute_unet_cwl_schema.yml), which references the local `inputs/`, and `configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml`:
 
 ```bash
-cwltool --outdir=<PATH_TO_OUTPUT_DIR> examples/deploy/unet.cwl examples/deploy/execute_unet_cwl_schema.yml
+cwltool --outdir=<PATH_TO_OUTPUT_DIR> examples/deploy/downscaling_unet.cwl examples/deploy/execute_unet_cwl_schema.yml
 ```

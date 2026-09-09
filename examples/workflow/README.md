@@ -4,10 +4,10 @@ This folder contains a [CWL](https://www.commonwl.org/v1.2/) `Workflow` that cha
 
 ## Files
 
-- `unet_workflow.cwl`: CWL workflow chaining [generate_file_list.cwl](../deploy/generate_file_list.cwl), [download_files.cwl](../deploy/download_files.cwl) and [unet.cwl](../deploy/unet.cwl)
+- `downscaling_unet_workflow.cwl`: CWL workflow chaining [downscaling_generate_file_list.cwl](../deploy/downscaling_generate_file_list.cwl), [downscaling_download_files.cwl](../deploy/downscaling_download_files.cwl) and [downscaling_unet.cwl](../deploy/downscaling_unet.cwl)
 - `execute_unet_workflow_schema.yml`: Example input file for the workflow
 
-## About `unet_workflow.cwl`
+## About `downscaling_unet_workflow.cwl`
 
 - **Inputs:**
   - `start_datetime` (string): Start datetime in ISO 8601 format, for example `2024-05-01T07:00:00`.
@@ -18,9 +18,9 @@ This folder contains a [CWL](https://www.commonwl.org/v1.2/) `Workflow` that cha
   - `config` (File, optional): Inference configuration YAML overriding the one built into the Docker image.
 
 - **Steps:**
-  1. `generate_file_list`: runs `generate_file_list.cwl` to list the RDPS files required for the requested datetime range, prefixed with `data_root`.
-  2. `download_files`: runs `download_files.cwl` to download those files into a flat `inputs` directory.
-  3. `inference`: runs `unet.cwl` on that directory.
+  1. `downscaling_generate_file_list`: runs `downscaling_generate_file_list.cwl` to list the RDPS files required for the requested datetime range, prefixed with `data_root`.
+  2. `downscaling_download_files`: runs `downscaling_download_files.cwl` to download those files into a flat `inputs` directory.
+  3. `downscaling_unet`: runs `downscaling_unet.cwl` on that directory.
 
 - **Outputs:**
   - `forecast_files` (File): The list of RDPS files required for the datetime range.
@@ -33,14 +33,14 @@ The Docker images referenced by the two steps must be available locally. See [do
 ## Running Locally with cwltool
 
 ```bash
-cwltool --enable-ext --outdir results examples/workflow/unet_workflow.cwl examples/workflow/execute_unet_workflow_schema.yml
+cwltool --enable-ext --outdir results examples/workflow/downscaling_unet_workflow.cwl examples/workflow/execute_unet_workflow_schema.yml
 ```
 
-The `--enable-ext` flag is required for the `cwltool:CUDARequirement` hint used by `unet.cwl`.
+The `--enable-ext` flag is required for the `cwltool:CUDARequirement` hint used by `downscaling_unet.cwl`.
 
 ## Deploying with Weaver
 
 ```bash
-weaver deploy -u <WEAVER_URL> --cwl <PATH_TO>/unet_workflow.cwl --id unet-workflow
+weaver deploy -u <WEAVER_URL> --cwl <PATH_TO>/downscaling_unet_workflow.cwl --id unet-workflow
 weaver execute -u <WEAVER_URL> --id unet-workflow -I <PATH_TO>/execute_unet_workflow_schema.yml
 ```
