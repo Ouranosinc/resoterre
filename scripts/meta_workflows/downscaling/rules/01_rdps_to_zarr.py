@@ -6,7 +6,11 @@ from pathlib import Path
 
 import numcodecs  # noqa: F401  # Imported to register logger for disabling
 
-from resoterre.experiments.rdps_to_hrdps_workflow import rdps_regrid_to_zarr_from_config, rdps_to_hrdps_parse_config
+from resoterre.experiments.rdps_to_hrdps_downscaling.rdps_to_hrdps_workflow import (
+    rdps_regrid_to_zarr_from_config,
+    rdps_to_hrdps_config_replace_for_inference,
+    rdps_to_hrdps_parse_config,
+)
 from resoterre.logging_utils import start_root_logger
 
 
@@ -20,6 +24,10 @@ if __name__ == "__main__":
     parser.add_argument("--variable_name", type=str, required=True, help="RDPS variable to process")
     parser.add_argument("--year", type=int, required=True, help="Year to process")
     parser.add_argument("--month", type=int, required=True, help="Month to process")
+    parser.add_argument(
+        "--start_datetime", type=str, default=argparse.SUPPRESS, help="Start datetime for config overwrite"
+    )
+    parser.add_argument("--end_datetime", type=str, default=argparse.SUPPRESS, help="End datetime for config overwrite")
     args = parser.parse_args()
 
     log_file = start_root_logger(
@@ -37,8 +45,10 @@ if __name__ == "__main__":
     )
 
     try:
+        config = rdps_to_hrdps_parse_config(args.config)
+        config = rdps_to_hrdps_config_replace_for_inference(config, args)
         rdps_regrid_to_zarr_from_config(
-            config=rdps_to_hrdps_parse_config(args.config),
+            config=config,
             variable_name=args.variable_name,
             year=args.year,
             month=args.month,
