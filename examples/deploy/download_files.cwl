@@ -29,7 +29,7 @@ arguments:
       for reference in references:
           target = destination / reference.rsplit("/", 1)[-1]
           if "://" in reference:
-              with urllib.request.urlopen(reference) as response, target.open("wb") as handle:  # noqa: S310
+              with urllib.request.urlopen(reference) as response, target.open("wb") as handle:
                   shutil.copyfileobj(response, handle)
           else:
               shutil.copyfile(reference, target)
