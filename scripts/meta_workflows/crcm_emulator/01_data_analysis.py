@@ -31,13 +31,19 @@ data_params = {
     "crcm_variables": config.crcm_training_variables,
     "time_periods": config.training_periods
 }
+
 dataset = CRCMEmulatorDataset(**data_params)
 
 sample = dataset[0]
 print(sample)
 
+# data: input (4, 76, 76), target (1, 608, 608), year, month, day, **emission_data (CO2, CH4, N2O, CFC12, CFC11_eq)
 
-# data: input (2, 76, 76), target (1, 608, 608), year, month, day, **emission_data (CO2, CH4, N2O, CFC12, CFC11_eq)
+# iterate 
+
+# Q0: mean & stdev of input & target data
+
+# ============ 
 
 # Q1: What are the stats for missing data in the inputs?
 # Step 1: Check for NaN values in the input data
