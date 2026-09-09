@@ -1,7 +1,7 @@
 experiment_name: test_chris
 executing_institution: unknown
 
-path_data: /network/projects/amlrt_internships/ouranous/data
+path_data: /Users/christinaisaicu/dev/data
 path_output: output
 path_regridding_weights: regridding_weights
 path_gcm_data: GCMs

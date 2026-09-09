@@ -15,6 +15,7 @@ from resoterre.ml.data_loader_utils import normalize
 
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]

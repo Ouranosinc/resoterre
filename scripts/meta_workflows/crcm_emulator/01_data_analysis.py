@@ -1,57 +1,41 @@
-# import yaml
-# from pathlib import Path
-# import yaml
+import yaml
+from pathlib import Path
+import yaml
+from resoterre.config_utils import config_from_yaml
+from resoterre.experiments.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig
 
-# from resoterre import PROJECT_ROOT
-# from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
+from resoterre import PROJECT_ROOT
+from resoterre.hybrid_data_loaders.efficient_crcm_emulator_data_loader import CRCMEmulatorDataset
 
-# config_path = PROJECT_ROOT / "configs" / "crcm_emulator" / "crcm_emulator.yaml"
+config_path = PROJECT_ROOT / "configs" / "crcm_emulator" / "crcm_emulator.yaml"
 # print(config_path)
 # with open(config_path, "r") as f:
 #     config = yaml.safe_load(f)
+config = config_from_yaml(CRCMEmulatorConfig, config_path)
 
-# print(config.keys())
-# path_data = Path(config["path_data"])
-# path_preprocessed = path_data / config["path_preprocessed"]
-# path_output = path_data / config["path_output"]
+path_data = Path(config.path_data)
+path_preprocessed = path_data / config.path_preprocessed
+path_output = path_data / config.path_output
 
-# assert path_preprocessed.exists(), path_preprocessed
+assert path_preprocessed.exists(), path_preprocessed
 
-# print(path_data)
-# print(path_preprocessed)
-# print(path_output)
+print(path_data)
+print(path_preprocessed)
+print(path_output)
 
-# dataset = CRCMEmulatorDataset(
-#     path_gcm_preprocessing = path_preprocessed, 
-#     path_crcm_preprocessing = path_preprocessed, 
-#     simulations = [config["preprocessing_simulations"][0], config["preprocessing_simulations"][1]], 
-#     gcm_variables = config["gcm_training_variables"], 
-#     crcm_variables = config['crcm_training_variables'], 
-#     time_periods = config["training_periods"]
-# )
+data_params = {
+    "path_gcm_preprocessing": path_preprocessed,
+    "path_crcm_preprocessing": path_preprocessed,
+    "simulations": [config.preprocessing_simulations[0], config.preprocessing_simulations[1]],
+    "gcm_variables": config.gcm_training_variables,
+    "crcm_variables": config.crcm_training_variables,
+    "time_periods": config.training_periods
+}
+dataset = CRCMEmulatorDataset(**data_params)
 
-# sample = dataset[0]
-# print(sample)
+sample = dataset[0]
+print(sample)
 
-from datetime import datetime
-from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
-
-simulations = [["CNRM-ESM2-1", "historical", "r1i1p1f2"],
-               ["CNRM-ESM2-1", "ssp245", "r1i1p1f2"]]
-gcm_variables = ["ta1000", "ta850"]
-crcm_variables = ["tas"]
-time_periods = [[datetime(1991, 1, 1), datetime(2020, 12, 31)]]
-dataset = CRCMEmulatorDataset(
-    "/network/projects/amlrt_internships/ouranous/data/preprocessed",
-    "/network/projects/amlrt_internships/ouranous/data/preprocessed",
-    simulations,
-    gcm_variables,
-    crcm_variables,
-    time_periods,
-    max_open_dataset=4)
-item = dataset[0]
-
-print(item)
 
 # data: input (2, 76, 76), target (1, 608, 608), year, month, day, **emission_data (CO2, CH4, N2O, CFC12, CFC11_eq)
 
