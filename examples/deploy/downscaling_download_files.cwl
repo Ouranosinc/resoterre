@@ -17,8 +17,7 @@ requirements:
 baseCommand: [python3, -c]
 
 arguments:
-  - position: 1
-    valueFrom: |
+  - |
       import shutil
       import sys
       import urllib.request

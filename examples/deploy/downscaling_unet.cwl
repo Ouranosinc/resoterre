@@ -36,13 +36,6 @@ hints:
 
 baseCommand: []
 
-arguments:
-  - position: 4
-    valueFrom: -j1 # Define the number of cores to use for inference (1 core in this case)
-  # The runner picks the working directory at runtime, so it cannot be hardcoded in the image.
-  - position: 5
-    valueFrom: --directory=$(runtime.outdir)
-
 inputs:
   config:
     type: ["null", File]
@@ -73,6 +66,22 @@ inputs:
   input_data:
     type: Directory
     doc: Directory containing input NetCDF files to be used for inference
+
+  number_of_cores:
+    type: boolean
+    default: true
+    doc: Internal flag; always emits -j1 to set the number of cores used for inference.
+    inputBinding:
+      position: 4
+      valueFrom: "-j1"
+
+  output_directory:
+    type: boolean
+    default: true
+    doc: Internal flag; injects the runtime-determined output directory into the command line.
+    inputBinding:
+      position: 5
+      valueFrom: '$("--directory=" + runtime.outdir)'
 
 outputs:
   inference_output:

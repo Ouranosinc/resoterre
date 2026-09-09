@@ -18,8 +18,8 @@ For more details on Weaver CLI commands, see the [Weaver CLI documentation](http
 - `execute_unet_cwl_schema.yml`: Example input file for the UNet process (for use with a file server or Weaver)
 - `downscaling_generate_file_list.cwl`: CWL description of the process listing the RDPS files required for a datetime range
 - `downscaling_download_files.cwl`: CWL description of the process downloading a list of files into a local directory
-
-A workflow chaining `downscaling_generate_file_list.cwl` and `downscaling_unet.cwl` is available in [examples/workflow](../workflow/README.md).
+- `downscaling_unet_workflow.cwl`: CWL workflow chaining the three processes above
+- `execute_unet_workflow_schema.yml`: Example input file for the workflow
 
 ## About `downscaling_unet.cwl`
 
@@ -170,4 +170,55 @@ A ready-to-use example job file is also provided at [execute_unet_cwl_schema.yml
 
 ```bash
 cwltool --outdir=<PATH_TO_OUTPUT_DIR> examples/deploy/downscaling_unet.cwl examples/deploy/execute_unet_cwl_schema.yml
+```
+
+---
+
+## Chained Workflow: `downscaling_unet_workflow.cwl`
+
+This `CWL` `Workflow` chains the RDPS forecast file listing, file download, and UNet downscaling inference processes above.
+
+### Inputs, Steps and Outputs
+
+- **Inputs:**
+  - `start_datetime` (string): Start datetime in ISO 8601 format, for example `2024-05-01T07:00:00`.
+  - `end_datetime` (string): End datetime in ISO 8601 format, for example `2024-05-01T08:00:00`.
+  - `requires_previous_forecast_step` (boolean, default `true`): Must be `true` for cumulative variables, such as precipitation.
+  - `include_year_month_subdirectory` (boolean, default `true`): `true` for the thredds layout (`202405/2024050100_007.nc`), `false` for a flat layout.
+  - `data_root` (string): Root location prepended to each listed file, by default the PAVICS thredds `fileServer` RDPS root.
+  - `config` (File, optional): Inference configuration YAML overriding the one built into the Docker image.
+
+- **Steps:**
+  1. `downscaling_generate_file_list`: runs `downscaling_generate_file_list.cwl` to list the RDPS files required for the requested datetime range, prefixed with `data_root`.
+  2. `downscaling_download_files`: runs `downscaling_download_files.cwl` to download those files into a flat `inputs` directory.
+  3. `downscaling_unet`: runs `downscaling_unet.cwl` on that directory.
+
+- **Outputs:**
+  - `forecast_files` (File): The list of RDPS files required for the datetime range.
+  - `inference_output` (Directory): The `inference_<experiment_name>.zarr` directory containing the downscaled results.
+
+The downloaded directory is flat, so the inference configuration must keep `use_flat_rdps_directory_structure: true`. The datetime range given to the workflow should match `inference_start_datetime` and `inference_end_datetime` in the configuration.
+
+The Docker images referenced by the steps must be available locally. See [docker/README.md](../../docker/README.md) for instructions.
+
+### Running the Workflow Locally with cwltool
+
+```bash
+cwltool --enable-ext --outdir results examples/deploy/downscaling_unet_workflow.cwl examples/deploy/execute_unet_workflow_schema.yml
+```
+
+The `--enable-ext` flag is required for the `cwltool:CUDARequirement` hint used by `downscaling_unet.cwl`.
+
+### Deploying and Executing the Workflow with Weaver
+
+The three processes chained by the workflow must be deployed first, then the workflow itself:
+
+```bash
+weaver deploy -u <WEAVER_URL> --cwl <PATH_TO>/downscaling_download_files.cwl --id downscaling_download_files
+weaver deploy -u <WEAVER_URL> --cwl <PATH_TO>/downscaling_generate_file_list.cwl --id downscaling_generate_file_list
+weaver deploy -u <WEAVER_URL> --cwl <PATH_TO>/downscaling_unet.cwl --id downscaling_unet
+
+weaver deploy -u <WEAVER_URL> --cwl <PATH_TO>/downscaling_unet_workflow.cwl --id downscaling_unet_workflow
+
+weaver execute -u <WEAVER_URL> --id downscaling_unet_workflow -I <PATH_TO>/execute_unet_workflow_schema.yml
 ```

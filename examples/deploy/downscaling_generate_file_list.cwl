@@ -12,10 +12,9 @@ requirements:
 baseCommand: [python3, -c]
 
 arguments:
-  - position: 1
-    valueFrom: |
+  - |
       from datetime import datetime
-      from resoterre.experiments.rdps_to_hrdps_workflow import rdps_datetimes_to_forecast_files
+      from resoterre.experiments.rdps_to_hrdps_downscaling.rdps_to_hrdps_workflow import rdps_datetimes_to_forecast_files
       import sys
       start_datetime = datetime.fromisoformat(sys.argv[1])
       end_datetime = datetime.fromisoformat(sys.argv[2])

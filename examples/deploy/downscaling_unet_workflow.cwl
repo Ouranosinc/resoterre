@@ -51,7 +51,7 @@ outputs:
 
 steps:
   downscaling_generate_file_list:
-    run: ../deploy/downscaling_generate_file_list.cwl
+    run: downscaling_generate_file_list.cwl
     in:
       start_datetime: start_datetime
       end_datetime: end_datetime
@@ -62,13 +62,13 @@ steps:
 
   downscaling_download_files:
     doc: Download the listed RDPS files into a flat local directory.
-    run: ../deploy/downscaling_download_files.cwl
+    run: downscaling_download_files.cwl # when executing with weaver use  downscaling_download_files 
     in:
       file_list: downscaling_generate_file_list/forecast_files
     out: [input_data]
 
   downscaling_unet:
-    run: ../deploy/downscaling_unet.cwl
+    run: downscaling_unet.cwl
     in:
       config: config
       input_data: downscaling_download_files/input_data
