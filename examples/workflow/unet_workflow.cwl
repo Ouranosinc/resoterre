@@ -73,4 +73,3 @@ steps:
       config: config
       input_data: download_files/input_data
     out: [inference_output]
-
