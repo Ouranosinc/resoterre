@@ -30,6 +30,8 @@ The `unet.cwl` file describes a Common Workflow Language (CWL) CommandLineTool f
 - **Inputs:**
   - `config` (File, optional): Inference configuration YAML file. When no custom file is supplied, the Docker image uses its built-in `downscaling_rdps_to_hrdps_cwl.yaml` configuration.
   - `input_data` (Directory): Directory containing the input NetCDF files.
+  - `start_datetime` (string, optional): ISO 8601 datetime overriding the config's `inference_start_datetime`.
+  - `end_datetime` (string, optional): ISO 8601 datetime overriding the config's `inference_end_datetime`.
 
 - **Outputs:**
 	- `inference_output` (Directory): The `inference_<experiment_name>.zarr` directory containing the downscaled inference results.
@@ -80,6 +82,11 @@ Set `use_flat_rdps_directory_structure` to `true` when the RDPS files are stored
 See [examples/docker/downscaling_rdps_to_hrdps_docker.yaml](../docker/downscaling_rdps_to_hrdps_docker.yaml) for a complete, working example to adapt (remember to switch the `/app/...` absolute paths to the relative ones shown above, and set `experiment_name: cwl`).
 
 Adjust the paths and parameters as needed for your setup. A custom file is referenced as the `config` input in the CWL tool and can be provided using the execute YAML [file](execute_unet_cwl_schema.yml) to override the built-in default.
+
+### Overriding the Inference Time Range
+
+Instead of editing the config file, the `start_datetime` and `end_datetime` CWL inputs can be set to override the config's `inference_start_datetime` and `inference_end_datetime` for a single run (see the commented example in [execute_unet_cwl_schema.yml](execute_unet_cwl_schema.yml)). Both must use ISO 8601 format, for example `2024-05-01T07:00:00`.
+
 
 **GPU vs CPU Configuration:**
 

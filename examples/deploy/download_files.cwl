@@ -23,16 +23,19 @@ arguments:
       import sys
       import urllib.request
       from pathlib import Path
+      from urllib.parse import urlparse
       destination = Path("inputs")
       destination.mkdir(exist_ok=True)
       references = [line.strip() for line in Path(sys.argv[1]).read_text().splitlines() if line.strip()]
       for reference in references:
           target = destination / reference.rsplit("/", 1)[-1]
-          if "://" in reference:
+          scheme = urlparse(reference).scheme
+          if scheme in ("http", "https"):
               with urllib.request.urlopen(reference) as response, target.open("wb") as handle:
                   shutil.copyfileobj(response, handle)
           else:
-              shutil.copyfile(reference, target)
+              source = reference[len("file://"):] if scheme == "file" else reference
+              shutil.copyfile(source, target)
           print(f"{reference} -> {target}", file=sys.stderr)
 
 inputs:

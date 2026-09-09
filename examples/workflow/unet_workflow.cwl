@@ -72,4 +72,6 @@ steps:
     in:
       config: config
       input_data: download_files/input_data
+      start_datetime: start_datetime
+      end_datetime: end_datetime
     out: [inference_output]

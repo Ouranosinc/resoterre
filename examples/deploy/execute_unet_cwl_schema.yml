@@ -8,3 +8,7 @@
 input_data:
   class: Directory
   path: ../../inputs # directory containing the input NetCDF files.
+
+# Optional overrides for the config's inference_start_datetime / inference_end_datetime.
+# start_datetime: "2024-05-01T07:00:00"
+# end_datetime: "2024-05-01T08:00:00"

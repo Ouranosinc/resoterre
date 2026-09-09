@@ -32,7 +32,7 @@ Your config YAML file must specify these key paths:
 * `path_regridding_weights`: Path to regridding weight matrices (use `/app/matrix` - already baked into the image)
 * `path_output`: Output directory for inference results (e.g., `/app/outputs` - must be mounted at runtime)
 * `path_logs`: Directory for log files (e.g., `/app/logs` - must be mounted at runtime)
-* `inference_start_datetime` / `inference_end_datetime`: Time range for inference
+* `inference_start_datetime` / `inference_end_datetime`: Time range for inference (can also be overridden per-run via `start_datetime=...`/`end_datetime=...` `docker run` arguments, see below)
 * `inference_device`: Set to `cpu` or `cuda` depending on availability
 * `inference_variables`: List of variables to generate (e.g., `HRDPS_P_TT_10000`, `HRDPS_P_PR_SFC`, etc.)
 
@@ -149,6 +149,19 @@ docker run --rm \
   resoterre-inference:latest \
   -j1 --config config_yaml=/app/configs/downscaling/your_config.yaml --directory=/app
 ```
+
+To override the config's `inference_start_datetime` / `inference_end_datetime` for a single run without editing the config file, append `start_datetime=...` and/or `end_datetime=...` (ISO 8601 format) right after the `--config` values:
+
+```bash
+docker run --rm \
+  -v $(pwd)/inputs:/app/inputs:ro \
+  -v $(pwd)/outputs:/app/outputs \
+  -v $(pwd)/logs:/app/logs \
+  resoterre-inference:latest \
+  start_datetime=2024-05-01T07:00:00 end_datetime=2024-05-01T08:00:00 -j1 --directory=/app
+```
+
+> These values must come before `-j1`/`--directory` since they extend the `ENTRYPOINT`'s `--config` assignment (snakemake keeps consuming `key=value` pairs after `--config` until the next flag).
 
 ---
 
