@@ -190,7 +190,7 @@ This `CWL` `Workflow` chains the RDPS forecast file listing, file download, and 
 
 - **Steps:**
   1. `downscaling_generate_file_list`: runs `downscaling_generate_file_list.cwl` to list the RDPS files required for the requested datetime range, prefixed with `data_root`.
-  2. `downscaling_download_files`: runs `downscaling_download_files.cwl` to download those files into a flat `inputs` directory.
+  2. `downscaling_download_files`: runs `downscaling_download_files.cwl` to download those files into a flat directory.
   3. `downscaling_unet`: runs `downscaling_unet.cwl` on that directory.
 
 - **Outputs:**

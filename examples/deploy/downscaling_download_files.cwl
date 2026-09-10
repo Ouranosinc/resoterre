@@ -5,7 +5,7 @@ $namespaces:
   edam: "http://edamontology.org/"
 
 doc: |
-  Download every file referenced in a file list into a flat directory named inputs.
+  Download every file referenced in a file list into the output working directory.
   Entries can be HTTP(S) URLs or local paths reachable from the container.
 
 requirements:
@@ -23,8 +23,7 @@ arguments:
       import urllib.request
       from pathlib import Path
       from urllib.parse import urlparse
-      destination = Path("inputs")
-      destination.mkdir(exist_ok=True)
+      destination = Path(".")
       references = [line.strip() for line in Path(sys.argv[1]).read_text().splitlines() if line.strip()]
       for reference in references:
           target = destination / reference.rsplit("/", 1)[-1]
@@ -50,4 +49,4 @@ outputs:
     type: Directory
     doc: Directory holding the downloaded files, ready to be used as the UNet input_data.
     outputBinding:
-      glob: inputs
+      glob: "."
