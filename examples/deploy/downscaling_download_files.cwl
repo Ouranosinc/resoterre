@@ -40,7 +40,7 @@ arguments:
 inputs:
   file_list:
     type: File
-    format: http://edamontology.org/format_3475
+    format: iana:text/plain
     doc: Text file holding one file reference per line.
     inputBinding:
       position: 2

@@ -43,7 +43,7 @@ inputs:
 outputs:
   forecast_files:
     type: File
-    format: http://edamontology.org/format_3475
+    format: iana:text/plain
     outputSource: downscaling_generate_file_list/forecast_files
   inference_output:
     type: Directory
