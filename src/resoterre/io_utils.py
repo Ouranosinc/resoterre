@@ -4,6 +4,7 @@ import json
 import time
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import yaml
 
@@ -163,3 +164,28 @@ def override_config_paths(
         if value is not None:
             config_dict[key] = str(value)
     return config_dict
+
+
+def path_with_uuid(path: Path, separator: str = "-") -> Path:
+    """
+    Generate a new path with a UUID appended to the filename stem.
+
+    Parameters
+    ----------
+    path : Path
+        The original file path.
+    separator : str
+        Separator to use between the original filename stem and the UUID.
+
+    Returns
+    -------
+    Path
+        A new path with a UUID appended to the filename stem, preserving all file extensions.
+    """
+    if not path.name:
+        raise ValueError(f"Cannot append UUID to a path with an empty name: {path!r}")
+
+    suffixes = "".join(path.suffixes)
+    stem = path.name.removesuffix(suffixes)
+
+    return path.with_name(f"{stem}{separator}{uuid4().hex}{suffixes}")
