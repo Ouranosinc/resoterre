@@ -2,6 +2,7 @@ experiment_name: test
 executing_institution: unknown
 path_output: /path/to/output
 path_regridding_weights: /path/to/regridding_weights
+path_models: /path/to/models
 path_gcm_data: /path/to/GCMs
 path_emission_data: /path/to/GHGs
 path_crcm_data: /path/to/MRCC5-CMIP6
@@ -66,8 +67,14 @@ test_periods:
 
 # Training parameters
 training_batch_size: 2
+unet_kernel_size: 3
+unet_initial_num_of_hidden_channels: 8
+unet_depth: 2
+unet_reduction_ratio: null
 learning_rate: 0.01
 weight_decay: 0.001
+mse_loss_weight: 1.0
+ssim_loss_weight: 0.0
 nb_of_epochs: 8
 num_workers: 2
 num_threads: 2
