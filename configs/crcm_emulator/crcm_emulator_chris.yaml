@@ -69,8 +69,14 @@ test_periods:
 
 # Training parameters
 training_batch_size: 2
+unet_kernel_size: 3
+unet_initial_num_of_hidden_channels: 8
+unet_depth: 2
+unet_reduction_ratio: null
 learning_rate: 0.01
 weight_decay: 0.001
+mse_loss_weight: 1.0
+ssim_loss_weight: 0.0
 nb_of_epochs: 8
 num_workers: 2
 num_threads: 2

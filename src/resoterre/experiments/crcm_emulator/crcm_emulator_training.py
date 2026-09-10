@@ -247,6 +247,11 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
                 results[key] = getattr(self.config, f.name)
         return results
 
+    def training_loop(self) -> None:
+        """Execute the main training loop for the model."""
+        for _ in range(self.config.nb_of_epochs):
+            self(epoch=self.epoch_counter + 1, device=self.config.training_device)
+
     def output_training_figures(
         self, input_data: torch.Tensor, target_data: torch.Tensor, output_data: torch.Tensor
     ) -> None:
