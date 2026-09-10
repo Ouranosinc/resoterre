@@ -39,6 +39,8 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         List of time periods to consider. Each time period is a tuple of start and end times.
     max_open_dataset : int
         Maximum number of open xarray datasets to cache.
+    apply_normalization : bool
+        Whether to apply normalization to the input data.
     """
 
     def __init__(
@@ -50,6 +52,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         crcm_variables: list[str],
         time_periods: list[Any],
         max_open_dataset: int = 2,
+        apply_normalization: bool = True,
     ) -> None:
         self.path_gcm_preprocessing = path_gcm_preprocessing
         self.path_crcm_preprocessing = path_crcm_preprocessing
@@ -61,6 +64,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         self.gcm_open_dataset: dict[str, xarray.Dataset] = {}
         self.crcm_open_dataset: dict[str, xarray.Dataset] = {}
         self.max_open_dataset = max_open_dataset
+        self.apply_normalization = apply_normalization
         # ToDo: Only include mask channel for variables that can be under topography at their pressure level
         self.num_input_channels = len(gcm_variables) * 2
         self.num_output_channels = len(crcm_variables)
@@ -218,13 +222,16 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
             gcm_data = xarray_variable.isel(time=gcm_idx).values
             gcm_mask = np.isnan(gcm_data)
             gcm_data[gcm_mask] = 0.0
-            input_first_block[2 * i, :, :] = normalize(
-                gcm_data,
-                valid_min=cmip6_variables[variable_name].normalize_min,
-                valid_max=cmip6_variables[variable_name].normalize_max,
-                log_normalize=cmip6_variables[variable_name].log_normalize,
-                log_offset=cmip6_variables[variable_name].normalize_log_offset,
-            )
+            if self.apply_normalization:
+                input_first_block[2 * i, :, :] = normalize(
+                    gcm_data,
+                    valid_min=cmip6_variables[variable_name].normalize_min,
+                    valid_max=cmip6_variables[variable_name].normalize_max,
+                    log_normalize=cmip6_variables[variable_name].log_normalize,
+                    log_offset=cmip6_variables[variable_name].normalize_log_offset,
+                )
+            else:
+                input_first_block[2 * i, :, :] = gcm_data
             input_first_block[2 * i + 1, :, :] = gcm_mask.astype(np.float32)
         emission_data = {
             "CO2": xarray_dataset_gcm["CO2"][gcm_idx].values,
