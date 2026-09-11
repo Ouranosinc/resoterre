@@ -106,3 +106,11 @@ def test_split_glob():
         assert Path(tmp_dir, "manifests", "test_00000000.txt").is_file()
         assert Path(tmp_dir, "manifests", "test_00000001.txt").is_file()
         assert Path(tmp_dir, "manifests", "test_00000002.txt").is_file()
+
+
+def test_shell_script_args_from_config():
+    args_str = snakemake_utils.shell_script_args_from_config(
+        config={"start_datetime": "20260901T00:00:00", "end_datetime": "20260901T23:59:59", "extra": "value_extra"},
+        keys=["start_datetime", "end_datetime"],
+    )
+    assert args_str == " --start_datetime 20260901T00:00:00 --end_datetime 20260901T23:59:59"

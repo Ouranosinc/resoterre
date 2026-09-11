@@ -1,0 +1,12 @@
+start_datetime: "2024-05-02T07:00:00"
+end_datetime: "2024-05-02T08:00:00"
+requires_previous_forecast_step: true # true when cumulative variables, such as precipitation, are needed.
+include_year_month_subdirectory: true # true for the thredds layout (202405/2024050100_007.nc).
+data_root: "https://pavics.ouranos.ca/twitcher/ows/proxy/thredds/fileServer/birdhouse/disk3/ouranos/geoconnections/RDPS/" # prefix added to each listed file.
+
+# Optional configuration override. Leave this commented to use the default
+# CWL-ready configuration included in the Docker image.
+# config:
+#   class: File
+#   path: ../../configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml
+#   format: "https://www.iana.org/assignments/media-types/application/yaml"

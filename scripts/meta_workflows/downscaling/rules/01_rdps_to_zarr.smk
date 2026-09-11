@@ -4,16 +4,25 @@ To run this workflow, use the command:
 snakemake -s 01_rdps_to_zarr.smk -j1 --config config_yaml=config.yaml --directory=/workflow_directory
 """
 
+from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 from resoterre.config_utils import config_from_yaml
 
 from resoterre.calendar_utils import iter_year_month
-from resoterre.experiments.rdps_to_hrdps_workflow import RDPSToHRDPSConfig
+from resoterre.experiments.rdps_to_hrdps_downscaling.rdps_to_hrdps_workflow import (
+    RDPSToHRDPSConfig,
+    rdps_to_hrdps_config_replace_for_inference
+)
+from resoterre.snakemake_utils import shell_script_args_from_config
 
 snakefile_dir = Path(str(workflow.snakefile)).parent
 workflow_dir = Path.cwd()
 config_obj = config_from_yaml(RDPSToHRDPSConfig, config["config_yaml"])
+config_obj = rdps_to_hrdps_config_replace_for_inference(config_obj, SimpleNamespace(**config))
+additional_script_args = shell_script_args_from_config(config, ["start_datetime", "end_datetime"])
 start_datetime = config_obj.rdps_preprocessing_start_datetime
 end_datetime = config_obj.rdps_preprocessing_end_datetime
 start_year = start_datetime.year
@@ -52,6 +61,7 @@ rule rdps_to_zarr_init:
         init_variable_name=config_obj.rdps_variables[0],
         init_year=start_year,
         init_month=start_month,
+        additional_script_args=additional_script_args,
     shell:
         """
         python3 {params.path_script} \
@@ -59,7 +69,8 @@ rule rdps_to_zarr_init:
             --config {params.config_yaml} \
             --variable_name {params.init_variable_name} \
             --year {params.init_year} \
-            --month {params.init_month}
+            --month {params.init_month} \
+            {params.additional_script_args}
         """
 
 
@@ -72,6 +83,7 @@ rule rdps_to_zarr:
         path_script=Path(snakefile_dir, "01_rdps_to_zarr.py"),
         workflow_dir=workflow_dir,
         config_yaml=config["config_yaml"],
+        additional_script_args=additional_script_args,
     shell:
         """
         python3 {params.path_script} \
@@ -79,5 +91,6 @@ rule rdps_to_zarr:
             --config {params.config_yaml} \
             --variable_name {wildcards.variable_name} \
             --year {wildcards.year} \
-            --month {wildcards.month}
+            --month {wildcards.month} \
+            {params.additional_script_args}
         """

@@ -1,0 +1,4 @@
+file_list:
+  class: File
+  path: ../../results/rdps_forecast_files.txt # list produced by downscaling_generate_file_list.cwl.
+  format: https://www.iana.org/assignments/media-types/text/plain
