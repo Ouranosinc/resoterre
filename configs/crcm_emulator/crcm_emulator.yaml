@@ -1,13 +1,11 @@
 experiment_name: test
 executing_institution: unknown
-
-path_data: /Users/christinaisaicu/dev/data
-path_output: output
-path_regridding_weights: regridding_weights
-path_gcm_data: GCMs
-path_emission_data: GHGs
-path_crcm_data: MRCC5-CMIP6
-path_preprocessed: preprocessed
+path_output: /path/to/output
+path_regridding_weights: /path/to/regridding_weights
+path_models: /path/to/models
+path_gcm_data: /path/to/GCMs
+path_emission_data: /path/to/GHGs
+path_crcm_data: /path/to/MRCC5-CMIP6
 
 # Global parameters
 tile_size: 608

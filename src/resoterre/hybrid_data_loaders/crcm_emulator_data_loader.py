@@ -186,7 +186,20 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     oldest_key = next(iter(self.gcm_open_dataset))
                     self.gcm_open_dataset[oldest_key].close()
                     del self.gcm_open_dataset[oldest_key]
-                self.gcm_open_dataset[key] = xarray.open_mfdataset(self.gcm_zarr[key])
+                # self.gcm_open_dataset[key] = xarray.open_mfdataset(self.gcm_zarr[key])
+                self.gcm_open_dataset[key] = xarray.open_mfdataset(
+                    self.gcm_zarr[key],
+                    engine="zarr",
+                    backend_kwargs={"consolidated": True},
+                    combine="nested",
+                    concat_dim="time",
+                    data_vars="minimal",
+                    coords="minimal",
+                    compat="override",
+                    join="override",
+                    chunks={},
+                    parallel=True,
+                )
             return self.gcm_open_dataset[key]
         elif dataset_type == "crcm":
             if key not in self.crcm_open_dataset:
@@ -194,7 +207,20 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     oldest_key = next(iter(self.crcm_open_dataset))
                     self.crcm_open_dataset[oldest_key].close()
                     del self.crcm_open_dataset[oldest_key]
-                self.crcm_open_dataset[key] = xarray.open_mfdataset(self.crcm_zarr[key])
+                # self.crcm_open_dataset[key] = xarray.open_mfdataset(self.crcm_zarr[key])
+                self.crcm_open_dataset[key] = xarray.open_mfdataset(
+                    self.crcm_zarr[key],
+                    engine="zarr",
+                    backend_kwargs={"consolidated": True},
+                    combine="nested",
+                    concat_dim="time",
+                    data_vars="minimal",
+                    coords="minimal",
+                    compat="override",
+                    join="override",
+                    chunks={},
+                    parallel=True,
+                )
             return self.crcm_open_dataset[key]
         else:
             raise ValueError(f"Unknown dataset type: {dataset_type}")
