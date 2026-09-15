@@ -1,5 +1,6 @@
 """Module for machine learning data sample plotting."""
 
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -193,3 +194,87 @@ def ml_sample_figures(
                 first_dimension_is_batch_size=first_dimension_is_batch_size,
             )
             k += 1
+
+
+def balanced_ml_sample_figures(
+    path_figure: Path,
+    input_data: np.ndarray,
+    target_data: np.ndarray,
+    output_data: np.ndarray,
+) -> None:
+    """
+    Generate and save balanced sample figures for machine learning data.
+
+    Parameters
+    ----------
+    path_figure : Path
+        Path to the output figure file where the figure will be saved.
+    input_data : np.ndarray
+        The input data for the model.
+    target_data : np.ndarray
+        The ground truth target data.
+    output_data : np.ndarray
+        The model output data.
+    """
+    n_inputs = input_data.shape[0]
+    n_targets = target_data.shape[0]
+    n_outputs = output_data.shape[0]
+
+    # Find ideal placement of subplots
+    category_counts = [n_inputs, n_targets, n_outputs]
+    total_subplots = sum(category_counts)
+    if total_subplots <= 0:
+        best_rows = 1
+        best_cols_per_category = [1, 1, 1]
+    else:
+        best_score = None
+        best_rows = 1
+        best_cols_per_category = [max(1, count) for count in category_counts]
+
+        for n_rows in range(1, total_subplots + 1):
+            cols_per_category = [max(1, int(np.ceil(count / n_rows))) for count in category_counts]
+            n_cols = sum(cols_per_category)
+            area = n_rows * n_cols
+            empty_cells = area - total_subplots
+            aspect_penalty = total_subplots * abs(math.log(n_rows / n_cols))
+            score = empty_cells + aspect_penalty
+
+            candidate = (score, empty_cells, area, abs(n_rows - n_cols))
+            if best_score is None or candidate < best_score:
+                best_score = candidate
+                best_rows = n_rows
+                best_cols_per_category = cols_per_category
+
+    n_cols = sum(best_cols_per_category)
+    fig, axes = plt.subplots(best_rows, n_cols, figsize=(4 * n_cols, 4 * best_rows), squeeze=False)
+
+    # Start with all axes hidden, then activate only those mapped to actual channels.
+    for row_axes in axes:
+        for ax in row_axes:
+            ax.axis("off")
+
+    categories = [
+        ("Input", input_data, n_inputs),
+        ("Target", target_data, n_targets),
+        ("Output", output_data, n_outputs),
+    ]
+    col_offset = 0
+    for category_idx, (title, numpy_data, n_channels) in enumerate(categories):
+        block_cols = best_cols_per_category[category_idx]
+        for channel_idx in range(n_channels):
+            row = channel_idx % best_rows
+            col_in_block = channel_idx // best_rows
+            col = col_offset + col_in_block
+            ax = axes[row, col]
+            ax.axis("on")
+            ax.set_title(title)
+            ax.pcolormesh(
+                numpy_data[channel_idx, :, :],
+                vmin=-1,
+                vmax=1,
+            )
+        col_offset += block_cols
+    plt.tight_layout()
+    Path(path_figure).parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(path_figure)
+    plt.close(fig)
