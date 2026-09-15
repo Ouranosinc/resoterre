@@ -327,12 +327,11 @@ class NNTraining(ABC):
         """
         for model in self.models.values():
             model.to(device)
-        # ToDo: verify if this is needed
-        # for optimizer in self.optimizers.values():
-        #     for state in optimizer.state.values():
-        #         for k, v in state.items():
-        #             if isinstance(v, torch.Tensor):
-        #                 state[k] = v.to(device)
+        for optimizer in self.optimizers.values():
+            for state in optimizer.state.values():
+                for k, v in state.items():
+                    if isinstance(v, torch.Tensor):
+                        state[k] = v.to(device)
         for loss_function in self.loss_functions.values():
             if hasattr(loss_function, "to"):
                 loss_function.to(device)

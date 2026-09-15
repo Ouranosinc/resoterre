@@ -38,7 +38,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         List of time periods to consider. Each time period is a tuple of start and end times.
     keep_3d_variables : bool
         Whether to keep 3D variables structure in the dataset.
-    max_open_dataset : int
+    max_open_datasets : int
         Maximum number of open xarray datasets to cache.
     """
 
@@ -51,7 +51,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         crcm_variables: list[str],
         time_periods: list[Any],
         keep_3d_variables: bool = False,
-        max_open_dataset: int = 2,
+        max_open_datasets: int = 2,
     ) -> None:
         self.path_gcm_preprocessing = path_gcm_preprocessing
         self.path_crcm_preprocessing = path_crcm_preprocessing
@@ -63,7 +63,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         self.gcm_open_dataset: dict[str, xarray.Dataset] = {}
         self.crcm_open_dataset: dict[str, xarray.Dataset] = {}
         self.keep_3d_variables = keep_3d_variables
-        self.max_open_dataset = max_open_dataset
+        self.max_open_datasets = max_open_datasets
         # ToDo: Only include mask channel for variables that can be under topography at their pressure level
         self.num_input_channels = len(gcm_variables) * 2
         self.num_output_channels = len(crcm_variables)
@@ -74,7 +74,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
             my_path = Path(path_gcm_preprocessing, f"crcm_emulator_input_{gcm_str}")
             zarr_directories = list(sorted(my_path.glob(f"crcm_emulator_input_{gcm_str}_*.zarr")))
             self.gcm_zarr[gcm_str] = zarr_directories
-            xarray_dataset_gcm = xarray.open_dataset(zarr_directories[0])
+            xarray_dataset_gcm = xarray.open_dataset(zarr_directories[0], engine="zarr")
             variables_in_gcm_zarr = xarray_dataset_gcm["variable_names"].values.tolist()
             xarray_dataset_gcm.close()
             logger.debug("Opening GCM zarr directories")
@@ -85,7 +85,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
             my_path = Path(path_crcm_preprocessing, f"crcm_emulator_output_{gcm_str}")
             zarr_directories = list(sorted(my_path.glob(f"crcm_emulator_output_{gcm_str}_*.zarr")))
             self.crcm_zarr[gcm_str] = zarr_directories
-            xarray_dataset_crcm = xarray.open_dataset(zarr_directories[0])
+            xarray_dataset_crcm = xarray.open_dataset(zarr_directories[0], engine="zarr")
             variables_in_crcm_zarr = xarray_dataset_crcm["variable_names"].values.tolist()
             xarray_dataset_crcm.close()
             logger.debug("Opening CRCM zarr directories")
@@ -127,9 +127,11 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     is_computed = xarray_dataset_gcm["is_computed"][variable_idx, time_slice].values
                     valid_time_idx = np.where(is_computed)[0].tolist()
                     if valid_gcm_time_idx is None:
-                        valid_gcm_time_idx = set(valid_time_idx)
+                        valid_gcm_time_idx = {x + gcm_initial_time_idx for x in valid_time_idx}
                     else:
-                        valid_gcm_time_idx = valid_gcm_time_idx.intersection(valid_time_idx)
+                        valid_gcm_time_idx = valid_gcm_time_idx.intersection(
+                            [x + gcm_initial_time_idx for x in valid_time_idx]
+                        )
                 if valid_gcm_time_idx is None:
                     raise RuntimeError("No valid GCM time indices found for the specified time period.")
                 for variable_name in crcm_variables:
@@ -137,7 +139,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     time_slice = slice(crcm_initial_time_idx, crcm_final_time_idx + 1)
                     is_computed = xarray_dataset_crcm["is_computed"][variable_idx, time_slice].values
                     valid_time_idx = np.where(is_computed)[0].tolist()
-                    valid_time_idx_offset = [x - time_idx_offset for x in valid_time_idx]
+                    valid_time_idx_offset = [x + gcm_initial_time_idx for x in valid_time_idx]
                     valid_gcm_time_idx = set(valid_gcm_time_idx).intersection(valid_time_idx_offset)
                 valid_idx = [(x, x + time_idx_offset) for x in sorted(list(valid_gcm_time_idx))]
                 self.valid_time_idx[gcm_str].extend(valid_idx)
@@ -177,19 +179,43 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         """
         if dataset_type == "gcm":
             if key not in self.gcm_open_dataset:
-                if len(self.gcm_open_dataset) >= self.max_open_dataset:
+                if len(self.gcm_open_dataset) >= self.max_open_datasets:
                     oldest_key = next(iter(self.gcm_open_dataset))
                     self.gcm_open_dataset[oldest_key].close()
                     del self.gcm_open_dataset[oldest_key]
-                self.gcm_open_dataset[key] = xarray.open_mfdataset(self.gcm_zarr[key])
+                self.gcm_open_dataset[key] = xarray.open_mfdataset(
+                    self.gcm_zarr[key],
+                    engine="zarr",
+                    backend_kwargs={"consolidated": True},
+                    combine="nested",
+                    concat_dim="time",
+                    data_vars="minimal",
+                    coords="minimal",
+                    compat="override",
+                    join="override",
+                    chunks={},
+                    parallel=True,
+                )
             return self.gcm_open_dataset[key]
         elif dataset_type == "crcm":
             if key not in self.crcm_open_dataset:
-                if len(self.crcm_open_dataset) >= self.max_open_dataset:
+                if len(self.crcm_open_dataset) >= self.max_open_datasets:
                     oldest_key = next(iter(self.crcm_open_dataset))
                     self.crcm_open_dataset[oldest_key].close()
                     del self.crcm_open_dataset[oldest_key]
-                self.crcm_open_dataset[key] = xarray.open_mfdataset(self.crcm_zarr[key])
+                self.crcm_open_dataset[key] = xarray.open_mfdataset(
+                    self.crcm_zarr[key],
+                    engine="zarr",
+                    backend_kwargs={"consolidated": True},
+                    combine="nested",
+                    concat_dim="time",
+                    data_vars="minimal",
+                    coords="minimal",
+                    compat="override",
+                    join="override",
+                    chunks={},
+                    parallel=True,
+                )
             return self.crcm_open_dataset[key]
         else:
             raise ValueError(f"Unknown dataset type: {dataset_type}")

@@ -110,6 +110,8 @@ class CRCMEmulatorConfig:
         Number of workers for data loading during training.
     num_threads : int
         Number of threads for data loading during training.
+    max_open_datasets : int
+        Maximum number of open zarr datasets allowed simultaneously.
     training_device : str
         Device to use for training the emulator (e.g., "cpu", "cuda").
     inference_variables : list[str]
@@ -175,6 +177,7 @@ class CRCMEmulatorConfig:
     nb_of_epochs: int = 10
     num_workers: int = field(default=2, metadata={"is_setting": True})
     num_threads: int = field(default=2, metadata={"is_setting": True})
+    max_open_datasets: int = field(default=2, metadata={"is_setting": True})
     training_device: str = field(default="cpu", metadata={"is_setting": True})
     inference_variables: list[str] = field(default_factory=list)
     inference_periods: list[list[datetime]] | None = None

@@ -55,9 +55,18 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             gcm_variables=self.config.gcm_training_variables,
             crcm_variables=self.config.crcm_training_variables,
             time_periods=self.config.training_periods,
+            max_open_datasets=self.config.max_open_datasets,
         )
         if len(self.dataset) > 0:
-            self.train_data_loader = td.DataLoader(self.dataset, self.config.training_batch_size, shuffle=True)
+            self.train_data_loader = td.DataLoader(
+                self.dataset,
+                batch_size=self.config.training_batch_size,
+                shuffle=True,
+                num_workers=self.config.num_workers,
+                persistent_workers=True if config.num_workers > 0 else False,
+                multiprocessing_context="spawn",
+                pin_memory=True,
+            )
             logger.info(
                 "Initialized training DataLoader with %d samples, batch size %d",
                 len(self.dataset),
@@ -70,10 +79,17 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             gcm_variables=self.config.gcm_training_variables,
             crcm_variables=self.config.crcm_training_variables,
             time_periods=self.config.validation_periods,
+            max_open_datasets=self.config.max_open_datasets,
         )
         if len(self.validation_dataset) > 0:
             self.validation_data_loader = td.DataLoader(
-                self.validation_dataset, self.config.training_batch_size, shuffle=False
+                self.validation_dataset,
+                batch_size=self.config.training_batch_size,
+                shuffle=False,
+                num_workers=self.config.num_workers,
+                persistent_workers=True if config.num_workers > 0 else False,
+                multiprocessing_context="spawn",
+                pin_memory=True,
             )
             logger.info(
                 "Initialized validation DataLoader with %d samples, batch size %d",
@@ -113,8 +129,8 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             depth=self.config.unet_depth,
             resolution_increase_layers=int(math.log2(self.config.coarsen_factor)),
             go_to_1x1=True,
-            h_in=self.config.tile_size,
-            w_in=self.config.tile_size,
+            h_in=self.config.tile_size // self.config.coarsen_factor,
+            w_in=self.config.tile_size // self.config.coarsen_factor,
             linear_size=7,
             reduction_ratio=self.config.unet_reduction_ratio,
         )
@@ -192,7 +208,12 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         """
         input_data = item["input_first_block"].to(self.config.training_device)
         target_data = item["target"].to(self.config.training_device)
-        output = self.models["UNet"](input_data)
+        # ToDo: convert month and day to time embeddings, normalize?
+        linear_data = torch.vstack(
+            [item["month"], item["day"], item["CO2"], item["CH4"], item["N2O"], item["CFC12"], item["CFC11_eq"]]
+        ).T
+        linear_data = linear_data.to(self.config.training_device)
+        output = self.models["UNet"](input_data, x_linear=linear_data)
         self.output_training_figures(input_data=input_data, target_data=target_data, output_data=output)
         loss, metrics = self.training_loss_computation(target_data, output)
         loss.backward()
@@ -211,7 +232,12 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         """
         input_data = item["input_first_block"].to(self.config.training_device)
         target_data = item["target"].to(self.config.training_device)
-        output = self.models["UNet"](input_data)
+        # ToDo: convert month and day to time embeddings, normalize?
+        linear_data = torch.vstack(
+            [item["month"], item["day"], item["CO2"], item["CH4"], item["N2O"], item["CFC12"], item["CFC11_eq"]]
+        ).T
+        linear_data = linear_data.to(self.config.training_device)
+        output = self.models["UNet"](input_data, x_linear=linear_data)
         extra_metrics = self.custom_metrics(target_data.detach().cpu().numpy(), output.detach().cpu().numpy())
         loss, metrics = self.training_loss_computation(target_data, output)
         metrics["loss"] = loss.item()
