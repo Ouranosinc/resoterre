@@ -1,19 +1,13 @@
-workflow_command: |
-  snakemake -s scripts/meta_workflows/downscaling/rdps_to_hrdps.smk \
-    --config config_yaml=/path/to/downscaling_rdps_to_hrdps.yaml \
-    -j1 \
-    --directory=/path/to/workflow/outputs
-
-path_logs: /path/to/logs
-path_output: /path/to/output
-path_preprocessed_zarr: /path/to/preprocessed_zarr
-path_regridding_weights: /path/to/regridding_weights
+path_logs: logs
+path_output: outputs
+path_preprocessed_zarr: outputs
+path_regridding_weights: /app/matrix
 path_hrdps: null  # Not required for inference
-path_hrdps_geophysical: /path/to/hrdps/geophysical/fields
-path_rdps: /path/to/rdps/data
+path_hrdps_geophysical: /app/geophysical
+path_rdps: inputs
 
 # Global settings
-experiment_name: experiment_name
+experiment_name: cwl
 global_start_datetime: "2017-05-22 07:00:00"
 global_end_datetime: "2024-09-01 12:00:00"
 coarsen_factor: 4
@@ -21,19 +15,17 @@ coarsen_factor: 4
 # HRDPS Preprocessing
 hrdps_preprocessing_skip: false
 hrdps_variables:
-  # - "HRDPS_P_TT_10000"
-  # - "HRDPS_P_PR_SFC"
-  # - "HRDPS_P_UUC_10000"
-  # - "HRDPS_P_VVC_10000"
     - "orog"  # Providing orog here will generate the default geophysical fields in zarr format in inference mode
 tile_size: 512
 tiles_center_lon:
     - 284.30
 tiles_center_lat:
     - 45.42
-hrdps_preprocessing_start_datetime: "2017-05-22 07:00:00"  # Start at hour 1 considering 7-12 forecast extraction (for chunks synchronization in zarr)
+hrdps_preprocessing_start_datetime: "2017-05-22 07:00:00"
 hrdps_preprocessing_end_datetime: "2017-05-22 08:00:00"
 hrdps_compute_upscaled_version: false
+
+use_flat_rdps_directory_structure: true  # Set to true if the RDPS input files are in a flat directory structure (e.g., 2024050100_007.nc) instead of a nested structure (e.g., 202405/2024050100_007.nc)
 
 # RDPS Preprocessing
 rdps_preprocessing_skip: false
@@ -52,8 +44,8 @@ rdps_variables:
     - "TD"
     - "UU850"
     - "VV850"  # end of tier 2
-rdps_preprocessing_start_datetime: "2024-05-22 01:00:00"  # Start at hour 1 considering 7-12 forecast extraction (for chunks synchronization in zarr)
-rdps_preprocessing_end_datetime: "2024-05-22 02:00:00"
+rdps_preprocessing_start_datetime: "2024-05-01 07:00:00"
+rdps_preprocessing_end_datetime: "2024-05-01 08:00:00"
 
 # Training
 rdps_variables_for_training:
@@ -63,14 +55,14 @@ rdps_variables_for_training:
     - "VV_model_levels"
     - "PC"
     - "PN"
-    - "TT850"  # end of tier 1
+    - "TT850"
     - "GZ500"
     - "GZ850"
     - "HU850"
     - "HU700"
     - "TD"
     - "UU850"
-    - "VV850"  # end of tier 2
+    - "VV850"
 hrdps_variables_for_training:
     - "HRDPS_P_TT_10000"
     - "HRDPS_P_PR_SFC"
@@ -95,7 +87,7 @@ ssim_loss_weight: 0.4
 nb_of_epochs: 0  # 0 epochs for inference only
 num_workers: 8
 num_threads: 16
-device: cuda  # cpu or cuda
+device: cpu
 
 # Inference
 inference_variables:
@@ -103,13 +95,12 @@ inference_variables:
     - "HRDPS_P_PR_SFC"
     - "HRDPS_P_UUC_10000"
     - "HRDPS_P_VVC_10000"
-inference_start_datetime: "2024-05-22 01:00:00"
-inference_end_datetime: "2024-05-22 02:00:00"
-path_inference_model: /path/to/unet_epoch_experiment_name_best_epoch.safetensors
+inference_start_datetime: "2024-05-01 07:00:00"
+inference_end_datetime: "2024-05-01 08:00:00"
+path_inference_model: /app/model/model.safetensors
 inference_device: cpu  # cpu or cuda
 
-# Additional metadata for stac extension
-# Note that ideally this should be retrieved from the data files
+# Additional metadata
 hrdps_extent_coordinates:
     lat_min: 27.284586
     lat_max: 70.6115

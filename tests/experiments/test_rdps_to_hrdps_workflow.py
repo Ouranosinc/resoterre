@@ -1,5 +1,6 @@
 import tempfile
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -7,7 +8,7 @@ import numpy as np
 import xarray
 
 from resoterre.data_management.netcdf_utils import CFVariables
-from resoterre.experiments import rdps_to_hrdps_workflow
+from resoterre.experiments.rdps_to_hrdps_downscaling import rdps_to_hrdps_workflow
 from resoterre.ml.network_manager import AdamConfig, NeuralNetworksManager, NeuralNetworksManagerConfig
 from resoterre.ml.neural_networks_unet import UNet, UNetConfig
 
@@ -226,3 +227,67 @@ def test_inference_from_preprocessed_data():
         rdps_to_hrdps_workflow.inference_from_preprocessed_data(config_dict)
         assert len(list(Path(tmp_dir, "HRDPS_P_TT_10000").glob("*.nc"))) == 4
         assert len(list(Path(tmp_dir, "HRDPS_P_PR_SFC").glob("*.nc"))) == 4
+
+
+def test_rdps_datetimes_to_forecast_files():
+    start_datetime = datetime(2024, 5, 14, 2)
+    end_datetime = datetime(2024, 5, 14, 4)
+    files = rdps_to_hrdps_workflow.rdps_datetimes_to_forecast_files(
+        start_datetime, end_datetime, first_valid_forecast_step=7, requires_previous_forecast_step=False
+    )
+    assert len(files) == 3
+    assert all(isinstance(f, Path) for f in files)
+    assert str(files[0]) == "202405/2024051318_008.nc"
+    assert str(files[1]) == "202405/2024051318_009.nc"
+    assert str(files[2]) == "202405/2024051318_010.nc"
+
+
+def test_rdps_datetimes_to_forecast_files_with_previous_forecast_step():
+    start_datetime = datetime(2024, 5, 14, 2)
+    end_datetime = datetime(2024, 5, 14, 4)
+    files = rdps_to_hrdps_workflow.rdps_datetimes_to_forecast_files(
+        start_datetime, end_datetime, first_valid_forecast_step=7, requires_previous_forecast_step=True
+    )
+    assert len(files) == 4
+    assert all(isinstance(f, Path) for f in files)
+    assert str(files[0]) == "202405/2024051318_007.nc"
+    assert str(files[1]) == "202405/2024051318_008.nc"
+    assert str(files[2]) == "202405/2024051318_009.nc"
+    assert str(files[3]) == "202405/2024051318_010.nc"
+
+
+def test_rdps_datetimes_to_forecast_files_year_switch():
+    start_datetime = datetime(2024, 1, 1, 4)
+    end_datetime = datetime(2024, 1, 1, 8)
+    files = rdps_to_hrdps_workflow.rdps_datetimes_to_forecast_files(
+        start_datetime, end_datetime, first_valid_forecast_step=7, requires_previous_forecast_step=True
+    )
+    assert len(files) == 7
+    assert all(isinstance(f, Path) for f in files)
+    assert str(files[0]) == "202312/2023123118_009.nc"
+    assert str(files[1]) == "202312/2023123118_010.nc"
+    assert str(files[2]) == "202312/2023123118_011.nc"
+    assert str(files[3]) == "202312/2023123118_012.nc"
+    assert str(files[4]) == "202401/2024010100_006.nc"
+    assert str(files[5]) == "202401/2024010100_007.nc"
+    assert str(files[6]) == "202401/2024010100_008.nc"
+
+
+def test_rdps_datetimes_to_forecast_files_no_year_month_subdirectory():
+    start_datetime = datetime(2024, 2, 29, 17)
+    end_datetime = datetime(2024, 2, 29, 20)
+    files = rdps_to_hrdps_workflow.rdps_datetimes_to_forecast_files(
+        start_datetime,
+        end_datetime,
+        first_valid_forecast_step=7,
+        requires_previous_forecast_step=True,
+        include_year_month_subdirectory=False,
+    )
+    assert len(files) == 6
+    assert all(isinstance(f, Path) for f in files)
+    assert str(files[0]) == "2024022906_010.nc"
+    assert str(files[1]) == "2024022906_011.nc"
+    assert str(files[2]) == "2024022906_012.nc"
+    assert str(files[3]) == "2024022912_006.nc"
+    assert str(files[4]) == "2024022912_007.nc"
+    assert str(files[5]) == "2024022912_008.nc"

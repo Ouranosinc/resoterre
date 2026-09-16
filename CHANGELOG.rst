@@ -9,6 +9,10 @@ Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:us
 
 Changes
 ^^^^^^^
+* Update ``docker/Dockerfile.inference`` to package the regridding weight matrices and geophysical files (``orog.nc``, ``sftlf.nc``) into the inference image alongside the model. (:pull:`86`).
+* Add ``examples/deploy/downscaling_generate_file_list.cwl`` Common Workflow Language process to list the RDPS files required for a given datetime range. (:pull:`86`).
+* Add ``examples/deploy/downscaling_download_files.cwl`` Common Workflow Language process to download a list of files into a local directory. (:pull:`86`).
+* Add ``examples/deploy/downscaling_unet_workflow.cwl`` Common Workflow Language workflow chaining the file list generation, file download, and UNet inference processes. (:pull:`86`).
 * Drop support for Python 3.10. (:pull:`76`).
 * Add support for Python 3.14. (:pull:`65`).
 * Add ``data_info`` module. (:pull:`52`).
