@@ -1,10 +1,12 @@
 """Workflow utilities for RDPS to HRDPS downscaling."""
 
+import argparse
 import calendar
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -255,6 +257,8 @@ class RDPSToHRDPSConfig:
         Path to the HRDPS geophysical data directory.
     path_rdps : Path, optional
         Path to the raw RDPS data directory.
+    use_flat_rdps_directory_structure : bool, optional
+        Whether to use a flat directory structure for RDPS files.
     experiment_name: str, optional
         Name of the experiment.
     global_start_datetime : datetime, optional
@@ -365,6 +369,7 @@ class RDPSToHRDPSConfig:
     path_hrdps: Path | None = None
     path_hrdps_geophysical: Path | None = None
     path_rdps: Path | None = None
+    use_flat_rdps_directory_structure: bool = False
     experiment_name: str | None = None
     global_start_datetime: datetime | None = None
     global_end_datetime: datetime | None = None
@@ -386,21 +391,38 @@ class RDPSToHRDPSConfig:
     hrdps_geophysical_variables_for_training: list[str] = field(default_factory=list)
     validation_period_start: datetime | None = None
     test_period_start: datetime | None = None
-    training_batch_size: int = 32
+    training_batch_size: int = field(
+        default=32, metadata={"is_hyperparameter": True, "display_name": "batch_size", "hp_type": "training"}
+    )
     kernel_size: int = 3
-    initial_nb_of_hidden_channels: int = 16
-    depth: int = 2
-    reduction_ratio: int | None = None
-    learning_rate: float = 0.001
-    weight_decay: float | None = None
-    mse_loss_weight: float = 1.0
-    mae_loss_weight: float = 0.0
-    mass_loss_weight: float = 0.0
-    ssim_loss_weight: float = 0.0
+    initial_nb_of_hidden_channels: int = field(
+        default=16, metadata={"is_hyperparameter": True, "display_name": "init_chan", "hp_type": "architecture"}
+    )
+    depth: int = field(default=2, metadata={"is_hyperparameter": True, "hp_type": "architecture"})
+    reduction_ratio: int | None = field(
+        default=None, metadata={"is_hyperparameter": True, "display_name": "S&E", "hp_type": "architecture"}
+    )
+    learning_rate: float = field(
+        default=0.001, metadata={"is_hyperparameter": True, "display_name": "lr", "hp_type": "training"}
+    )
+    weight_decay: float | None = field(default=None, metadata={"is_hyperparameter": True, "hp_type": "training"})
+    # mse_loss_weight: float = 1.0
+    mse_loss_weight: float = field(
+        default=1.0, metadata={"is_hyperparameter": True, "display_name": "weight_mse", "hp_type": "objective"}
+    )
+    mae_loss_weight: float = field(
+        default=0.0, metadata={"is_hyperparameter": True, "display_name": "weight_mae", "hp_type": "objective"}
+    )
+    mass_loss_weight: float = field(
+        default=0.0, metadata={"is_hyperparameter": True, "display_name": "weight_mass", "hp_type": "objective"}
+    )
+    ssim_loss_weight: float = field(
+        default=0.0, metadata={"is_hyperparameter": True, "display_name": "weight_ssim", "hp_type": "objective"}
+    )
     nb_of_epochs: int = 10
-    num_workers: int = 2
-    num_threads: int = 2
-    device: str = "cpu"
+    num_workers: int = field(default=2, metadata={"is_setting": True})
+    num_threads: int = field(default=2, metadata={"is_setting": True})
+    device: str = field(default="cpu", metadata={"is_setting": True})
     inference_variables: list[str] = field(default_factory=list)
     inference_start_datetime: datetime | None = None
     inference_end_datetime: datetime | None = None
@@ -436,6 +458,42 @@ def rdps_to_hrdps_parse_config(config: RDPSToHRDPSConfig | Path | str) -> RDPSTo
         return config
     else:
         return config_from_yaml(RDPSToHRDPSConfig, config)
+
+
+def rdps_to_hrdps_config_replace_for_inference(
+    config: RDPSToHRDPSConfig,
+    args: argparse.Namespace | SimpleNamespace,
+) -> RDPSToHRDPSConfig:
+    """
+    Replace the dates in the configuration for inference.
+
+    Parameters
+    ----------
+    config : RDPSToHRDPSConfig
+        Original configuration for the RDPS to HRDPS workflow.
+    args : argparse.Namespace | SimpleNamespace
+        Command-line arguments containing potential overrides for the start and end datetimes.
+
+    Returns
+    -------
+    RDPSToHRDPSConfig
+        Configuration object modified for inference.
+    """
+    if hasattr(args, "start_datetime") and hasattr(args, "end_datetime"):
+        start_replace = datetime.fromisoformat(args.start_datetime)
+        end_replace = datetime.fromisoformat(args.end_datetime)
+        config = replace(
+            config,
+            global_start_datetime=datetime(start_replace.year, start_replace.month, start_replace.day),
+            global_end_datetime=datetime(end_replace.year, end_replace.month, end_replace.day, 23, 59, 59),
+            hrdps_preprocessing_start_datetime=start_replace,
+            hrdps_preprocessing_end_datetime=end_replace,
+            rdps_preprocessing_start_datetime=start_replace,
+            rdps_preprocessing_end_datetime=end_replace,
+            inference_start_datetime=start_replace,
+            inference_end_datetime=end_replace,
+        )
+    return config
 
 
 def preprocess_batch(path_output: Path, config: RDPSToHRDPSOnDiskConfig, input_specs: list[dict[str, Any]]) -> None:
@@ -890,6 +948,7 @@ def rdps_regrid_to_zarr_single_file_processing(
         config.path_preprocessed_zarr,
         f"rdps_coarse_i_{i_start:04d}_j_{j_start:04d}_size_{config.tile_size:04d}.zarr",
     )
+    logger.info("Saving RDPS coarse data to Zarr: %s", path_rdps_coarse_zarr)
     save_rdps_coarse(
         path_rdps_coarse_zarr,
         rlat=rlat_coarse,
@@ -914,6 +973,69 @@ def rdps_regrid_to_zarr_single_file_processing(
         year=year,
         month=month,
     )
+
+
+def rdps_datetimes_to_forecast_files(
+    start_datetime: datetime,
+    end_datetime: datetime,
+    first_valid_forecast_step: int = 7,
+    requires_previous_forecast_step: bool = False,
+    include_year_month_subdirectory: bool = True,
+) -> list[Path]:
+    """
+    Generate a list of RDPS files required to retrieve the requested datetime range.
+
+    Parameters
+    ----------
+    start_datetime : datetime
+        Start of the datetime range.
+    end_datetime : datetime
+        End of the datetime range.
+    first_valid_forecast_step : int, optional
+        The first valid forecast step.
+    requires_previous_forecast_step : bool, optional
+        Whether the previous forecast step is required.
+    include_year_month_subdirectory : bool, optional
+        Whether to include the year/month subdirectory in the file paths.
+
+    Returns
+    -------
+    list[Path]
+        List of paths to RDPS files.
+    """
+    current_datetime = start_datetime
+    rdps_files: list[Path] = []
+    while current_datetime <= end_datetime:
+        year = current_datetime.year
+        month = current_datetime.month
+        day = current_datetime.day
+        hour = current_datetime.hour
+        forecast_step = hour % 6
+        forecast_hour = datetime(year, month, day, hour - forecast_step)
+        while forecast_step < first_valid_forecast_step:
+            forecast_step += 6
+            forecast_hour = forecast_hour - timedelta(hours=6)
+        year_month_str = f"{forecast_hour.year}{forecast_hour.month:02d}"
+        if requires_previous_forecast_step:
+            if not rdps_files or (forecast_step == first_valid_forecast_step):
+                if forecast_step == 0:
+                    raise ValueError("Cannot require previous forecast step when the first forecast step is 0.")
+                rdps_files.append(
+                    Path(
+                        f"{year_month_str}{forecast_hour.day:02d}{forecast_hour.hour:02d}_{forecast_step - 1:03d}.nc",
+                    )
+                )
+                if include_year_month_subdirectory:
+                    rdps_files[-1] = Path(year_month_str, rdps_files[-1].name)
+        rdps_files.append(
+            Path(
+                f"{year_month_str}{forecast_hour.day:02d}{forecast_hour.hour:02d}_{forecast_step:03d}.nc",
+            )
+        )
+        if include_year_month_subdirectory:
+            rdps_files[-1] = Path(year_month_str, rdps_files[-1].name)
+        current_datetime += timedelta(hours=1)
+    return rdps_files
 
 
 def rdps_regrid_to_zarr_from_config(
@@ -948,21 +1070,18 @@ def rdps_regrid_to_zarr_from_config(
     if config.tiles_center_lat is None or config.tiles_center_lon is None or config.tile_size is None:
         raise ValueError("tiles_center_lat, tiles_center_lon, and tile_size must be specified in the configuration.")
     days = days or list(range(1, calendar.monthrange(year, month)[1] + 1))
-    forecast_steps = [7, 8, 9, 10, 11, 12]
-    rdps_candidate_files = []
+    rdps_candidate_files = rdps_datetimes_to_forecast_files(
+        start_datetime=datetime(year, month, days[0]),
+        end_datetime=datetime(year, month, days[-1], 23, 59, 59),
+        first_valid_forecast_step=7,
+        requires_previous_forecast_step=False,
+        include_year_month_subdirectory=not config.use_flat_rdps_directory_structure,
+    )
+    rdps_candidate_files = [Path(config.path_rdps, x) for x in rdps_candidate_files]
     rdps_sample_file = None
-    for day in days:
-        for forecast_hour in [0, 6, 12, 18]:
-            for forecast_step in forecast_steps:
-                rdps_candidate_files.append(
-                    Path(
-                        config.path_rdps,
-                        f"{year}{month:02d}",
-                        f"{year}{month:02d}{day:02d}{forecast_hour:02d}_{forecast_step:03d}.nc",
-                    )
-                )
-                if rdps_sample_file is None and rdps_candidate_files[-1].is_file():
-                    rdps_sample_file = rdps_candidate_files[-1]
+    for rdps_candidate_file in rdps_candidate_files:
+        if rdps_sample_file is None and rdps_candidate_file.is_file():
+            rdps_sample_file = rdps_candidate_file
     if rdps_sample_file is None:
         logger.debug("No RDPS files found for year=%s, month=%02d.", year, month)
         return

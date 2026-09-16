@@ -51,7 +51,8 @@ dependencies = [
   "shapely >=2.0.7",
   "torch >=2.7.1",
   "torchmetrics >=1.8.2",
-  "xarray >=2024.6.0"
+  "xarray >=2024.6.0",
+  "zarr >=2.0"
 ]
 
 [project.optional-dependencies]
@@ -219,7 +220,7 @@ matplotlib = ["matplotlib", "mpl_toolkits"]
 scikit-learn = "sklearn"
 
 [tool.deptry.per_rule_ignores]
-DEP002 = ["h5netcdf", "h5py", "snakemake"]
+DEP002 = ["h5netcdf", "h5py", "snakemake", "zarr"]
 DEP003 = ["typing_extensions"]
 
 [tool.flit.sdist]
