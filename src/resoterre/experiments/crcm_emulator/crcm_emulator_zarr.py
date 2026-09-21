@@ -184,6 +184,7 @@ def crcm_emulator_output_format(
     xarray_dataset.to_zarr(path_output, mode="w", encoding=encoding_dict, compute=False)
 
 
+# ToDo: change to full period format
 def crcm_emulator_input_format(
     path_output: Path | str,
     year: int,

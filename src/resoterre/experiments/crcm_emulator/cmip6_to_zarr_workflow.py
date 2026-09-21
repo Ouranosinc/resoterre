@@ -1,5 +1,6 @@
 """Workflow components for converting CMIP6 GCM data to zarr format for the CRCM emulation task."""
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,68 @@ from resoterre.io_utils import path_with_uuid
 from resoterre.plots.nd_plots import CustomPColorMesh
 
 
+def get_chunk_indices(
+    gcm: str,
+    start_datetime: str | datetime,
+    end_datetime: str | datetime,
+    chunk_size: int = 8,
+    chunks_per_task: int = 1
+):
+    """
+    Get the list of chunk indices for a given GCM and preprocessing date range.
+
+    Parameters
+    ----------
+    gcm : str
+        GCM name.
+    start_datetime : str | datetime
+        Start datetime of the preprocessing range.
+    end_datetime : str | datetime
+        End datetime of the preprocessing range.
+    chunk_size : int
+        Number of days per chunk.
+    chunks_per_task : int
+        Number of chunks per task.
+
+    Returns
+    -------
+    list[tuple[int, int]]
+        List of tuples containing the start and end indices of each chunk.
+    """
+    datetimes = xarray.cftime_range(start=start_datetime, end=end_datetime, freq="D", calendar=gcm_calendars[gcm])
+    total_chunks = (len(datetimes) + chunk_size - 1) // chunk_size
+    chunk_indices = []
+    for i in range(0, total_chunks, chunks_per_task):
+        start_idx = i * chunk_size
+        end_idx = min(start_idx + chunk_size * chunks_per_task, len(datetimes))
+        chunk_indices.append((start_idx, end_idx - 1))
+    return chunk_indices
+
+
+def chunk_index_to_datetime(gcm: str, start_datetime: str | datetime, end_datetime: str | datetime, chunk_idx: int):
+    """
+    Convert a chunk index to the corresponding datetime.
+
+    Parameters
+    ----------
+    gcm : str
+        GCM name.
+    start_datetime : str | datetime
+        Start datetime of the preprocessing range.
+    end_datetime : str | datetime
+        End datetime of the preprocessing range.
+    chunk_idx : int
+        Index of the chunk.
+
+    Returns
+    -------
+    Any
+        Corresponding datetime for the given chunk index (particular instance of cftime library).
+    """
+    datetimes = xarray.cftime_range(start=start_datetime, end=end_datetime, freq="D", calendar=gcm_calendars[gcm])
+    return datetimes[chunk_idx]
+
+
 class GCMToZarrFromConfig:
     """
     Convert CMIP6 GCM data to zarr format for the CRCM emulation task.
@@ -51,18 +114,14 @@ class GCMToZarrFromConfig:
             ):
                 self.initialize_zarr(year=year, month=month)
 
-    def zarr_path(self, gcm_simulation: list[str], year: int, month: int) -> Path:
+    def zarr_path(self, gcm_simulation: list[str]) -> Path:
         """
-        Get the path to the zarr dataset for a given GCM simulation, year, and month.
+        Get the path to the zarr dataset for a given GCM simulation.
 
         Parameters
         ----------
         gcm_simulation : list[str]
             List containing the GCM name, emission scenario, and ensemble member.
-        year : int
-            Year of the data.
-        month : int
-            Month of the data.
 
         Returns
         -------
@@ -73,7 +132,7 @@ class GCMToZarrFromConfig:
         model_str = f"crcm_emulator_input_{gcm_str}"
         if self.config.path_gcm_preprocessing is None:
             raise ValueError("config.path_gcm_preprocessing is None")
-        return Path(self.config.path_gcm_preprocessing, model_str, f"{model_str}_{year}{month:02d}.zarr")
+        return Path(self.config.path_gcm_preprocessing, model_str, f"{model_str}.zarr")
 
     def emission_path(self, gcm_simulation: list[str], year: int | None = None) -> Path:
         """
@@ -103,28 +162,18 @@ class GCMToZarrFromConfig:
         else:
             return Path(self.config.path_emission_data, f"GHG_{gcm_simulation[1].upper()}.dat")
 
-    def initialize_zarr(self, year: int, month: int) -> None:
-        """
-        Initialize the zarr dataset for each GCM simulation in the preprocessing range.
-
-        Parameters
-        ----------
-        year : int
-            Year of the data.
-        month : int
-            Month of the data.
-        """
+    def initialize_zarr(self) -> None:
+        """Initialize the zarr dataset for each GCM simulation in the preprocessing range."""
         if self.config.path_gcm_preprocessing is None:
             raise ValueError("config.path_gcm_preprocessing is None")
         for gcm_simulation in self.config.preprocessing_simulations:
-            path_output = self.zarr_path(gcm_simulation, year, month)
+            path_output = self.zarr_path(gcm_simulation)
             if path_output.exists() and not self.config.gcm_preprocessing_allow_overwrite:
                 raise FileExistsError(f"Output file already exists: {path_output}")
             # ToDo: add GCM information to CF metadata
+            # ToDo: this function was not modified for full period format
             crcm_emulator_input_format(
                 path_output=path_output,
-                year=year,
-                month=month,
                 expected_variables=self.config.gcm_preprocessing_variables,
                 institution=self.config.executing_institution,
                 tile_size=self.config.tile_size,
@@ -277,7 +326,8 @@ class GCMToZarrFromConfig:
             time_slice=slice(0, time_slice.stop - time_slice.start),
         )
 
-    def __call__(self, gcm_simulation: list[str], variable_name: str, year: int, month: int) -> None:
+    # ToDo: finish handling full period format and chunked processing
+    def __call__(self, gcm_simulation: list[str], variable_name: str, chunk_idx_start: int, chunk_idx_end: int) -> None:
         """
         Convert CMIP6 data to zarr format for a given GCM simulation, variable, year, and month.
 
@@ -287,10 +337,10 @@ class GCMToZarrFromConfig:
             GCM simulation identifier.
         variable_name : str
             Name of the variable.
-        year : int
-            Year of the data.
-        month : int
-            Month of the data.
+        chunk_idx_start : int
+            Start index of the time chunk to process.
+        chunk_idx_end : int
+            End index of the time chunk to process.
         """
         nc_files = self.nc_files(gcm_simulation, variable_name)
         if len(nc_files) == 0:
