@@ -1,6 +1,6 @@
-experiment_name: cnrm-ssp245
+experiment_name: toy
 executing_institution: Ouranos
-path_output: /network/projects/amlrt_internships/ouranous/data/output_cnrm-ssp245
+path_output: /network/projects/amlrt_internships/ouranous/data/output_toy
 path_regridding_weights: /network/projects/amlrt_internships/ouranous/regridding_weights
 path_gcm_data: /network/projects/amlrt_internships/ouranous/data/GCMs
 path_emission_data: /network/projects/amlrt_internships/ouranous/data/GHGs
@@ -10,11 +10,11 @@ path_crcm_data: /network/projects/amlrt_internships/ouranous/data/MRCC5-CMIP6
 tile_size: 608
 coarsen_factor: 8
 apply_normalization: false
-normalization_start_date: "1971-01-01"
-normalization_end_date: "2000-12-31"
+normalization_start_date: "2014-11-01"
+normalization_end_date: "2015-02-01"
 
 # GCM preprocessing
-path_gcm_preprocessing: /network/projects/amlrt_internships/ouranous/data/preprocessed_cnrm-ssp245/gcm_preprocessing
+path_gcm_preprocessing: /network/projects/amlrt_internships/ouranous/data/preprocessed_toy/gcm_preprocessing
 preprocessing_simulations:
   -
     - CNRM-ESM2-1
@@ -24,8 +24,8 @@ preprocessing_simulations:
     - CNRM-ESM2-1
     - ssp245
     - r1i1p1f2
-gcm_preprocessing_start_datetime: "1950-01-01"
-gcm_preprocessing_end_datetime: "2100-12-31"
+gcm_preprocessing_start_datetime: "2014-11-01"
+gcm_preprocessing_end_datetime: "2015-02-01"
 gcm_preprocessing_variables:
   - hus
   - psl
@@ -38,9 +38,9 @@ gcm_preprocessing_variables:
 gcm_preprocessing_allow_overwrite: false
 
 # CRCM preprocessing (uses preprocessing_simulations from GCM preprocessing)
-path_crcm_preprocessing: /network/projects/amlrt_internships/ouranous/data/preprocessed_cnrm-ssp245/crcm_preprocessing
-crcm_preprocessing_start_datetime: "1951-01-01"
-crcm_preprocessing_end_datetime: "2100-12-31"
+path_crcm_preprocessing: /network/projects/amlrt_internships/ouranous/data/preprocessed_toy/crcm_preprocessing
+crcm_preprocessing_start_datetime: "2014-11-01"
+crcm_preprocessing_end_datetime: "2015-02-01"
 crcm_preprocessing_variables:
   - tas
   - pr
@@ -72,16 +72,16 @@ crcm_training_variables:
   - tas
 training_periods:
   -
-    - "1951-01-01"
-    - "2070-12-31"
+    - "2014-11-01"
+    - "2014-12-01"
 validation_periods:
   -
-    - "2071-01-01"
-    - "2085-12-31"
+    - "2014-12-02"
+    - "2015-01-01"
 test_periods:
   -
-    - "2086-01-01"
-    - "2100-12-31"
+    - "2015-01-02"
+    - "2015-02-01"
 
 # Training parameters
 training_batch_size: 2

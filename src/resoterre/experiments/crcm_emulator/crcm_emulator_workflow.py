@@ -126,6 +126,10 @@ class CRCMEmulatorConfig:
         [gcm_name, emission_scenario, ensemble_member, variable_name, year, month, day].
     """
 
+    normalization_start_date: datetime | None = None
+    normalization_end_date: datetime | None = None
+    apply_normalization: bool = False
+
     experiment_name: str | None = None
     executing_institution: str = "unspecified"
     path_data: Path | None = None

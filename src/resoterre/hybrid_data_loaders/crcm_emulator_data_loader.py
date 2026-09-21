@@ -56,7 +56,9 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         keep_3d_variables: bool = False,
         max_open_dataset: int = 2,
         apply_normalization: bool = True,
+        experiment_name: str = "",
     ) -> None:
+        self.experiment_name = experiment_name
         self.path_gcm_preprocessing = path_gcm_preprocessing
         self.path_crcm_preprocessing = path_crcm_preprocessing
         self.gcm_variables = gcm_variables
