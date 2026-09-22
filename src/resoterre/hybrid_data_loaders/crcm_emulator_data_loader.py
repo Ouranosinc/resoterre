@@ -132,7 +132,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     variable_idx = variables_in_gcm_zarr.index(variable_name)
                     time_slice = slice(gcm_initial_time_idx, gcm_final_time_idx + 1)
                     is_computed = xarray_dataset_gcm["is_computed"][variable_idx, time_slice].values
-                    valid_time_idx = np.where(is_computed)[0].tolist()
+                    valid_time_idx = (np.where(is_computed)[0] + gcm_initial_time_idx).tolist()
                     if valid_gcm_time_idx is None:
                         valid_gcm_time_idx = set(valid_time_idx)
                     else:
@@ -143,7 +143,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     variable_idx = variables_in_crcm_zarr.index(variable_name)
                     time_slice = slice(crcm_initial_time_idx, crcm_final_time_idx + 1)
                     is_computed = xarray_dataset_crcm["is_computed"][variable_idx, time_slice].values
-                    valid_time_idx = np.where(is_computed)[0].tolist()
+                    valid_time_idx = (np.where(is_computed)[0] + crcm_initial_time_idx).tolist()
                     valid_time_idx_offset = [x - time_idx_offset for x in valid_time_idx]
                     valid_gcm_time_idx = set(valid_gcm_time_idx).intersection(valid_time_idx_offset)
                 valid_idx = [(x, x + time_idx_offset) for x in sorted(list(valid_gcm_time_idx))]

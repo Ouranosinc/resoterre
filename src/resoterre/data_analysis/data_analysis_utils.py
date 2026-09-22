@@ -99,6 +99,7 @@ def compute_stats(ds: xr.DataArray | xr.Dataset) -> dict:
     return {
         "n_samples": ds.sizes["time"], # number of time steps in the dataset
         "count": ds.notnull().sum(), # intermediate stat for mean & stdev
+        "n_nan": ds.isnull().sum(), # number of nan values in the dataset
         "sum": ds_float64.sum(skipna=True), # intermediate stat for mean & stdev
         "sumsq": (ds_float64 ** 2).sum(skipna=True), # intermediate stat for stdev
         "min": ds.min(skipna=True),
@@ -131,6 +132,7 @@ def stats_to_dataframe(sim_name: str, model_type: str, stats: dict, logger: logg
     for var in stats["count"].data_vars: # iterate over variables in the dataset
         logger.info(f"Summarizing {var} for {sim_name} from {model_type}...")
         count = float(stats["count"][var])
+        n_nan = float(stats["n_nan"][var])
         total = float(stats["sum"][var])
         sum_of_squares = float(stats["sumsq"][var])
 
@@ -150,7 +152,7 @@ def stats_to_dataframe(sim_name: str, model_type: str, stats: dict, logger: logg
             "model": model_type,
             "variable": var,
             "n_samples": n_samples,
-            "total non_nan values": int(count), # n_samples × n_lat × n_lon - NaNs
+            "pct non_nan values": (count / (count + n_nan)) * 100, 
             "mean": mean,
             "std": std,
             "min": vmin,

@@ -52,12 +52,11 @@ if __name__ == "__main__":
         path_crcm_preprocessing=config.path_crcm_preprocessing,
         simulations=config.preprocessing_simulations,
         gcm_variables=config.gcm_training_variables,
-        crcm_variables=config.crcm_training_variables,
-        time_periods=(
-            config.training_periods 
-            + config.validation_periods
-            + config.test_periods
-        ),
+        crcm_variables=config.crcm_preprocessing_variables,
+        time_periods=[
+            [config.gcm_preprocessing_start_datetime,
+            config.gcm_preprocessing_end_datetime]
+            ],
         apply_normalization=config.apply_normalization,
         experiment_name=config.experiment_name,
         max_open_dataset=len(config.preprocessing_simulations), # to avoid memory errors when datasets get closed on eviction
