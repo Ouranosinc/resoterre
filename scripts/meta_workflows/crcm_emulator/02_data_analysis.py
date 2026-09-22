@@ -28,7 +28,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # ===== LOAD CONFIG =====
-    config_path = CONFIG_PATH / "crcm_emulator" / f"{args.config_file}"
+    config_path = CONFIG_PATH / "crcm_emulator" / f"{args.config}"
     config = config_from_yaml(CRCMEmulatorConfig, config_path)
 
     # ===== LOGGING SETUP =====
