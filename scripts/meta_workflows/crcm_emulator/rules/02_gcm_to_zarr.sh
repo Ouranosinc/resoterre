@@ -3,7 +3,7 @@
 #SBATCH --output=/network/projects/amlrt_internships/ouranous/data/preprocessed_toy/gcm_to_zarr_run.log
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=32GB
-#SBATCH --time=2:00:00
+#SBATCH --time=0:30:00
 
 # 1. Activate virtual environment
 source /home/mila/i/isaicuc/dev/resoterre/.venv/bin/activate
