@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=crcm_toy
 #SBATCH --output=/network/projects/amlrt_internships/ouranous/data/preprocessed_toy/crcm_to_zarr_run.log
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=1
 #SBATCH --mem=32GB
 #SBATCH --time=0:30:00
 
