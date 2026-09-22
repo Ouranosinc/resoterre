@@ -24,7 +24,7 @@ if __name__ == "__main__":
 
     # ===== ARGUMENTS =====
     parser = argparse.ArgumentParser(description="Data analysis for the CRCM emulator")
-    parser.add_argument("--config_file", type=str, required=True, help="Yaml configuration file")
+    parser.add_argument("--config", type=str, required=True, help="Yaml configuration file")
     args = parser.parse_args()
 
     # ===== LOAD CONFIG =====
@@ -53,7 +53,11 @@ if __name__ == "__main__":
         simulations=config.preprocessing_simulations,
         gcm_variables=config.gcm_training_variables,
         crcm_variables=config.crcm_training_variables,
-        time_periods=config.training_periods,
+        time_periods=[[
+            config.training_periods 
+            + config.validation_periods
+            + config.test_periods
+        ]],
         apply_normalization=config.apply_normalization,
         experiment_name=config.experiment_name,
         max_open_dataset=len(config.preprocessing_simulations), # to avoid memory errors when datasets get closed on eviction
