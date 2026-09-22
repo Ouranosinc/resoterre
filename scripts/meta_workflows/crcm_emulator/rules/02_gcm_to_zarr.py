@@ -27,8 +27,9 @@ if __name__ == "__main__":
     parser.set_defaults(initialize=False)
     args = parser.parse_args()
 
-    id_str = (f"{args.gcm}_{args.pathway}_{args.realization}_{args.variable_name}_"
-              f"{args.chunk_idx_start}_{args.chunk_idx_end}")
+    id_str = (
+        f"{args.gcm}_{args.pathway}_{args.realization}_{args.variable_name}_{args.chunk_idx_start}_{args.chunk_idx_end}"
+    )
     log_file = start_root_logger(
         basic_config_args={"filename": str(Path(args.workflow_dir, "logs", "bucket", f"gcm_to_zarr_{id_str}.log"))},
     )
