@@ -213,3 +213,7 @@ model/
 geophysical/
 inputs/
 matrix/
+data/
+dataset/
+output/
+outputs/
