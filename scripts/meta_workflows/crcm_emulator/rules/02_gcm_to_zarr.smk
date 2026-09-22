@@ -17,9 +17,8 @@ config_obj = config_from_yaml(CRCMEmulatorConfig, config["config_yaml"])
 init_variable = config_obj.gcm_preprocessing_variables[0]
 init_gcm, init_pathway, init_realization = config_obj.preprocessing_simulations[0]
 init_gcm_str = f"{init_gcm}_{init_pathway}_{init_realization}"
-# This could be configurable
-chunk_size = 8
-chunks_per_task = 2
+chunk_size = config_obj.preprocessing_chunk_size
+chunks_per_task = config_obj.preprocessing_chunks_per_task
 
 def expected_manifests(wildcards):
     list_of_expected_manifests = []

@@ -1,6 +1,6 @@
 """Module for manipulating zarr datasets for the CRCM emulator."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -48,14 +48,15 @@ def read_emission_file(path_emissions: Path | str) -> tuple[list[int], list[list
 
 def crcm_emulator_output_format(
     path_output: Path | str,
-    year: int,
-    month: int,
+    start_datetime: datetime,
+    end_datetime: datetime,
     expected_variables: list[str],
     institution: str,
     tile_size: int | None = None,
     method: str | None = None,
     frequency: str = "D",
     calendar: str = "standard",
+    chunk_size: int = 8,
 ) -> None:
     """
     Create a zarr dataset with the expected structure for CRCM emulator outputs.
@@ -64,10 +65,10 @@ def crcm_emulator_output_format(
     ----------
     path_output : Path | str
         Path to the output zarr dataset.
-    year : int
-        Year of the data.
-    month : int
-        Month of the data.
+    start_datetime : datetime
+        Start datetime of the data.
+    end_datetime : datetime
+        End datetime of the data.
     expected_variables : list[str]
         List of expected variable names.
     institution : str
@@ -80,6 +81,8 @@ def crcm_emulator_output_format(
         Frequency of the time dimension following xarray.time_range frequency strings.
     calendar : str, optional
         Calendar type for the time dimension.
+    chunk_size : int
+        Size of the chunks for the time dimension in the zarr dataset.
     """
     if method is None:
         title = "CRCM"
@@ -149,16 +152,18 @@ def crcm_emulator_output_format(
         data=lat,
         attributes={"long_name": "latitude", "standard_name": "latitude", "units": "degrees_north"},
     )
-    months_start = xarray.date_range(
-        start=f"{year:04d}-{month:02d}-01", periods=2, freq="MS", use_cftime=True, calendar=calendar
-    )
     time_data = xarray.date_range(
-        start=months_start[0], end=months_start[1], freq=frequency, inclusive="left", use_cftime=True, calendar=calendar
+        start=start_datetime,
+        end=end_datetime + timedelta(seconds=1),  # Fixing precision issues
+        freq=frequency,
+        inclusive="both",
+        use_cftime=True,
+        calendar=calendar,
     )
     cf_coordinates.add(
         "time", dims=("time",), data=time_data.values, attributes={"long_name": "time", "standard_name": "time"}
     )
-    encoding_dict["time"] = {"chunks": (8,)}
+    encoding_dict["time"] = {"chunks": (chunk_size,)}
     cf_coordinates.add("variable_names", dims=("num_variables",), data=np.array(expected_variables, dtype=str))
     cf_coordinates.add(
         "is_computed",
@@ -172,30 +177,32 @@ def crcm_emulator_output_format(
         cf_variables.add(
             variable_name,
             dims=("time", "rlat", "rlon"),
-            data=da.empty((len(time_data), len(rlat), len(rlon)), dtype=np.float32, chunks=(8, len(rlat), len(rlon))),
+            data=da.empty(
+                (len(time_data), len(rlat), len(rlon)), dtype=np.float32, chunks=(chunk_size, len(rlat), len(rlon))
+            ),
             attributes={
                 "grid_mapping": "crs",
                 "coordinates": "lon lat",
                 "units": crcm_variables[variable_name].units,
             },
         )
-        encoding_dict[variable_name] = {"chunks": (8, len(rlat), len(rlon)), "_FillValue": np.float32(np.nan)}
+        encoding_dict[variable_name] = {"chunks": (chunk_size, len(rlat), len(rlon)), "_FillValue": np.float32(np.nan)}
     xarray_dataset = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs=cf_attrs)
     xarray_dataset.to_zarr(path_output, mode="w", encoding=encoding_dict, compute=False)
 
 
-# ToDo: change to full period format
 def crcm_emulator_input_format(
     path_output: Path | str,
-    year: int,
-    month: int,
+    start_datetime: datetime,
+    end_datetime: datetime,
     expected_variables: list[str],
     institution: str,
     tile_size: int | None = None,
     coarsen_factor: int | None = None,
     frequency: str = "D",
     calendar: str = "standard",
-    path_emissions: Path | str | None = None,
+    path_emissions: list[Path] | None = None,
+    chunk_size: int = 8,
 ) -> None:
     """
     Create a zarr dataset with the expected structure for CRCM emulator inputs.
@@ -204,10 +211,10 @@ def crcm_emulator_input_format(
     ----------
     path_output : Path | str
         Path to the output zarr dataset.
-    year : int
-        Year of the data.
-    month : int
-        Month of the data.
+    start_datetime : datetime
+        Start datetime of the data.
+    end_datetime : datetime
+        End datetime of the data.
     expected_variables : list[str]
         List of expected variable names.
     institution : str
@@ -220,8 +227,10 @@ def crcm_emulator_input_format(
         Frequency of the time dimension following xarray.time_range frequency strings.
     calendar : str, optional
         Calendar type for the time dimension.
-    path_emissions : Path | str, optional
+    path_emissions : list[Path | str], optional
         Path to the emissions file. If provided, emissions data will be included in the dataset.
+    chunk_size : int
+        Size of the chunks for the time dimension in the zarr dataset.
     """
     cf_attrs = {
         "Conventions": "CF-1.13",
@@ -294,16 +303,18 @@ def crcm_emulator_input_format(
         data=lat,
         attributes={"long_name": "latitude", "standard_name": "latitude", "units": "degrees_north"},
     )
-    months_start = xarray.date_range(
-        start=f"{year:04d}-{month:02d}-01", periods=2, freq="MS", use_cftime=True, calendar=calendar
-    )
     time_data = xarray.date_range(
-        start=months_start[0], end=months_start[1], freq=frequency, inclusive="left", use_cftime=True, calendar=calendar
+        start=start_datetime,
+        end=end_datetime + timedelta(seconds=1),  # Fixing precision issues
+        freq=frequency,
+        inclusive="both",
+        use_cftime=True,
+        calendar=calendar,
     )
     cf_coordinates.add(
         "time", dims=("time",), data=time_data.values, attributes={"long_name": "time", "standard_name": "time"}
     )
-    encoding_dict["time"] = {"chunks": (8,)}
+    encoding_dict["time"] = {"chunks": (chunk_size,)}
     cf_variables = CFVariables()
     single_level_variables = []
     for variable_name in expected_variables:
@@ -314,22 +325,27 @@ def crcm_emulator_input_format(
                     f"{variable_name}{int(level / 100)}",
                     dims=("time", "rlat", "rlon"),
                     data=da.empty(
-                        (len(time_data), len(rlat), len(rlon)), dtype=np.float32, chunks=(8, len(rlat), len(rlon))
+                        (len(time_data), len(rlat), len(rlon)),
+                        dtype=np.float32,
+                        chunks=(chunk_size, len(rlat), len(rlon)),
                     ),
                     attributes={},
                 )
-                encoding_dict[f"{variable_name}{int(level / 100)}"] = {"chunks": (8, len(rlat), len(rlon))}
+                encoding_dict[f"{variable_name}{int(level / 100)}"] = {"chunks": (chunk_size, len(rlat), len(rlon))}
                 single_level_variables.append(f"{variable_name}{int(level / 100)}")
         else:
             cf_variables.add(
                 variable_name,
                 dims=("time", "rlat", "rlon"),
                 data=da.empty(
-                    (len(time_data), len(rlat), len(rlon)), dtype=np.float32, chunks=(8, len(rlat), len(rlon))
+                    (len(time_data), len(rlat), len(rlon)), dtype=np.float32, chunks=(chunk_size, len(rlat), len(rlon))
                 ),
                 attributes={},
             )
-            encoding_dict[variable_name] = {"chunks": (8, len(rlat), len(rlon)), "_FillValue": np.float32(np.nan)}
+            encoding_dict[variable_name] = {
+                "chunks": (chunk_size, len(rlat), len(rlon)),
+                "_FillValue": np.float32(np.nan),
+            }
             single_level_variables.append(variable_name)
     cf_coordinates.add("variable_names", dims=("num_variables",), data=np.array(single_level_variables, dtype=object))
     cf_coordinates.add(
@@ -340,14 +356,21 @@ def crcm_emulator_input_format(
         attributes={"long_name": "Indicates if the dimensions are empty (0) or have been filled with data (1)"},
     )
     if path_emissions is not None:
-        years, rows = read_emission_file(path_emissions)
-        t_idx = years.index(year)
-        for i, variable_name in enumerate(["CO2", "N2O", "CH4", "CFC11_eq", "CFC12"]):
+        emission_data: dict[str, list[float]] = {"CO2": [], "N2O": [], "CH4": [], "CFC11_eq": [], "CFC12": []}
+        for zarr_datetime in time_data:
+            if zarr_datetime.year < 2015:
+                years, rows = read_emission_file(path_emissions[0])
+            else:
+                years, rows = read_emission_file(path_emissions[1])
+            t_idx = years.index(zarr_datetime.year)
+            for i, variable_name in enumerate(["CO2", "N2O", "CH4", "CFC11_eq", "CFC12"]):
+                emission_data[variable_name].append(float(rows[t_idx][i + 1]))
+        for variable_name in ["CO2", "N2O", "CH4", "CFC11_eq", "CFC12"]:
             # ToDo: variable attributes
             cf_variables.add(
                 variable_name,
                 dims=("time",),
-                data=np.array([float(rows[t_idx][i + 1])] * len(time_data), dtype=np.float32),
+                data=np.array(emission_data[variable_name], dtype=np.float32),
                 attributes={},
             )
     xarray_dataset = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs=cf_attrs)
