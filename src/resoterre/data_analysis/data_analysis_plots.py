@@ -86,7 +86,7 @@ def _save_fig(fig: plt.Figure, path: Path | str, logger: logging.Logger) -> None
 
 
 def visualize_gcm_vs_coarsened_rcm(
-    pair_store: dict[tuple[str, str], dict],
+    stats_per_var: dict[tuple[str, str], dict],
     output_dir: Path | str,
     logger: logging.Logger,
 ) -> None:
@@ -99,7 +99,7 @@ def visualize_gcm_vs_coarsened_rcm(
 
     Parameters
     ----------
-    pair_store : dict[tuple[str, str], dict]
+    stats_per_var : dict[tuple[str, str], dict]
         Comparison results from ``compare_gcm_vs_coarsened_rcm``, including
         ``gcm``, ``rcm``, ``diff``, and climatology fields.
     output_dir : Path | str
@@ -109,17 +109,17 @@ def visualize_gcm_vs_coarsened_rcm(
     """
     logger.info("Visualizing GCM vs coarsened RCM")
     output_dir = Path(output_dir)
-    labels = sim_labels(sim for sim, _ in pair_store)
+    labels = sim_labels(sim for sim, _ in stats_per_var)
 
     bias_lim_by_rcm: dict[str, float] = {}
-    for stats in pair_store.values():
+    for stats in stats_per_var.values():
         rcm_var = stats["rcm_variable"]
         diff_clim_vals = np.asarray(stats["rcm_climatology"] - stats["gcm_climatology"])
         p98 = float(np.nanpercentile(np.abs(diff_clim_vals), 98))
         if np.isfinite(p98):
             bias_lim_by_rcm[rcm_var] = max(bias_lim_by_rcm.get(rcm_var, 1.0), p98)
 
-    for (sim, gvar), stats in pair_store.items():
+    for (sim, gvar), stats in stats_per_var.items():
         rcm_var = stats["rcm_variable"]
         gcm, rcm, diff = stats["gcm"], stats["rcm"], stats["diff"]
         valid = diff.notnull()

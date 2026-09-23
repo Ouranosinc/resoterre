@@ -152,7 +152,7 @@ def stats_to_dataframe(sim_name: str, model_type: str, stats: dict, logger: logg
             "model": model_type,
             "variable": var,
             "n_samples": n_samples,
-            "pct non_nan values": (count / (count + n_nan)) * 100, 
+            "pct_non_nan_values": (count / (count + n_nan)) * 100, 
             "mean": mean,
             "std": std,
             "min": vmin,
@@ -193,7 +193,7 @@ def get_time_period(
     end_date: str | datetime.datetime,
 ) -> np.ndarray:
     """
-    Return timestamps that fall in [start_date, end_date] (inclusive).
+    Return a boolean mask of timestamps that fall in [start_date, end_date] (inclusive).
     Ensures dates are the same type as the timestamps for comparison.
     Handles string, np.datetime64, and cftime.datetime inputs.
 
@@ -288,7 +288,8 @@ def filter_data(
 
         # If start and end date are provided, constrain the data to the time period.
         if start_date is not None and end_date is not None:
-            in_range = get_time_period(data_gcm["time"], start_date, end_date)
+            # using gcm time array to get boolean mask of timestamps in range, assuming synchronized with crcm
+            in_range = get_time_period(data_gcm["time"], start_date, end_date) 
             list_of_pairs = [(gcm_idx, crcm_idx) for gcm_idx, crcm_idx in list_of_pairs if in_range[gcm_idx]]
 
         # Sort and deduplicate index pairs

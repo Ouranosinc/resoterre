@@ -101,18 +101,18 @@ if __name__ == "__main__":
         logger=logger,
     )
 
-    pair_store = analyze_gcm_vs_coarsened_crcm(
+    stats = analyze_gcm_vs_coarsened_crcm(
         data_gcm=data_gcm,
         data_crcm=data_crcm,
         gcm_variables=config.gcm_training_variables,
-        rcm_variables=config.crcm_training_variables,
+        rcm_variables=config.crcm_preprocessing_variables,
         coarsen_factor=config.coarsen_factor,
         output_dir=config.path_output,
         logger=logger,
     )
 
     visualize_gcm_vs_coarsened_rcm(
-        pair_store=pair_store,
+        stats_per_var=stats,
         output_dir=config.path_output,
         logger=logger,
     )
