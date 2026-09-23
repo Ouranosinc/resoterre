@@ -19,8 +19,10 @@ from resoterre.data_analysis.data_analysis_utils import (
     get_time_period,
     variable_family,
     mean_pool_coarsen,
+    map_rcm_to_gcm_grid,
     stats_gcm_vs_crcm,
     summarize_data,
+    select_valid_times,
 )
 from resoterre.data_analysis.data_analysis_plots import (
     visualize_temporal_mean_and_sample,
@@ -116,6 +118,35 @@ def test_filter_data_without_dates_keeps_all_valid_indices_pairs():
 
     assert data_gcm["sim_a"].sizes["time"] == 3
     assert data_crcm["sim_a"].sizes["time"] == 3
+
+
+def test_select_valid_times_uses_slice_for_contiguous_indices():
+    ds = _daily_dataset("ta850", "2000-01-01", 5)
+
+    selected = select_valid_times(ds, [1, 2, 3])
+
+    assert selected.sizes["time"] == 3
+    np.testing.assert_array_equal(selected["ta850"].values, [1.0, 2.0, 3.0])
+    np.testing.assert_array_equal(
+        selected["time"].values,
+        pd.date_range("2000-01-02", periods=3, freq="D"),
+    )
+
+    single = select_valid_times(ds["ta850"], [4])
+    np.testing.assert_array_equal(single.values, [4.0])
+
+
+def test_select_valid_times_selects_scattered_indices():
+    ds = _daily_dataset("ta850", "2000-01-01", 5)
+
+    selected = select_valid_times(ds, [0, 2, 4])
+
+    assert selected.sizes["time"] == 3
+    np.testing.assert_array_equal(selected["ta850"].values, [0.0, 2.0, 4.0])
+    np.testing.assert_array_equal(
+        selected["time"].values,
+        pd.to_datetime(["2000-01-01", "2000-01-03", "2000-01-05"]),
+    )
 
 
 def test_summarize_data_writes_gcm_and_crcm_rows(tmp_path):
@@ -291,6 +322,51 @@ def test_mean_pool_coarsen_pools_by_factor():
     expected = xr.DataArray(np.array([[5.0]]), dims=("y", "x"))
     xr.testing.assert_equal(mean_pool_coarsen(data, 2), expected)
 
+
+def test_map_rcm_to_gcm_grid_copies_gcm_coordinates():
+    times = pd.date_range("2000-01-01", periods=2, freq="D")
+    values = np.arange(2 * 2 * 2, dtype=float).reshape(2, 2, 2)
+    rcm_coarse = xr.DataArray(
+        values,
+        dims=("time", "y", "x"),
+        coords={"time": times, "y": [0, 1], "x": [0, 1]},
+        name="tas",
+    )
+    gcm = xr.DataArray(
+        values + 10.0,
+        dims=("time", "y", "x"),
+        coords={"time": times, "y": [10.0, 20.0], "x": [100.0, 200.0]},
+        name="ta850",
+    )
+
+    mapped = map_rcm_to_gcm_grid(rcm_coarse, gcm)
+
+    np.testing.assert_array_equal(mapped.values, values)
+    np.testing.assert_array_equal(mapped["y"].values, [10.0, 20.0])
+    np.testing.assert_array_equal(mapped["x"].values, [100.0, 200.0])
+    assert mapped.name == "tas"
+    assert mapped.dims == ("time", "y", "x")
+
+
+def test_map_rcm_to_gcm_grid_raises_on_shape_mismatch():
+    times = pd.date_range("2000-01-01", periods=2, freq="D")
+    rcm_coarse = xr.DataArray(
+        np.zeros((2, 4, 4)),
+        dims=("time", "y", "x"),
+        coords={"time": times, "y": np.arange(4), "x": np.arange(4)},
+        name="tas",
+    )
+    gcm = xr.DataArray(
+        np.zeros((2, 2, 2)),
+        dims=("time", "y", "x"),
+        coords={"time": times, "y": np.arange(2), "x": np.arange(2)},
+        name="ta850",
+    )
+
+    with pytest.raises(ValueError, match="shape mismatch after coarsen"):
+        map_rcm_to_gcm_grid(rcm_coarse, gcm)
+
+
 def test_analyze_gcm_vs_coarsened_crcm(tmp_path):
     stats_per_var = analyze_gcm_vs_coarsened_crcm(
         data_gcm={"historical": _spatial_dataset("ta850", "2000-01-01", 2, ny=2, nx=2)},
@@ -410,6 +486,10 @@ def test_filter_data_keeps_gcm_and_crcm_indices_paired():
     # Deduplicating each list independently would yield CRCM [0.0, 1.0] and break the pairing.
     np.testing.assert_array_equal(data_gcm["sim_a"]["tas"].values, [0.0, 2.0])
     np.testing.assert_array_equal(data_crcm["sim_a"]["pr"].values, [1.0, 0.0])
+
+    # test only one start_date value raises error
+    with pytest.raises(ValueError):
+        filter_data(dataset, logging.getLogger("test"), start_date=datetime.datetime(2000, 1, 1))
 
 
 def test_compare_gcm_rcm_recovers_a_known_offset():
