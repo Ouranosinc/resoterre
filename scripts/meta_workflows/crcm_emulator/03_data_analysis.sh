@@ -11,6 +11,6 @@ source /home/mila/i/isaicuc/dev/resoterre/.venv/bin/activate
 # 2. Data analysis
 echo " ====== Data analysis started..."
 python3 scripts/meta_workflows/crcm_emulator/02_data_analysis.py \
-  --config configs/crcm_emulator/crcm_emulator_cnrm_ssp245_test.yaml
+  --config crcm_emulator_cnrm_ssp245_test.yaml
 
 echo " ====== Data analysis complete!"
