@@ -54,8 +54,8 @@ if __name__ == "__main__":
         gcm_variables=config.gcm_training_variables,
         crcm_variables=config.crcm_preprocessing_variables,
         time_periods=[
-            [config.gcm_preprocessing_start_datetime,
-            config.gcm_preprocessing_end_datetime]
+            [config.crcm_preprocessing_start_datetime,
+            config.crcm_preprocessing_end_datetime]
             ],
         apply_normalization=config.apply_normalization,
         experiment_name=config.experiment_name,
