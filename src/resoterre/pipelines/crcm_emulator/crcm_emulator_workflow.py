@@ -17,7 +17,7 @@ from resoterre.datasets.crcm.crcm_utils import (
     validate_crcm_data,
     version_realization_mapping,
 )
-from resoterre.experiments.crcm_emulator.crcm_emulator_zarr import (
+from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import (
     crcm_emulator_output_format,
     write_crcm_time_slice_of_data,
 )

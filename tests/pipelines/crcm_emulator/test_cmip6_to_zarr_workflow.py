@@ -1,4 +1,4 @@
-from resoterre.experiments.crcm_emulator import cmip6_to_zarr_workflow
+from resoterre.pipelines.crcm_emulator import cmip6_to_zarr_workflow
 
 
 def test_get_chunk_indices():

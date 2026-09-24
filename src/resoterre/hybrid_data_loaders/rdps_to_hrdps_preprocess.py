@@ -16,7 +16,7 @@ from resoterre.plots.nd_plots import NDPlot
 
 
 if TYPE_CHECKING:
-    from resoterre.experiments.rdps_to_hrdps_workflow import RDPSToHRDPSOnDiskConfig
+    from resoterre.pipelines.rdps_to_hrdps_workflow import RDPSToHRDPSOnDiskConfig
 
 
 class RDPSToHRDPSPreprocessingDataHolder:

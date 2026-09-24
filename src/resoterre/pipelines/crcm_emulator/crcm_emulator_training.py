@@ -13,10 +13,10 @@ import torch.optim as optim
 from torch.utils import data as td
 from torchmetrics.image import MultiScaleStructuralSimilarityIndexMeasure
 
-from resoterre.experiments.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig, crcm_emulator_parse_config
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
 from resoterre.ml.neural_networks_unet import UNet
 from resoterre.ml.training_utils import NNTraining
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig, crcm_emulator_parse_config
 from resoterre.plots.ml_sample_plot import balanced_ml_sample_figures
 
 
@@ -277,6 +277,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         """Execute the main training loop for the model."""
         for _ in range(self.config.nb_of_epochs):
             self(epoch=self.epoch_counter + 1, device=self.config.training_device)
+        self.close()
 
     def output_training_figures(
         self, input_data: torch.Tensor, target_data: torch.Tensor, output_data: torch.Tensor
@@ -306,3 +307,4 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
                 target_data=target_data[0, :, :, :].detach().cpu().numpy(),
                 output_data=output_data[0, :, :, :].detach().cpu().numpy(),
             )
+            self.experiment_logger.log_image(figure_path, name=figure_path.name, step=self.total_iterations)
