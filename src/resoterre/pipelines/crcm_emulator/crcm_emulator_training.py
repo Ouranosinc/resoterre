@@ -2,7 +2,7 @@
 
 import logging
 import math
-from dataclasses import fields
+from dataclasses import asdict, fields
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +43,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             path_models=self.config.path_output,
             training_metrics_monitor=["loss"],
             validation_metrics_monitor=["(ValidationLoss)"],
+            logger_config=self.config.logger_config,
         )
         if self.config.path_gcm_preprocessing is None:
             raise ValueError("Path to GCM preprocessing must be specified in the configuration.")
@@ -256,6 +257,35 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         validation_loss = np.mean(self.validation_metrics["mse_loss"].values).item()
         self.metrics.add_concurrent_values(self.metrics.last_time(), {"(ValidationLoss)": validation_loss})
 
+    def _hyperparameters_dict(self) -> dict[str, Any]:
+        """
+        Get the hyperparameters and settings from the configuration.
+
+        Returns
+        -------
+        dict
+            A dictionary containing the configuration fields marked as hyperparameters or settings.
+        """
+        hyperparameters = {}
+        for f in fields(self.config):
+            if f.metadata.get("is_hyperparameter", False) or f.metadata.get("is_setting", False):
+                key = f.metadata.get("display_name", f.name)
+                hyperparameters[key] = getattr(self.config, f.name)
+        return hyperparameters
+
+    def config_dict(self) -> dict[str, Any]:
+        """
+        Get the full training configuration to log to the experiment tracker.
+
+        Returns
+        -------
+        dict
+            A dictionary representation of the CRCM emulator configuration, excluding the
+            ``logger_config`` field (which may contain sensitive credentials such as the Comet ML
+            API key).
+        """
+        return {k: v for k, v in asdict(self.config).items() if k != "logger_config"}
+
     def results_dict(self) -> dict[str, Any]:
         """
         Get a dictionary of the training results.
@@ -267,10 +297,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             number of parameters, number of epochs, number of iterations, and best validation metrics.
         """
         results = super().results_dict()
-        for f in fields(self.config):
-            if f.metadata.get("is_hyperparameter", False) or f.metadata.get("is_setting", False):
-                key = f.metadata.get("display_name", f.name)
-                results[key] = getattr(self.config, f.name)
+        results.update(self._hyperparameters_dict())
         return results
 
     def training_loop(self) -> None:

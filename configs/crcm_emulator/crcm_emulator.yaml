@@ -86,3 +86,17 @@ debug_crcm_figures:
 debug_gcm_figures:
   - [ "CNRM-ESM2-1", "historical", "r1i1p1f2", "ta850", 2000, 1, 2 ]
   - [ "CNRM-ESM2-1", "ssp245", "r1i1p1f2", "psl", 2025, 7, 24 ]
+
+# Comet ML experiment logger, locally export COMET_API_KEY=YOUR_KEY
+logger_config:
+  type: ExperimentLogger # same as what's used by register_config
+  disabled: true
+  project_name: rcm-emulator-ouranous
+  workspace: mila-amlrt
+  experiment_name: initial_unet_training
+  tags:
+    - crcm_emulator
+    - first experiment
+  offline: false # set to true, when we have no api key
+  offline_directory: null # set when offline is true
+

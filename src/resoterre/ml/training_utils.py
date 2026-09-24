@@ -161,6 +161,20 @@ class NNTraining(ABC):
 
         torch.set_num_threads(num_threads)
 
+        self.experiment_logger.log_parameters(self.config_dict())
+
+    def config_dict(self) -> dict[str, Any]:
+        """
+        Get the configuration to log to the experiment tracker at the start of training.
+
+        Returns
+        -------
+        dict
+            A dictionary representation of the training configuration. Empty by default; subclasses
+            should override this method to expose their own configuration (e.g. from a dataclass).
+        """
+        return {}
+
     def setup_lr_schedulers(
         self,
         total_epochs: int,
