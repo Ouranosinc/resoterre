@@ -54,7 +54,7 @@ dependencies = [
   "torchmetrics >=1.8.2",
   "xarray >=2024.6.0",
   "zarr >= 2.18.4",
-  "comet_ml >= 3.51.0",
+  "comet_ml >= 3.51.0"
 ]
 
 [project.optional-dependencies]
