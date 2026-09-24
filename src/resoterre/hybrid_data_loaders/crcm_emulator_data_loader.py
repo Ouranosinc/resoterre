@@ -1,20 +1,16 @@
 """Module for loading CRCM emulator data from zarr files."""
 
-import logging
 from pathlib import Path
 from typing import Any
 
-import cftime
 import numpy as np
 import xarray
 from torch.utils import data as td
 
+from resoterre.data_management.cftime_utils import cftime_period_bounds_idx_in_list_of_datetimes
 from resoterre.datasets.cmip6.cmip6_variables import cmip6_variables
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
 from resoterre.ml.data_loader_utils import normalize
-
-
-logger = logging.getLogger(__name__)
 
 
 class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
@@ -71,54 +67,28 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
             gcm_str = f"{simulation[0]}_{simulation[1]}_{simulation[2]}"
             self.valid_time_idx[gcm_str] = []
 
-            my_path = Path(path_gcm_preprocessing, f"crcm_emulator_input_{gcm_str}")
-            zarr_directories = list(sorted(my_path.glob(f"crcm_emulator_input_{gcm_str}_*.zarr")))
-            self.gcm_zarr[gcm_str] = zarr_directories
-            xarray_dataset_gcm = xarray.open_dataset(zarr_directories[0], engine="zarr")
+            zarr_directory = Path(path_gcm_preprocessing, f"crcm_emulator_input_{gcm_str}.zarr")
+            self.gcm_zarr[gcm_str] = zarr_directory
+            xarray_dataset_gcm = xarray.open_dataset(zarr_directory, engine="zarr")
             variables_in_gcm_zarr = xarray_dataset_gcm["variable_names"].values.tolist()
             xarray_dataset_gcm.close()
-            logger.debug("Opening GCM zarr directories")
             xarray_dataset_gcm = self.get_open_dataset("gcm", gcm_str)
-            logger.debug("Done opening GCM zarr directories")
             gcm_time_values = xarray_dataset_gcm["time"].values
 
-            my_path = Path(path_crcm_preprocessing, f"crcm_emulator_output_{gcm_str}")
-            zarr_directories = list(sorted(my_path.glob(f"crcm_emulator_output_{gcm_str}_*.zarr")))
-            self.crcm_zarr[gcm_str] = zarr_directories
-            xarray_dataset_crcm = xarray.open_dataset(zarr_directories[0], engine="zarr")
+            zarr_directory = Path(path_crcm_preprocessing, f"crcm_emulator_output_{gcm_str}.zarr")
+            self.crcm_zarr[gcm_str] = zarr_directory
+            xarray_dataset_crcm = xarray.open_dataset(zarr_directory, engine="zarr")
             variables_in_crcm_zarr = xarray_dataset_crcm["variable_names"].values.tolist()
             xarray_dataset_crcm.close()
-            logger.debug("Opening CRCM zarr directories")
             xarray_dataset_crcm = self.get_open_dataset("crcm", gcm_str)
-            logger.debug("Done opening CRCM zarr directories")
             crcm_time_values = xarray_dataset_crcm["time"].values
             for time_period in time_periods:
-                if isinstance(gcm_time_values[0], np.datetime64):
-                    target_0 = np.datetime64(time_period[0])
-                    target_1 = np.datetime64(time_period[1])
-                elif isinstance(gcm_time_values[0], cftime.DatetimeNoLeap):
-                    target_0 = cftime.DatetimeNoLeap(
-                        time_period[0].year,
-                        time_period[0].month,
-                        time_period[0].day,
-                        time_period[0].hour,
-                        time_period[0].minute,
-                        time_period[0].second,
-                    )
-                    target_1 = cftime.DatetimeNoLeap(
-                        time_period[1].year,
-                        time_period[1].month,
-                        time_period[1].day,
-                        time_period[1].hour,
-                        time_period[1].minute,
-                        time_period[1].second,
-                    )
-                else:
-                    raise NotImplementedError(f"Unsupported calendar type: {type(gcm_time_values[0])}")
-                gcm_initial_time_idx = np.where(gcm_time_values == target_0)[0][0]
-                gcm_final_time_idx = np.where(gcm_time_values == target_1)[0][0]
-                crcm_initial_time_idx = np.where(crcm_time_values == target_0)[0][0]
-                crcm_final_time_idx = np.where(crcm_time_values == target_1)[0][0]
+                gcm_initial_time_idx, gcm_final_time_idx = cftime_period_bounds_idx_in_list_of_datetimes(
+                    gcm_time_values, time_period[0], time_period[1], comparison_precision="day"
+                )
+                crcm_initial_time_idx, crcm_final_time_idx = cftime_period_bounds_idx_in_list_of_datetimes(
+                    crcm_time_values, time_period[0], time_period[1], comparison_precision="day"
+                )
                 time_idx_offset = crcm_initial_time_idx - gcm_initial_time_idx
                 valid_gcm_time_idx: set[int] | None = None
                 for variable_name in gcm_variables:
@@ -183,19 +153,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     oldest_key = next(iter(self.gcm_open_dataset))
                     self.gcm_open_dataset[oldest_key].close()
                     del self.gcm_open_dataset[oldest_key]
-                self.gcm_open_dataset[key] = xarray.open_mfdataset(
-                    self.gcm_zarr[key],
-                    engine="zarr",
-                    backend_kwargs={"consolidated": True},
-                    combine="nested",
-                    concat_dim="time",
-                    data_vars="minimal",
-                    coords="minimal",
-                    compat="override",
-                    join="override",
-                    chunks={},
-                    parallel=True,
-                )
+                self.gcm_open_dataset[key] = xarray.open_dataset(self.gcm_zarr[key], engine="zarr")
             return self.gcm_open_dataset[key]
         elif dataset_type == "crcm":
             if key not in self.crcm_open_dataset:
@@ -203,19 +161,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     oldest_key = next(iter(self.crcm_open_dataset))
                     self.crcm_open_dataset[oldest_key].close()
                     del self.crcm_open_dataset[oldest_key]
-                self.crcm_open_dataset[key] = xarray.open_mfdataset(
-                    self.crcm_zarr[key],
-                    engine="zarr",
-                    backend_kwargs={"consolidated": True},
-                    combine="nested",
-                    concat_dim="time",
-                    data_vars="minimal",
-                    coords="minimal",
-                    compat="override",
-                    join="override",
-                    chunks={},
-                    parallel=True,
-                )
+                self.crcm_open_dataset[key] = xarray.open_dataset(self.crcm_zarr[key], engine="zarr")
             return self.crcm_open_dataset[key]
         else:
             raise ValueError(f"Unknown dataset type: {dataset_type}")

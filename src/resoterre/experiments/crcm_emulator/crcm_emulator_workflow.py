@@ -1,7 +1,8 @@
 """Workflow components for the CRCM emulation task."""
 
+import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +10,6 @@ import cftime
 import numpy as np
 import xarray
 
-from resoterre.calendar_utils import iter_year_month
 from resoterre.config_utils import config_from_yaml
 from resoterre.datasets.cmip6.cmip6_utils import gcm_calendars
 from resoterre.datasets.crcm.crcm_utils import (
@@ -22,6 +22,9 @@ from resoterre.experiments.crcm_emulator.crcm_emulator_zarr import (
     write_crcm_time_slice_of_data,
 )
 from resoterre.plots.nd_plots import CustomPColorMesh
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +54,10 @@ class CRCMEmulatorConfig:
         Size of the CRCM domain (number of grid points on each side) for processing.
     coarsen_factor : int, optional
         Factor between the GCM resolution and CRCM resolution for the emulation task.
+    preprocessing_chunk_size: int
+        Size of the tim chunks in preprocessed zarr files.
+    preprocessing_chunks_per_task: int
+        Number of preprocessing chunks to process per snakemake task.
     path_gcm_preprocessing : Path | None
         Path to the directory containing preprocessed GCM data.
     preprocessing_simulations : list[list[str]]
@@ -138,6 +145,8 @@ class CRCMEmulatorConfig:
     path_crcm_data: Path | None = None
     tile_size: int = 608
     coarsen_factor: int | None = 4
+    preprocessing_chunk_size: int = 8
+    preprocessing_chunks_per_task: int = 1
     path_gcm_preprocessing: Path | None = None
     preprocessing_simulations: list[list[str]] = field(default_factory=list)
     gcm_preprocessing_start_datetime: datetime | None = None
@@ -230,23 +239,16 @@ class CRCMToZarrFromConfig:
         if self.config.crcm_preprocessing_end_datetime is None:
             raise ValueError("config.crcm_preprocessing_end_datetime is None")
         if initialize_zarr:
-            for year, month in iter_year_month(
-                self.config.crcm_preprocessing_start_datetime, self.config.crcm_preprocessing_end_datetime
-            ):
-                self.initialize_zarr(year=year, month=month)
+            self.initialize_zarr()
 
-    def zarr_path(self, gcm_simulation: list[str], year: int, month: int) -> Path:
+    def zarr_path(self, gcm_simulation: list[str]) -> Path:
         """
-        Get the path to the zarr dataset for a given CRCM simulation, year, and month.
+        Get the path to the zarr dataset for a given CRCM simulation.
 
         Parameters
         ----------
         gcm_simulation : list[str]
             List containing the GCM name, emission scenario, and ensemble member.
-        year : int
-            Year of the data.
-        month : int
-            Month of the data.
 
         Returns
         -------
@@ -257,34 +259,30 @@ class CRCMToZarrFromConfig:
         model_str = f"crcm_emulator_output_{gcm_str}"
         if self.config.path_crcm_preprocessing is None:
             raise ValueError("config.path_crcm_preprocessing is None")
-        return Path(self.config.path_crcm_preprocessing, model_str, f"{model_str}_{year}{month:02d}.zarr")
+        return Path(self.config.path_crcm_preprocessing, f"{model_str}.zarr")
 
-    def initialize_zarr(self, year: int, month: int) -> None:
-        """
-        Initialize the zarr dataset for each GCM simulation in the preprocessing range.
-
-        Parameters
-        ----------
-        year : int
-            Year of the data.
-        month : int
-            Month of the data.
-        """
+    def initialize_zarr(self) -> None:
+        """Initialize the zarr dataset for each GCM simulation in the preprocessing range."""
         if self.config.path_crcm_preprocessing is None:
             raise ValueError("config.path_crcm_preprocessing is None")
+        if self.config.crcm_preprocessing_start_datetime is None:
+            raise ValueError("CRCM preprocessing start datetime must be specified.")
+        if self.config.crcm_preprocessing_end_datetime is None:
+            raise ValueError("CRCM preprocessing end datetime must be specified.")
         for gcm_simulation in self.config.preprocessing_simulations:
-            path_output = self.zarr_path(gcm_simulation, year, month)
+            path_output = self.zarr_path(gcm_simulation)
             if path_output.exists() and not self.config.crcm_preprocessing_allow_overwrite:
                 raise FileExistsError(f"Output file already exists: {path_output}")
             # ToDo: add pilot information to CF metadata
             crcm_emulator_output_format(
                 path_output=path_output,
-                year=year,
-                month=month,
+                start_datetime=self.config.crcm_preprocessing_start_datetime,
+                end_datetime=self.config.crcm_preprocessing_end_datetime,
                 expected_variables=self.config.crcm_preprocessing_variables,
                 institution=self.config.executing_institution,
                 tile_size=self.config.tile_size,
                 calendar=gcm_calendars[gcm_simulation[0]],
+                chunk_size=self.config.preprocessing_chunk_size,
             )
 
     def nc_files(self, gcm_simulation: list[str], variable_name: str) -> list[Path]:
@@ -340,9 +338,9 @@ class CRCMToZarrFromConfig:
         )
         return nc_files
 
-    def __call__(self, gcm_simulation: list[str], variable_name: str, year: int, month: int) -> None:
+    def __call__(self, gcm_simulation: list[str], variable_name: str, chunk_idx_start: int, chunk_idx_end: int) -> None:
         """
-        Convert CRCM data to zarr format for a given GCM simulation, variable, year, and month.
+        Convert CRCM data to zarr format for a given GCM simulation, variable, and chunk indices.
 
         Parameters
         ----------
@@ -350,10 +348,10 @@ class CRCMToZarrFromConfig:
             GCM simulation identifier.
         variable_name : str
             Name of the variable.
-        year : int
-            Year of the data.
-        month : int
-            Month of the data.
+        chunk_idx_start : int
+            Start index of the time chunk to process.
+        chunk_idx_end : int
+            End index of the time chunk to process.
         """
         nc_files = self.nc_files(gcm_simulation, variable_name)
         if len(nc_files) == 0:
@@ -366,19 +364,50 @@ class CRCMToZarrFromConfig:
             calendar=xarray_dataset_crcm["time"].attrs["calendar"],
             only_use_cftime_datetimes=True,
         )
-        valid_times = np.array([(dt.year == year and dt.month == month) for dt in list_of_datetimes])
-        indices = np.where(valid_times)[0]
-        # ToDo: should I do this in smaller (8) chunks?
-        my_slice = slice(indices[0], indices[-1] + 1)
+        if self.config.gcm_preprocessing_end_datetime is None:
+            raise ValueError("GCM preprocessing end datetime must be specified.")
+        zarr_datetimes = xarray.cftime_range(
+            start=self.config.gcm_preprocessing_start_datetime,
+            end=self.config.gcm_preprocessing_end_datetime + timedelta(seconds=1),  # Fixing precision issues
+            freq="D",
+            calendar=gcm_calendars[gcm_simulation[0]],
+        )
+        zarr_datetimes = zarr_datetimes[chunk_idx_start : chunk_idx_end + 1]
+        # Manually finding intersection from just year, month, day
+        common_idx_in_netcdf = []
+        for dt_zarr in zarr_datetimes:
+            for i, dt_netcdf in enumerate(list_of_datetimes):
+                if dt_zarr.year == dt_netcdf.year and dt_zarr.month == dt_netcdf.month and dt_zarr.day == dt_netcdf.day:
+                    common_idx_in_netcdf.append(i)
+        if not common_idx_in_netcdf:
+            logger.warning(
+                "No common time indices found for %s %s %s %s",
+                gcm_simulation,
+                variable_name,
+                chunk_idx_start,
+                chunk_idx_end,
+            )
+            return
+        my_slice = slice(common_idx_in_netcdf[0], common_idx_in_netcdf[-1] + 1)
         lat_slice = slice(self.rlat_buffer, self.rlat_buffer + self.config.tile_size)
         lon_slice = slice(self.rlon_buffer, self.rlon_buffer + self.config.tile_size)
         data = xarray_dataset_crcm[variable_name][my_slice, lat_slice, lon_slice].values.astype(np.float32)
         _ = validate_crcm_data(data, variable_name)
-        path_output = self.zarr_path(gcm_simulation, year, month)
+        path_output = self.zarr_path(gcm_simulation)
         write_crcm_time_slice_of_data(
-            path_output=path_output, variable_name=variable_name, data=data, time_slice=slice(0, len(indices))
+            path_output=path_output,
+            variable_name=variable_name,
+            data=data,
+            time_slice=slice(chunk_idx_start, chunk_idx_start + my_slice.stop - my_slice.start),
         )
-        self.debug_figures(xarray_dataset_crcm, gcm_simulation, variable_name, year, month, list_of_datetimes, indices)
+        self.debug_figures(
+            xarray_dataset_crcm,
+            gcm_simulation,
+            variable_name,
+            list_of_datetimes,
+            list_of_datetimes[my_slice],
+            chunk_idx_start,
+        )
         xarray_dataset_crcm.close()
 
     def debug_figures(
@@ -386,10 +415,9 @@ class CRCMToZarrFromConfig:
         xarray_dataset_crcm: xarray.Dataset,
         gcm_simulation: list[str],
         variable_name: str,
-        year: int,
-        month: int,
         list_of_datetimes: list[Any],
-        indices: np.ndarray,
+        list_of_datetimes_slice: list[Any],
+        chunk_idx_start: int,
     ) -> None:
         """
         Generate debug figures for the CRCM data and the corresponding zarr data.
@@ -402,49 +430,51 @@ class CRCMToZarrFromConfig:
             GCM simulation identifier.
         variable_name : str
             Name of the variable.
-        year : int
-            Year of the data.
-        month : int
-            Month of the data.
         list_of_datetimes : list[Any]
             List of datetime objects corresponding to the time values in the CRCM dataset.
-        indices : np.ndarray
-            Indices of the time values corresponding to the specified year and month.
+        list_of_datetimes_slice : list[Any]
+            List of datetime objects corresponding to the subset of time values for which debug figures are generated.
+        chunk_idx_start : int
+            The starting index of the chunk of time values for which debug figures are generated.
         """
         custom_pcolormesh = CustomPColorMesh(scale_factor=2.0)
         for debug_list in self.config.debug_crcm_figures:
-            if (
-                debug_list[0:3] != gcm_simulation
-                or debug_list[3] != variable_name
-                or debug_list[4] != year
-                or debug_list[5] != month
-            ):
+            if debug_list[0:3] != gcm_simulation or debug_list[3] != variable_name:
                 continue
-            list_of_dates = [[dt.year, dt.month, dt.day] for dt in list_of_datetimes]
-            t = list_of_dates.index(debug_list[4:7])
-            plot_data = xarray_dataset_crcm[variable_name].isel(time=t).values
-            gcm_str = "_".join(gcm_simulation)
-            if self.config.path_output is None:
-                raise ValueError("config.path_output is None")
-            custom_pcolormesh.plot(
-                plot_data,
-                vmin_quantile=0.001,
-                vmax_quantile=0.999,
-                vmin=custom_pcolormesh.vmin,
-                vmax=custom_pcolormesh.vmax,
-                path_output=Path(self.config.path_output, f"{variable_name}_crcm5_{gcm_str}_raw_time_idx_{t:06d}.png"),
-            )
-            zarr_data = xarray.open_zarr(self.zarr_path(gcm_simulation, year, month))
-            zarr_time_idx = t - indices[0]
-            zarr_plot_data = zarr_data[variable_name].isel(time=zarr_time_idx).values
-            custom_pcolormesh.plot(
-                zarr_plot_data,
-                vmin_quantile=0.001,
-                vmax_quantile=0.999,
-                vmin=custom_pcolormesh.vmin,
-                vmax=custom_pcolormesh.vmax,
-                path_output=Path(
-                    self.config.path_output, f"{variable_name}_crcm5_{gcm_str}_zarr_time_idx_{zarr_time_idx:06d}.png"
-                ),
-            )
-            zarr_data.close()
+            for i, dt in enumerate(list_of_datetimes_slice):
+                year = dt.year
+                month = dt.month
+                day = dt.day
+                if debug_list[4:7] != [year, month, day]:
+                    continue
+                list_of_dates = [[dt.year, dt.month, dt.day] for dt in list_of_datetimes]
+                t = list_of_dates.index(debug_list[4:7])
+                plot_data = xarray_dataset_crcm[variable_name].isel(time=t).values
+                gcm_str = "_".join(gcm_simulation)
+                if self.config.path_output is None:
+                    raise ValueError("config.path_output is None")
+                custom_pcolormesh.plot(
+                    plot_data,
+                    vmin_quantile=0.001,
+                    vmax_quantile=0.999,
+                    vmin=custom_pcolormesh.vmin,
+                    vmax=custom_pcolormesh.vmax,
+                    path_output=Path(
+                        self.config.path_output, f"{variable_name}_crcm5_{gcm_str}_raw_time_idx_{t:06d}.png"
+                    ),
+                )
+                zarr_data = xarray.open_zarr(self.zarr_path(gcm_simulation))
+                zarr_time_idx = chunk_idx_start + i
+                zarr_plot_data = zarr_data[variable_name].isel(time=zarr_time_idx).values
+                custom_pcolormesh.plot(
+                    zarr_plot_data,
+                    vmin_quantile=0.001,
+                    vmax_quantile=0.999,
+                    vmin=custom_pcolormesh.vmin,
+                    vmax=custom_pcolormesh.vmax,
+                    path_output=Path(
+                        self.config.path_output,
+                        f"{variable_name}_crcm5_{gcm_str}_raw_time_idx_{t:06d}_zarr_time_idx_{zarr_time_idx:06d}.png",
+                    ),
+                )
+                zarr_data.close()
