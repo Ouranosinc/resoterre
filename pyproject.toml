@@ -53,7 +53,8 @@ dependencies = [
   "torch >=2.7.1",
   "torchmetrics >=1.8.2",
   "xarray >=2024.6.0",
-  "zarr >= 2.18.4"
+  "zarr >= 2.18.4",
+  "comet_ml >= 3.51.0",
 ]
 
 [project.optional-dependencies]
@@ -64,10 +65,6 @@ stac-mlm = [
   "httpx>=0.28.1",
   "pystac>=1.15.2",
   "stac-model>=0.7.0"]
-
-comet = [
-  "comet_ml >=3.51.0"
-]
 
 [project.scripts]
 resoterre = "resoterre.cli:app"
