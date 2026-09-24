@@ -1,6 +1,5 @@
 """Module for loading CRCM emulator data from zarr files."""
 
-import logging
 from pathlib import Path
 from typing import Any
 
@@ -12,9 +11,6 @@ from resoterre.data_management.cftime_utils import cftime_period_bounds_idx_in_l
 from resoterre.datasets.cmip6.cmip6_variables import cmip6_variables
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
 from resoterre.ml.data_loader_utils import normalize
-
-
-logger = logging.getLogger(__name__)
 
 
 class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
@@ -76,9 +72,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
             xarray_dataset_gcm = xarray.open_dataset(zarr_directory, engine="zarr")
             variables_in_gcm_zarr = xarray_dataset_gcm["variable_names"].values.tolist()
             xarray_dataset_gcm.close()
-            logger.debug("Opening GCM zarr directories")
             xarray_dataset_gcm = self.get_open_dataset("gcm", gcm_str)
-            logger.debug("Done opening GCM zarr directories")
             gcm_time_values = xarray_dataset_gcm["time"].values
 
             zarr_directory = Path(path_crcm_preprocessing, f"crcm_emulator_output_{gcm_str}.zarr")
@@ -86,9 +80,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
             xarray_dataset_crcm = xarray.open_dataset(zarr_directory, engine="zarr")
             variables_in_crcm_zarr = xarray_dataset_crcm["variable_names"].values.tolist()
             xarray_dataset_crcm.close()
-            logger.debug("Opening CRCM zarr directories")
             xarray_dataset_crcm = self.get_open_dataset("crcm", gcm_str)
-            logger.debug("Done opening CRCM zarr directories")
             crcm_time_values = xarray_dataset_crcm["time"].values
             for time_period in time_periods:
                 gcm_initial_time_idx, gcm_final_time_idx = cftime_period_bounds_idx_in_list_of_datetimes(
