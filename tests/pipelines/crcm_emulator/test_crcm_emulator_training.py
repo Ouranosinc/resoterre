@@ -4,9 +4,9 @@ from pathlib import Path
 from torch.utils import data as td
 
 from resoterre.data_generators.crcm_emulator_mock_dataset import CRCMEmulatorMockDataset
-from resoterre.experiments.crcm_emulator import crcm_emulator_training
-from resoterre.experiments.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig
 from resoterre.logging_utils import start_root_logger
+from resoterre.pipelines.crcm_emulator import crcm_emulator_training
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig
 
 
 def test_crcm_emulator_training():
