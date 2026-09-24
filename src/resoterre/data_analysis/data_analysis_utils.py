@@ -76,34 +76,50 @@ def select_valid_times(data: xr.DataArray | xr.Dataset, indices: list[int]) -> x
         return data.isel(time=time_indices) 
 
 
-def compute_stats(ds: xr.DataArray | xr.Dataset) -> dict:
+def compute_stats(data: xr.DataArray | xr.Dataset, block_size: int = 104) -> dict:
     """
-    Lazily build a Dask graph for later computation of summary statistics for a dataset.
-    Graphs will later be merged and computed in a single operation.
-
-    Computes the scalars needed by ``stats_to_dataframe`` 
-    (count, sum, sum of squares, min, max), skipping NaN values. 
-    Accumulate sums in float64 to avoid rounding errors in large sums. 
+    Compute summary statistics for a dataset, use blocks to avoid storing large datasets in memory.
 
     Parameters
     ----------
-    ds : xarray.DataArray or xarray.Dataset
+    data : xarray.DataArray or xarray.Dataset
         Data object for which to compute statistics.
-
+    block_size : int, optional
+        Size of the blocks to compute statistics in.
     Returns
     -------
     dict
         Summary statistics for the dataset.
     """
-    ds_float64 = ds.astype("float64")
+    n_time = data.sizes["time"]
+    variables = list(data.data_vars)
+    count = {v: 0.0 for v in variables}
+    n_nan = {v: 0.0 for v in variables}
+    total = {v: 0.0 for v in variables}
+    sumsq = {v: 0.0 for v in variables}
+    vmin = {v: np.inf for v in variables}
+    vmax = {v: -np.inf for v in variables}
+    for start in range(0, n_time, block_size):
+        block = data.isel(time=slice(start, start + block_size))
+        for var in variables:
+            values = np.asarray(block[var].values, dtype=np.float64)
+            valid = np.isfinite(values)
+            count[var] += valid.sum()
+            n_nan[var] += (~valid).sum()
+            if valid.any():
+                good = values[valid]
+                total[var] += good.sum()
+                sumsq[var] += np.square(good).sum()
+                vmin[var] = min(vmin[var], good.min())
+                vmax[var] = max(vmax[var], good.max())
     return {
-        "n_samples": ds.sizes["time"], # number of time steps in the dataset
-        "count": ds.notnull().sum(), # intermediate stat for mean & stdev
-        "n_nan": ds.isnull().sum(), # number of nan values in the dataset
-        "sum": ds_float64.sum(skipna=True), # intermediate stat for mean & stdev
-        "sumsq": (ds_float64 ** 2).sum(skipna=True), # intermediate stat for stdev
-        "min": ds.min(skipna=True),
-        "max": ds.max(skipna=True),
+        "n_samples": n_time,
+        "count": xr.Dataset({v: count[v] for v in variables}),
+        "n_nan": xr.Dataset({v: n_nan[v] for v in variables}),
+        "sum": xr.Dataset({v: total[v] for v in variables}),
+        "sumsq": xr.Dataset({v: sumsq[v] for v in variables}),
+        "min": xr.Dataset({v: vmin[v] for v in variables}),
+        "max": xr.Dataset({v: vmax[v] for v in variables}),
     }
 
 
@@ -355,11 +371,10 @@ def summarize_data(
     for sim in data_gcm:
         n_days = data_gcm[sim].sizes["time"]
         logger.info(f"Summarizing {sim} from {start_date} to {end_date} with {n_days} days")
-
-        # Compute statistics for GCM and CRCM data in parallel
-        stats_gcm, stats_crcm = dask.compute(compute_stats(data_gcm[sim]), compute_stats(data_crcm[sim]))
         
-        # Convert stats to dataframe
+        stats_gcm = compute_stats(data_gcm[sim])
+        stats_crcm = compute_stats(data_crcm[sim])
+        
         frames.append(stats_to_dataframe(sim, "gcm", stats_gcm, logger))
         frames.append(stats_to_dataframe(sim, "crcm", stats_crcm, logger))
 

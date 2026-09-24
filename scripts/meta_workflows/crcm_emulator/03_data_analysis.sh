@@ -2,7 +2,7 @@
 #SBATCH --job-name=data_analysis
 #SBATCH --output=/network/projects/amlrt_internships/ouranous/data/output_cnrm-ssp245/data_analysis_run.log
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=256GB
+#SBATCH --mem=32GB
 #SBATCH --time=3:00:00
 
 # 1. Activate virtual environment
