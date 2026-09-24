@@ -2,8 +2,8 @@
 #SBATCH --job-name=data_analysis
 #SBATCH --output=/network/projects/amlrt_internships/ouranous/data/output_cnrm-ssp245/data_analysis_run.log
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=32GB
-#SBATCH --time=3:00:00
+#SBATCH --mem=256GB
+#SBATCH --time=6:00:00
 
 # 1. Activate virtual environment
 source /home/mila/i/isaicuc/dev/resoterre/.venv/bin/activate

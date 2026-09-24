@@ -1,4 +1,6 @@
 from pathlib import Path
+from datetime import datetime
+
 import argparse
 import logging
 
@@ -70,49 +72,64 @@ if __name__ == "__main__":
         dataset=dataset,
         start_date=config.normalization_start_date,
         end_date=config.normalization_end_date,
-        output_dir=config.path_output,
+        output_dir=output_dir,
         logger=logger,
     )
-
-    data_gcm, data_crcm = filter_data(
-        dataset=dataset,
-        logger=logger,
-    )
-
-    nan_clusters_df = analyze_nan_clusters(
-        model_data=data_gcm,
-        variables=config.gcm_training_variables,
-        output_dir=config.path_output,
-        logger=logger,
-    )
-
-    # ===== VISUALIZE DATA =====
 
     visualize_range_and_mean(
         stats_df=stats_df,
-        output_dir=config.path_output,
+        output_dir=output_dir,
         logger=logger,
     )
 
-    visualize_temporal_mean_and_sample(
-        data_gcm=data_gcm,
-        data_crcm=data_crcm,
-        output_dir=config.path_output,
-        logger=logger,
-    )
+    windows = [
+        (datetime(1951, 1, 1), datetime(2014, 12, 31), "historical"),
+        (datetime(2015, 1, 1), datetime(2100, 12, 31), "ssp245"),
+    ]
 
-    stats = analyze_gcm_vs_coarsened_crcm(
-        data_gcm=data_gcm,
-        data_crcm=data_crcm,
-        gcm_variables=config.gcm_training_variables,
-        rcm_variables=config.crcm_preprocessing_variables,
-        coarsen_factor=config.coarsen_factor,
-        output_dir=config.path_output,
-        logger=logger,
-    )
+    for start_date, end_date, scenario in windows:
+        scenario_dir = output_dir / scenario
+        scenario_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Filtering data for {scenario} from {start_date} to {end_date}")
+        data_gcm, data_crcm = filter_data(
+            dataset=dataset,
+            logger=logger,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        if not data_gcm:
+            logger.info(f"skip {scenario}: no simulations in {start_date} → {end_date}")
+            continue
+        if not data_crcm:
+            logger.info(f"skip {scenario}: no simulations in {start_date} → {end_date}")
+            continue
 
-    visualize_gcm_vs_coarsened_rcm(
-        stats_per_var=stats,
-        output_dir=config.path_output,
-        logger=logger,
-    )
+        analyze_nan_clusters(
+            model_data=data_gcm,
+            variables=config.gcm_training_variables,
+            output_dir=scenario_dir,
+            logger=logger,
+        )
+
+        visualize_temporal_mean_and_sample(
+            data_gcm=data_gcm,
+            data_crcm=data_crcm,
+            output_dir=scenario_dir,
+            logger=logger,
+        )
+
+        stats = analyze_gcm_vs_coarsened_crcm(
+            data_gcm=data_gcm,
+            data_crcm=data_crcm,
+            gcm_variables=config.gcm_training_variables,
+            rcm_variables=config.crcm_preprocessing_variables,
+            coarsen_factor=config.coarsen_factor,
+            output_dir=scenario_dir,
+            logger=logger,
+        )
+
+        visualize_gcm_vs_coarsened_rcm(
+            stats_per_var=stats,
+            output_dir=scenario_dir,
+            logger=logger,
+        )
