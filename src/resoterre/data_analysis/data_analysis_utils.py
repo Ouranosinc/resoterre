@@ -39,7 +39,7 @@ def write_dataframe_to_csv(df: pd.DataFrame, path: Path | str, name: str, logger
     output_path = Path(path)
     output_path.mkdir(parents=True, exist_ok=True)
     file_path = output_path / f"{name}.csv"
-    df.to_csv(file_path, index=False, float_format="%.4g")
+    df.to_csv(file_path, index=False)
     logger.info(f"Wrote dataframe to {file_path}")
 
 
@@ -374,7 +374,7 @@ def summarize_data(
         
         stats_gcm = compute_stats(data_gcm[sim])
         stats_crcm = compute_stats(data_crcm[sim])
-        
+
         frames.append(stats_to_dataframe(sim, "gcm", stats_gcm, logger))
         frames.append(stats_to_dataframe(sim, "crcm", stats_crcm, logger))
 
