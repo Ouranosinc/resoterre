@@ -122,3 +122,34 @@ def test_override_config_paths_with_yaml(tmp_path):
     assert result["path_preprocessed_batch"] == "/override/batch.nc"
     assert result["path_models"] == "/original/models/"
     assert result["path_output"] == "/original/output/"
+
+
+def test_path_with_uuid():
+    original_path = Path("/some/path/to/file.tar.gz")
+    new_path = io_utils.path_with_uuid(original_path)
+    assert new_path.parent == original_path.parent
+    assert str(new_path)[-7:] == ".tar.gz"
+    assert len(new_path.stem) == len(original_path.stem) + 33  # 32 characters for UUID + 1 for the separator
+
+
+def test_path_with_uuid_empty_path():
+    with pytest.raises(ValueError):
+        io_utils.path_with_uuid(Path())
+
+
+def test_path_with_uuid_no_suffix():
+    original_path = Path("/some/path/to/README")
+    new_path = io_utils.path_with_uuid(original_path)
+    assert new_path.parent == original_path.parent
+    assert new_path.suffix == ""
+    assert str(new_path.name)[:6] == "README"
+    assert len(new_path.stem) == len(original_path.stem) + 33  # 32 characters for UUID + 1 for the separator
+
+
+def test_path_with_uuid_separator():
+    original_path = Path("/some/path/to/file.txt")
+    new_path = io_utils.path_with_uuid(original_path, separator=".")
+    assert new_path.parent == original_path.parent
+    assert str(new_path.name)[:5] == "file."
+    assert str(new_path)[-4:] == ".txt"
+    assert len(new_path.stem) == len(original_path.stem) + 33  # 32 characters for UUID + 1 for the separator

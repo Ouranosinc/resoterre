@@ -11,7 +11,7 @@ from torch.utils import data as td
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 
 from resoterre.datasets.hrdps.hrdps_processing import create_hrdps_grid_spec
-from resoterre.experiments import rdps_to_hrdps_workflow
+from resoterre.experiments.rdps_to_hrdps_downscaling import rdps_to_hrdps_workflow
 from resoterre.hybrid_data_loaders.rdps_to_hrdps import RDPSToHRDPSZarrDataset
 from resoterre.logging_utils import readable_value
 from resoterre.ml.ml_loops import MinimaTracker
@@ -103,7 +103,7 @@ class RDPSToHRDPSTrainingFromConfig:
         )
         self.optimizer = optim.Adam(self.unet.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
         self.losses: list[float] = []
-        self.minima_tracker = MinimaTracker(minimum_metrics_to_track=["(Loss)", "Loss", "ValidationLoss"])
+        self.minima_tracker = MinimaTracker()
         self.minimum_validation_loss_model: Path | None = None
         self.total_iterations = 0
         self.mse_loss = nn.MSELoss()
@@ -178,9 +178,7 @@ class RDPSToHRDPSTrainingFromConfig:
         self.unet.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.total_iterations = int(checkpoint.get("total_iterations", 0))
-        self.minima_tracker = checkpoint.get(
-            "minima_tracker", MinimaTracker(minimum_metrics_to_track=["(Loss)", "Loss", "ValidationLoss"])
-        )
+        self.minima_tracker = checkpoint.get("minima_tracker", MinimaTracker())
         self.minimum_validation_loss_model = checkpoint.get("minimum_validation_loss_model", str(input_path))
 
     def to_device(self, device: str) -> None:
