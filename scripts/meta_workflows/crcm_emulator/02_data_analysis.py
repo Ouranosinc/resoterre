@@ -18,7 +18,7 @@ from resoterre.data_analysis.data_analysis_plots import (
 from resoterre.config_utils import config_from_yaml
 from resoterre.experiments.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig
 
-from resoterre import CONFIG_PATH
+from resoterre import PROJECT_ROOT
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
 
 
@@ -30,7 +30,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # ===== LOAD CONFIG =====
-    config_path = CONFIG_PATH / "crcm_emulator" / f"{args.config}"
+    # config stored in configs folder, outside of the project root
+    config_path = PROJECT_ROOT.parent / "configs" / "crcm_emulator" / f"{args.config}"
     config = config_from_yaml(CRCMEmulatorConfig, config_path)
 
     # ===== LOGGING SETUP =====
