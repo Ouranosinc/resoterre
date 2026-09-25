@@ -9,7 +9,7 @@ import numpy as np
 import xarray
 
 from resoterre.data_management.netcdf_utils import CFVariables
-from resoterre.datasets.cmip6.cmip6_utils import gcm_vertical_levels, gcm_vertical_variables
+from resoterre.datasets.cmip6.cmip6_utils import gcm_variable_levels, gcm_vertical_levels, gcm_vertical_variables
 from resoterre.datasets.crcm.crcm_utils import (
     crcm_north_america_custom_grid_coordinates,
     crcm_north_america_grid_coordinates,
@@ -317,6 +317,7 @@ def crcm_emulator_input_format(
     encoding_dict["time"] = {"chunks": (chunk_size,)}
     cf_variables = CFVariables()
     single_level_variables = []
+    levels_processed = set()
     for variable_name in expected_variables:
         # ToDo: variable attributes
         if variable_name in gcm_vertical_variables:
@@ -333,6 +334,7 @@ def crcm_emulator_input_format(
                 )
                 encoding_dict[f"{variable_name}{int(level / 100)}"] = {"chunks": (chunk_size, len(rlat), len(rlon))}
                 single_level_variables.append(f"{variable_name}{int(level / 100)}")
+                levels_processed.add(level)
         else:
             cf_variables.add(
                 variable_name,
@@ -347,6 +349,18 @@ def crcm_emulator_input_format(
                 "_FillValue": np.float32(np.nan),
             }
             single_level_variables.append(variable_name)
+    for level in levels_processed:
+        cf_variables.add(
+            f"mask_{int(level / 100)}",
+            dims=("time", "rlat", "rlon"),
+            data=da.empty(
+                (len(time_data), len(rlat), len(rlon)),
+                dtype=bool,
+                chunks=(chunk_size, len(rlat), len(rlon)),
+            ),
+            attributes={},
+        )
+        encoding_dict[f"mask_{int(level / 100)}"] = {"chunks": (chunk_size, len(rlat), len(rlon))}
     cf_coordinates.add("variable_names", dims=("num_variables",), data=np.array(single_level_variables, dtype=object))
     cf_coordinates.add(
         "is_computed",
@@ -382,6 +396,7 @@ def write_crcm_time_slice_of_data(
     variable_name: str,
     data: np.ndarray,
     time_slice: slice,
+    mask: np.ndarray | None = None,
 ) -> None:
     """
     Write a slice of data for a specific variable and time range into the CRCM emulator zarr dataset.
@@ -396,6 +411,8 @@ def write_crcm_time_slice_of_data(
         Data array to write, should match the shape of the time slice and spatial dimensions.
     time_slice : slice
         Slice object indicating the time range to write into the dataset.
+    mask : np.ndarray | None
+        Mask array indicating which values are NaN (True) or valid (False). If None, no mask is written.
     """
     xarray_dataset = xarray.open_zarr(path_output)
     is_computed = xarray_dataset["is_computed"].values
@@ -422,5 +439,15 @@ def write_crcm_time_slice_of_data(
             # "units": crcm_variables[variable_name].units,  # ToDo: this function is also used by cmip6 regridded data
         },
     )
+    if mask is not None:
+        cf_variables.add(
+            f"mask_{int(gcm_variable_levels[variable_name]['level'] / 100)}",
+            dims=("time", "rlat", "rlon"),
+            data=mask,
+            attributes={
+                "grid_mapping": "crs",
+                "coordinates": "lon lat",
+            },
+        )
     xarray_dataset = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs={})
     xarray_dataset.to_zarr(path_output, region={"time": time_slice})

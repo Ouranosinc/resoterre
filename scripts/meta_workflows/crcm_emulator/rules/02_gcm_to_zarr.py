@@ -11,6 +11,29 @@ from resoterre.logging_utils import start_root_logger
 logger = logging.getLogger(__name__)
 
 
+# ToDo: move to a utility module for command-line argument parsing
+def parse_bool(value: str) -> bool:
+    """
+    Parse a boolean command-line value.
+
+    Parameters
+    ----------
+    value : str
+        Command-line value to parse as boolean.
+
+    Returns
+    -------
+    bool
+        Parsed boolean value.
+    """
+    normalized_value = value.lower()
+    if normalized_value in {"true", "1", "yes"}:
+        return True
+    if normalized_value in {"false", "0", "no"}:
+        return False
+    raise argparse.ArgumentTypeError(f"Expected a boolean value, got: {value}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="GCM daily regridded to zarr conversion for machine learning workflows"
@@ -23,6 +46,9 @@ if __name__ == "__main__":
     parser.add_argument("--variable_name", type=str, required=True, help="GCM variable to process")
     parser.add_argument("--chunk_idx_start", type=int, required=True, help="Initial chunk index")
     parser.add_argument("--chunk_idx_end", type=int, required=True, help="Final chunk index")
+    parser.add_argument(
+        "--write_mask", type=parse_bool, required=True, help="Whether to write the mask for the variable"
+    )
     parser.add_argument("--initialize", action="store_true", help="Whether to initialize the zarr store")
     parser.set_defaults(initialize=False)
     args = parser.parse_args()
@@ -41,6 +67,7 @@ if __name__ == "__main__":
             variable_name=args.variable_name,
             chunk_idx_start=args.chunk_idx_start,
             chunk_idx_end=args.chunk_idx_end,
+            write_mask=args.write_mask,
         )
     except Exception:
         logger.exception("Error calling GCMToZarrFromConfig")

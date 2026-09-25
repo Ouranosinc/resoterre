@@ -8,6 +8,7 @@ import xarray
 from torch.utils import data as td
 
 from resoterre.data_management.cftime_utils import cftime_period_bounds_idx_in_list_of_datetimes
+from resoterre.datasets.cmip6.cmip6_utils import gcm_variable_levels
 from resoterre.datasets.cmip6.cmip6_variables import cmip6_variables
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
 from resoterre.ml.data_loader_utils import normalize
@@ -60,8 +61,13 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         self.crcm_open_dataset: dict[str, xarray.Dataset] = {}
         self.keep_3d_variables = keep_3d_variables
         self.max_open_datasets = max_open_datasets
-        # ToDo: Only include mask channel for variables that can be under topography at their pressure level
-        self.num_input_channels = len(gcm_variables) * 2
+        # Only using 850 hPa level for the mask
+        self.mask_dimensions = 0
+        for variable_name in self.gcm_variables:
+            if variable_name in gcm_variable_levels and gcm_variable_levels[variable_name]["level"] == 85000.0:
+                self.mask_dimensions = 1
+                break
+        self.num_input_channels = len(gcm_variables) + self.mask_dimensions
         self.num_output_channels = len(crcm_variables)
         for simulation in simulations:
             gcm_str = f"{simulation[0]}_{simulation[1]}_{simulation[2]}"
@@ -187,19 +193,24 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
             xarray_variable = xarray_dataset_gcm[variable_name]
             if input_first_block.size == 0:
                 input_first_block = np.zeros(
-                    (len(self.gcm_variables) * 2, xarray_variable.shape[1], xarray_variable.shape[2]), dtype=np.float32
+                    (
+                        len(self.gcm_variables) + self.mask_dimensions,
+                        xarray_variable.shape[1],
+                        xarray_variable.shape[2],
+                    ),
+                    dtype=np.float32,
                 )
             gcm_data = xarray_variable.isel(time=gcm_idx).values
-            gcm_mask = np.isnan(gcm_data)
-            gcm_data[gcm_mask] = 0.0
-            input_first_block[2 * i, :, :] = normalize(
+            input_first_block[i, :, :] = normalize(
                 gcm_data,
                 valid_min=cmip6_variables[variable_name].normalize_min,
                 valid_max=cmip6_variables[variable_name].normalize_max,
                 log_normalize=cmip6_variables[variable_name].log_normalize,
                 log_offset=cmip6_variables[variable_name].normalize_log_offset,
             )
-            input_first_block[2 * i + 1, :, :] = gcm_mask.astype(np.float32)
+        if self.mask_dimensions == 1:
+            mask_data = xarray_dataset_gcm["mask_850"].isel(time=gcm_idx).values.astype(np.float32)
+            input_first_block[len(self.gcm_variables), :, :] = mask_data
         return {"input_first_block": input_first_block}
 
     def input_first_block_as_3d(self, xarray_dataset_gcm: xarray.Dataset, gcm_idx: int) -> dict[str, np.ndarray]:
@@ -220,6 +231,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         """
         # Currently expects 3d variables to be ordered in self.gcm_variables
         # This involves reversing the vertical level separation in the source files, not ideal but acceptable for now.
+        # Only using 850 hPa level for the mask
         input_first_block = {}
         vertical_level_counts: dict[str, int] = {}
         num_2d_channels = 0
@@ -243,13 +255,9 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                         (vertical_level_counts[key], xarray_variable.shape[1], xarray_variable.shape[2]),
                         dtype=np.float32,
                     )
-                    input_first_block[f"input_first_block_{key}_mask"] = np.zeros(
-                        (vertical_level_counts[key], xarray_variable.shape[1], xarray_variable.shape[2]),
-                        dtype=np.float32,
-                    )
             elif "input_first_block_2d" not in input_first_block:
                 input_first_block["input_first_block_2d"] = np.zeros(
-                    (2 * num_2d_channels, xarray_variable.shape[1], xarray_variable.shape[2]),
+                    (num_2d_channels + self.mask_dimensions, xarray_variable.shape[1], xarray_variable.shape[2]),
                     dtype=np.float32,
                 )
             gcm_data = xarray_variable.isel(time=gcm_idx).values
@@ -263,9 +271,6 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     log_normalize=cmip6_variables[variable_name].log_normalize,
                     log_offset=cmip6_variables[variable_name].normalize_log_offset,
                 )
-                input_first_block[f"input_first_block_{key}_mask"][-vertical_level_counts[key], :, :] = gcm_mask.astype(
-                    np.float32
-                )
                 vertical_level_counts[key] -= 1
             else:
                 input_first_block["input_first_block_2d"][idx_2d, :, :] = normalize(
@@ -276,7 +281,10 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     log_offset=cmip6_variables[variable_name].normalize_log_offset,
                 )
                 input_first_block["input_first_block_2d"][idx_2d + 1, :, :] = gcm_mask.astype(np.float32)
-                idx_2d += 2
+                idx_2d += 1
+        if self.mask_dimensions == 1:
+            mask_data = xarray_dataset_gcm["mask_850"].isel(time=gcm_idx).values.astype(np.float32)
+            input_first_block["input_first_block_2d"][num_2d_channels, :, :] = mask_data
         return input_first_block
 
     def __getitem__(self, idx: int) -> dict[str, np.ndarray]:

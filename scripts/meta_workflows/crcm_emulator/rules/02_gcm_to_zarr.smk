@@ -8,6 +8,7 @@ from pathlib import Path
 
 from resoterre.calendar_utils import iter_year_month
 from resoterre.config_utils import config_from_yaml
+from resoterre.datasets.cmip6.cmip6_utils import gcm_vertical_variables, gcm_vertical_levels
 from resoterre.experiments.crcm_emulator.cmip6_to_zarr_workflow import get_chunk_indices
 from resoterre.experiments.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig
 
@@ -33,8 +34,13 @@ def expected_manifests(wildcards):
         )
         for chunk_index_tuple in chunk_indices:
             chunk_str = f"{chunk_index_tuple[0]}_{chunk_index_tuple[1]}"
+            levels_processed = False
             for variable_name in config_obj.gcm_preprocessing_variables:
-                full_manifest = f"manifests/gcm_to_zarr_{simulation_str}_{variable_name}_{chunk_str}.done"
+                write_mask = "_False"
+                if not levels_processed and variable_name in gcm_vertical_variables:
+                    write_mask = "_True"
+                    levels_processed = True
+                full_manifest = f"manifests/gcm_to_zarr_{simulation_str}_{variable_name}_{chunk_str}{write_mask}.done"
                 list_of_expected_manifests.append(full_manifest)
     init_manifest = f"manifests/gcm_to_zarr_{init_gcm_str}_{init_variable}_0_{chunk_size * chunks_per_task - 1}.done"
     if not list_of_expected_manifests:
@@ -62,7 +68,8 @@ rule gcm_to_zarr_init:
         init_pathway=init_pathway,
         init_realization=init_realization,
         init_chunk_idx_start=0,
-        init_chunk_idx_end=chunk_size * chunks_per_task - 1
+        init_chunk_idx_end=chunk_size * chunks_per_task - 1,
+        write_mask=True
     shell:
         """
         python3 {params.path_script} \
@@ -74,6 +81,7 @@ rule gcm_to_zarr_init:
             --variable_name {params.init_variable_name} \
             --chunk_idx_start {params.init_chunk_idx_start} \
             --chunk_idx_end {params.init_chunk_idx_end} \
+            --write_mask {params.write_mask} \
             --initialize
         """
 
@@ -82,7 +90,7 @@ rule gcm_to_zarr:
     input:
         "manifests/gcm_to_zarr.init.done"
     output:
-        touch("manifests/gcm_to_zarr_{gcm}_{pathway}_{realization}_{variable_name}_{i_start}_{i_end}.done")
+        touch("manifests/gcm_to_zarr_{gcm}_{pathway}_{realization}_{variable_name}_{i_start}_{i_end}_{write_mask}.done")
     params:
         path_script=Path(snakefile_dir, "02_gcm_to_zarr.py"),
         workflow_dir=workflow_dir,
@@ -97,5 +105,6 @@ rule gcm_to_zarr:
             --gcm {wildcards.gcm} \
             --realization {wildcards.realization} \
             --chunk_idx_start {wildcards.i_start} \
-            --chunk_idx_end {wildcards.i_end}
+            --chunk_idx_end {wildcards.i_end} \
+            --write_mask {wildcards.write_mask}
         """
