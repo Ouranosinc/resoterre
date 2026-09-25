@@ -18,12 +18,12 @@ from resoterre.datasets.cmip6.cmip6_utils import (
     validate_cmip6_data,
 )
 from resoterre.datasets.crcm.crcm_utils import crcm_north_america_grid_coordinates
-from resoterre.experiments.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig, crcm_emulator_parse_config
-from resoterre.experiments.crcm_emulator.crcm_emulator_zarr import (
+from resoterre.io_utils import path_with_uuid
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig, crcm_emulator_parse_config
+from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import (
     crcm_emulator_input_format,
     write_crcm_time_slice_of_data,
 )
-from resoterre.io_utils import path_with_uuid
 from resoterre.plots.nd_plots import CustomPColorMesh
 
 

@@ -17,10 +17,11 @@ from resoterre.datasets.crcm.crcm_utils import (
     validate_crcm_data,
     version_realization_mapping,
 )
-from resoterre.experiments.crcm_emulator.crcm_emulator_zarr import (
+from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import (
     crcm_emulator_output_format,
     write_crcm_time_slice_of_data,
 )
+from resoterre.pipelines.crcm_emulator.experiment_logger import ExperimentLoggerConfig
 from resoterre.plots.nd_plots import CustomPColorMesh
 
 
@@ -126,6 +127,9 @@ class CRCMEmulatorConfig:
     debug_gcm_figures : list[list[str]]
         Debugging GCM figures of the form
         [gcm_name, emission_scenario, ensemble_member, variable_name, year, month, day].
+    logger_config : ExperimentLoggerConfig | None
+        Configuration for the Comet ML experiment logger used during training. If None, a disabled
+        (no-op) logger configuration is used.
     """
 
     experiment_name: str | None = None
@@ -184,6 +188,7 @@ class CRCMEmulatorConfig:
     inference_device: str | None = None
     debug_crcm_figures: list[list[str | int]] = field(default_factory=list)
     debug_gcm_figures: list[list[str | int]] = field(default_factory=list)
+    logger_config: ExperimentLoggerConfig | None = None
 
 
 def crcm_emulator_parse_config(config: CRCMEmulatorConfig | Path | str) -> CRCMEmulatorConfig:

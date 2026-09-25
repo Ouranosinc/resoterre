@@ -17,6 +17,7 @@ from resoterre.data_management.timeseries import MultiTimeseries
 from resoterre.logging_utils import CustomLogging, logging_delay_sequence, readable_delta_t
 from resoterre.ml.ml_loops import MinimaTracker
 from resoterre.ml.ml_utils import log_device_info
+from resoterre.pipelines.crcm_emulator.experiment_logger import CometMLLogger, ExperimentLoggerConfig
 
 
 logger = CustomLogging(caller=logging.getLogger(__name__))
@@ -105,6 +106,9 @@ class NNTraining(ABC):
         Mode for the validation metric ("min" or "max").
     num_threads : int
         Number of threads to use for training.
+    logger_config : ExperimentLoggerConfig, optional
+        Configuration for the Comet ML logger used to track the training pipeline. If None, Comet ML
+        logging is disabled.
     """
 
     def __init__(
@@ -115,12 +119,14 @@ class NNTraining(ABC):
         validation_metrics_monitor: list[str] | None = None,  # the first one is used for best model identification
         validation_metric_mode: str = "min",
         num_threads: int = 2,
+        logger_config: ExperimentLoggerConfig | None = None,
     ) -> None:
         self.experiment_name = experiment_name
         self.path_models = path_models
         self.training_metrics_monitor = training_metrics_monitor or []
         self.validation_metrics_monitor = validation_metrics_monitor or []
         self.validation_metric_mode = validation_metric_mode
+        self.experiment_logger = CometMLLogger(logger_config or ExperimentLoggerConfig(disabled=True))
         self.models: dict[str, torch.nn.Module] = {}
         self.optimizers: dict[str, torch.optim.Optimizer] = {}
         self.lr_schedulers: dict[str, torch.optim.lr_scheduler._LRScheduler] = {}
@@ -154,6 +160,20 @@ class NNTraining(ABC):
         self.validation_logging_frequency_sequence = logging_delay_sequence()
 
         torch.set_num_threads(num_threads)
+
+        self.experiment_logger.log_parameters(self.config_dict())
+
+    def config_dict(self) -> dict[str, Any]:
+        """
+        Get the configuration to log to the experiment tracker at the start of training.
+
+        Returns
+        -------
+        dict
+            A dictionary representation of the training configuration. Empty by default; subclasses
+            should override this method to expose their own configuration (e.g. from a dataclass).
+        """
+        return {}
 
     def setup_lr_schedulers(
         self,
@@ -389,6 +409,7 @@ class NNTraining(ABC):
                 epoch=epoch,
                 return_true_for=self.training_metrics_monitor,
             )
+            self.experiment_logger.log_metrics(self.metrics.last_values(), step=self.total_iterations, epoch=epoch)
             self._log_training_step(identifier=f"end_of_training_step_epoch_{epoch}", inline=False, force=new_minima)
         self.total_samples += len(self.train_data_loader.dataset)
 
@@ -426,11 +447,34 @@ class NNTraining(ABC):
             The current epoch number.
         """
         metrics = {k: v for k, v in self.metrics.last_values().items() if k in self.validation_metrics_monitor}
+        self.experiment_logger.log_metrics(metrics, step=self.total_iterations, epoch=epoch)
         for key, value in metrics.items():
             if self.validation_metric_mode != "min":
                 raise NotImplementedError()  # There is also no current arguments for the mode of secondary metrics.
             if key not in self.best_validation_metrics or value < self.best_validation_metrics[key].value:
                 self.best_validation_metrics[key] = MetricMinimum(epoch=epoch, value=value)
+
+    def log_validation_metrics_to_experiment(self, epoch: int) -> None:
+        """
+        Log all consolidated (mean-aggregated) validation metrics to the experiment logger.
+
+        Parameters
+        ----------
+        epoch : int
+            The current epoch number.
+
+        Notes
+        -----
+        This logs every metric accumulated in ``self.validation_metrics`` during the validation loop
+        (e.g. individual loss components and custom metrics), not just the metrics listed in
+        ``validation_metrics_monitor``.
+        """
+        validation_metrics_summary = {
+            key: float(np.mean(timeseries.values))
+            for key, timeseries in self.validation_metrics.items()
+            if timeseries.values
+        }
+        self.experiment_logger.log_metrics(validation_metrics_summary, epoch=epoch)
 
     def validation_loop(self, epoch: int) -> None:
         """
@@ -450,6 +494,7 @@ class NNTraining(ABC):
             self._log_validation_step(i=i + 1, identifier=f"end_of_validation_step_epoch_{epoch}", inline=False)
         self.validation_consolidate()
         self.update_validation_metrics(epoch=epoch)
+        self.log_validation_metrics_to_experiment(epoch=epoch)
 
     def is_validation_improvement(self) -> bool:
         """
@@ -513,6 +558,10 @@ class NNTraining(ABC):
             raise ValueError("Path to models is not specified.")
         with Path(self.path_models, f"{self.experiment_name}_training_results.json").open("w") as f:
             json.dump(self.results_dict(), f, indent=4)
+
+    def close(self) -> None:
+        """End the training pipeline's Comet ML experiment, flushing and uploading any pending logs."""
+        self.experiment_logger.end()
 
     def _log_training_step(self, identifier: str, inline: bool = True, force: bool = False) -> None:
         """
