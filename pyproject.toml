@@ -59,6 +59,10 @@ dependencies = [
 workflow = [
   "snakemake>=9.13.2"
 ]
+stac-mlm = [
+  "pystac>=1.15.2",
+  "stac-model>=0.6.1"
+]
 
 [project.scripts]
 resoterre = "resoterre.cli:app"

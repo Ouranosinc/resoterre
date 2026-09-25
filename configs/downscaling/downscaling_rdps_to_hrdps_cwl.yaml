@@ -8,6 +8,11 @@ path_rdps: inputs
 
 # Global settings
 experiment_name: cwl
+workflow_command: >-
+    snakemake -s scripts/meta_workflows/downscaling/rdps_to_hrdps.smk
+    --config config_yaml=/app/configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml
+    -j1
+    --directory=/app
 global_start_datetime: "2017-05-22 07:00:00"
 global_end_datetime: "2024-09-01 12:00:00"
 coarsen_factor: 4
@@ -73,7 +78,7 @@ hrdps_geophysical_variables_for_training:
     - "sftlf"
 validation_period_start: "2023-01-10 00:00:00"
 test_period_start: "2023-06-01 00:00:00"
-training_batch_size: 32
+training_batch_size: 64
 kernel_size: 3
 initial_nb_of_hidden_channels: 144
 depth: 2
@@ -82,8 +87,8 @@ learning_rate: 0.002
 weight_decay: 0.00001
 mse_loss_weight: 0.5
 mae_loss_weight: 0.0
-mass_loss_weight: 0.1
-ssim_loss_weight: 0.4
+mass_loss_weight: 0.0
+ssim_loss_weight: 0.5
 nb_of_epochs: 0  # 0 epochs for inference only
 num_workers: 8
 num_threads: 16
@@ -135,4 +140,4 @@ hrdps_i_0237_j_1568_grid_shape:
     rlon_size: 512
 
 framework: pytorch
-framework_version: '2.9.0+cu130'
+framework_version: '2.14.0+cu130'
