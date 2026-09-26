@@ -2,11 +2,11 @@
   "type": "Feature",
   "stac_version": "1.1.0",
   "stac_extensions": [
-    "https://stac-extensions.github.io/mlm/v1.5.3/schema.json",
-    "https://stac-extensions.github.io/datacube/v2.3.0/schema.json",
-    "https://stac-extensions.github.io/file/v2.1.0/schema.json",
-    "https://stac-extensions.github.io/scientific/v1.0.0/schema.json",
     "https://stac-extensions.github.io/version/v1.2.0/schema.json",
+    "https://stac-extensions.github.io/scientific/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/mlm/v1.6.0/schema.json",
+    "https://stac-extensions.github.io/file/v2.1.0/schema.json",
+    "https://stac-extensions.github.io/datacube/v2.3.0/schema.json",
     "https://stac-extensions.github.io/ml-aoi/v0.2.0/schema.json",
     "https://stac-extensions.github.io/application/v0.1.0/schema.json"
   ],
@@ -49,9 +49,6 @@
     "start_datetime": "2017-05-22T07:00:00Z",
     "end_datetime": "2100-12-31T23:59:59Z",
     "license": "Apache-2.0",
-    "version:version": "0.1.3.dev8",
-    "version:experimental": true,
-    "sci:citation": "Gauvin St-Denis, B., and Smith, T. J. resoterre (version 0.1.3.dev8). Ouranos.",
     "providers": [
       {
         "name": "Ouranos",
@@ -72,6 +69,9 @@
         "url": "https://www.crim.ca/"
       }
     ],
+    "version": "0.1.3.dev8",
+    "experimental": true,
+    "sci:citation": "Gauvin St-Denis, B., and Smith, T. J. resoterre (version 0.1.3.dev8). Ouranos.",
     "mlm:framework": "pytorch",
     "mlm:framework_version": "2.14.0+cu130",
     "mlm:accelerator": "cuda",
@@ -468,7 +468,7 @@
       "title": "RDPS train samples",
       "ml-aoi:split": "train",
       "ml-aoi:role": "feature",
-      "description": "RDPS input-source samples used as machine-learning features."
+      "description": "RDPS train-split input samples used as machine-learning features."
     },
     {
       "rel": "derived_from",
@@ -476,7 +476,7 @@
       "title": "HRDPS train samples",
       "ml-aoi:split": "train",
       "ml-aoi:role": "label",
-      "description": "HRDPS target samples used as labels and predicted downscaling results."
+      "description": "HRDPS train-split target samples used as labels and predicted downscaling results."
     },
     {
       "rel": "derived_from",
@@ -484,7 +484,7 @@
       "title": "RDPS validate samples",
       "ml-aoi:split": "validate",
       "ml-aoi:role": "feature",
-      "description": "RDPS input-source samples used as machine-learning features."
+      "description": "RDPS validate-split input samples used as machine-learning features."
     },
     {
       "rel": "derived_from",
@@ -492,7 +492,7 @@
       "title": "HRDPS validate samples",
       "ml-aoi:split": "validate",
       "ml-aoi:role": "label",
-      "description": "HRDPS target samples used as labels and predicted downscaling results."
+      "description": "HRDPS validate-split target samples used as labels and predicted downscaling results."
     },
     {
       "rel": "derived_from",
@@ -500,7 +500,7 @@
       "title": "RDPS test samples",
       "ml-aoi:split": "test",
       "ml-aoi:role": "feature",
-      "description": "RDPS input-source samples used as machine-learning features."
+      "description": "RDPS test-split input samples used as machine-learning features."
     },
     {
       "rel": "derived_from",
@@ -508,7 +508,7 @@
       "title": "HRDPS test samples",
       "ml-aoi:split": "test",
       "ml-aoi:role": "label",
-      "description": "HRDPS target samples used as labels and predicted downscaling results."
+      "description": "HRDPS test-split target samples used as labels and predicted downscaling results."
     },
     {
       "rel": "cite-as",
@@ -529,9 +529,9 @@
       "title": "Epoch 18 U-Net SafeTensors weights",
       "description": "SafeTensors weights loaded by the resoterre U-Net implementation.",
       "mlm:artifact_type": "safetensors.torch.save_file",
-      "file:size": 39526256,
-      "file:checksum": "122090e4bbd8583de97cea555072b98479920d1c2c6949daa3254f3c771571cebf6b",
       "application:entrypoint": "resoterre.ml.neural_networks_unet:UNet",
+      "file:checksum": "122090e4bbd8583de97cea555072b98479920d1c2c6949daa3254f3c771571cebf6b",
+      "file:size": 39526256,
       "roles": [
         "mlm:model",
         "mlm:weights",
@@ -545,13 +545,13 @@
       "type": "text/x-snakemake",
       "title": "RDPS-to-HRDPS Snakemake workflow",
       "description": "Executable Snakemake workflow that preprocesses RDPS data and runs downscaling inference.",
-      "file:size": 1700,
-      "file:checksum": "1220fbfe7b7f39796c9e378dc2522a82581ec9024781222327a5d75ba59dc3b32046",
       "mlm:entrypoint": "snakemake -s scripts/meta_workflows/downscaling/rdps_to_hrdps.smk --config config_yaml=/app/configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml -j1 --directory=/app",
       "application:entrypoint": "scripts/meta_workflows/downscaling/rdps_to_hrdps.smk",
       "application:languages": [
         "Python"
       ],
+      "file:checksum": "1220fbfe7b7f39796c9e378dc2522a82581ec9024781222327a5d75ba59dc3b32046",
+      "file:size": 1700,
       "roles": [
         "mlm:source_code",
         "code"
@@ -562,8 +562,8 @@
       "type": "application/yaml",
       "title": "Training and inference configuration",
       "description": "Configuration consumed by the Snakemake workflow.",
-      "file:size": 3400,
       "file:checksum": "1220a34b87d3854e0240380d2026db7eb8ddec651441f1871096bc6da9621d8eca35",
+      "file:size": 3400,
       "roles": [
         "configuration",
         "metadata"
@@ -574,11 +574,11 @@
       "type": "text/x-dockerfile",
       "title": "Inference container definition",
       "description": "Generic Dockerfile used to build the inference container image.",
-      "file:size": 1626,
-      "file:checksum": "12201afe4cb941fb434e8fac2bd83a4ddf3a701993bd050a3bae82584e94b3b0824b",
       "application:languages": [
         "Dockerfile"
       ],
+      "file:checksum": "12201afe4cb941fb434e8fac2bd83a4ddf3a701993bd050a3bae82584e94b3b0824b",
+      "file:size": 1626,
       "roles": [
         "container"
       ]
@@ -598,8 +598,8 @@
       "type": "text/yaml",
       "title": "Citation metadata",
       "description": "Citation File Format metadata for resoterre.",
-      "file:size": 945,
       "file:checksum": "1220ffe80cd84de27fed65be4cd5289bcf00defe4553f2fc7086465228bec4d28476",
+      "file:size": 945,
       "roles": [
         "metadata"
       ]
