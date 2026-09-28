@@ -357,11 +357,13 @@ def crcm_emulator_input_format(
     )
     if path_emissions is not None:
         emission_data: dict[str, list[float]] = {"CO2": [], "N2O": [], "CH4": [], "CFC11_eq": [], "CFC12": []}
+        historical_emissions_years, historical_emissions_rows = read_emission_file(path_emissions[0])
+        future_emissions_years, future_emissions_rows = read_emission_file(path_emissions[1])
         for zarr_datetime in time_data:
             if zarr_datetime.year < 2015:
-                years, rows = read_emission_file(path_emissions[0])
+                years, rows = historical_emissions_years, historical_emissions_rows
             else:
-                years, rows = read_emission_file(path_emissions[1])
+                years, rows = future_emissions_years, future_emissions_rows
             t_idx = years.index(zarr_datetime.year)
             for i, variable_name in enumerate(["CO2", "N2O", "CH4", "CFC11_eq", "CFC12"]):
                 emission_data[variable_name].append(float(rows[t_idx][i + 1]))
