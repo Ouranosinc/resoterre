@@ -225,7 +225,8 @@ matplotlib = ["matplotlib", "mpl_toolkits"]
 scikit-learn = "sklearn"
 
 [tool.deptry.per_rule_ignores]
-DEP002 = ["h5netcdf", "h5py", "snakemake", "zarr"]
+# STAC dependencies are consumed by notebooks, which the project Deptry target does not scan.
+DEP002 = ["h5netcdf", "h5py", "httpx", "pystac", "snakemake", "stac-model", "zarr"]
 DEP003 = ["typing_extensions"]
 
 [tool.flit.sdist]
