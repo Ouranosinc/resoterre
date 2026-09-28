@@ -63,7 +63,7 @@ class CometMLLogger:
     """
 
     def __init__(self, config: ExperimentLoggerConfig | None = None):
-        self.config = config or ExperimentLoggerConfig()
+        self.config = config if config is not None else ExperimentLoggerConfig(disabled=True)
         self.experiment: Any = None
         if not self.config.disabled:
             self.experiment = self._create_experiment()
