@@ -9,6 +9,7 @@ def test_experiment_logger_config_defaults():
     assert config.disabled is False
     assert config.offline is False
     assert config.tags == []
+    assert config.log_code is False
 
 
 def test_experiment_logger_disabled_by_default_is_noop():
@@ -19,7 +20,7 @@ def test_experiment_logger_disabled_by_default_is_noop():
     comet_logger.log_metric("loss", 0.5, step=1, epoch=1)
     comet_logger.log_metrics({"loss": 0.5, "ssim_loss": 0.1}, step=1, epoch=1)
     comet_logger.log_model("UNet", "fake_model.pth")
-    comet_logger.log_image("fake_figure.png", name="sample", step=1, epoch=1)
+    comet_logger.log_image("fake_figure.png", name="sample", step=1)
     comet_logger.log_figure(figure=object(), name="loss_plot", step=1)
     comet_logger.end()
 
@@ -35,7 +36,9 @@ def test_experiment_logger_creates_online_experiment():
             tags=["unit-test"],
         )
         comet_logger = CometMLLogger(config)
-        experiment_cls_mock.assert_called_once_with(api_key="fake_key", project_name="resoterre", workspace="ouranos")
+        experiment_cls_mock.assert_called_once_with(
+            api_key="fake_key", project_name="resoterre", workspace="ouranos", log_code=False
+        )
         experiment_mock.set_name.assert_called_once_with("unit_test_experiment")
         experiment_mock.add_tags.assert_called_once_with(["unit-test"])
         assert comet_logger.experiment is experiment_mock
@@ -47,7 +50,7 @@ def test_experiment_logger_creates_offline_experiment():
         config = ExperimentLoggerConfig(offline=True, offline_directory="fake_offline_dir")
         comet_logger = CometMLLogger(config)
         offline_experiment_cls_mock.assert_called_once_with(
-            api_key=None, project_name=None, workspace=None, offline_directory="fake_offline_dir"
+            api_key=None, project_name=None, workspace=None, log_code=False, offline_directory="fake_offline_dir"
         )
         assert comet_logger.experiment is offline_experiment_mock
 
@@ -89,8 +92,8 @@ def test_experiment_logger_log_image_from_path():
     experiment_mock = MagicMock()
     with patch("comet_ml.Experiment", return_value=experiment_mock):
         comet_logger = CometMLLogger(ExperimentLoggerConfig())
-        comet_logger.log_image(Path("fake_figure.png"), name="sample_figure", step=5, epoch=1)
-        experiment_mock.log_image.assert_called_once_with("fake_figure.png", name="sample_figure", step=5, epoch=1)
+        comet_logger.log_image(Path("fake_figure.png"), name="sample_figure", step=5)
+        experiment_mock.log_image.assert_called_once_with("fake_figure.png", name="sample_figure", step=5)
 
 
 def test_experiment_logger_log_image_from_array():
@@ -98,8 +101,8 @@ def test_experiment_logger_log_image_from_array():
     with patch("comet_ml.Experiment", return_value=experiment_mock):
         comet_logger = CometMLLogger(ExperimentLoggerConfig())
         image_array = object()
-        comet_logger.log_image(image_array, name="sample_figure", step=5, epoch=1)
-        experiment_mock.log_image.assert_called_once_with(image_array, name="sample_figure", step=5, epoch=1)
+        comet_logger.log_image(image_array, name="sample_figure", step=5)
+        experiment_mock.log_image.assert_called_once_with(image_array, name="sample_figure", step=5)
 
 
 def test_experiment_logger_log_figure():

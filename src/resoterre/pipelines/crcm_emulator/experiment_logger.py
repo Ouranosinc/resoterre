@@ -36,6 +36,9 @@ class ExperimentLoggerConfig:
         The directory in which offline experiment archives are stored, when ``offline`` is True.
     disabled : bool
         Whether Comet ML logging is disabled entirely. Useful for local runs or tests where tracking is not desired.
+    log_code : bool
+        Whether to let Comet ML automatically capture and upload the calling script's source code.
+        Defaults to False.
     """
 
     api_key: str | None = None
@@ -46,6 +49,7 @@ class ExperimentLoggerConfig:
     offline: bool = False
     offline_directory: Path | str | None = None
     disabled: bool = False
+    log_code: bool = False
 
 
 class CometMLLogger:
@@ -79,6 +83,7 @@ class CometMLLogger:
             "api_key": self.config.api_key,
             "project_name": self.config.project_name,
             "workspace": self.config.workspace,
+            "log_code": self.config.log_code,
         }
         if self.config.offline:
             experiment_kwargs["offline_directory"] = self.config.offline_directory
@@ -160,7 +165,6 @@ class CometMLLogger:
         image: Path | str | Any,
         name: str | None = None,
         step: int | None = None,
-        epoch: int | None = None,
     ) -> None:
         """
         Log an image or figure to the Comet ML experiment.
@@ -174,13 +178,11 @@ class CometMLLogger:
             A name to assign to the logged image.
         step : int, optional
             The step at which the image was recorded.
-        epoch : int, optional
-            The epoch at which the image was recorded.
         """
         if self.experiment is None:
             return
         image_data = str(image) if isinstance(image, Path) else image
-        self.experiment.log_image(image_data, name=name, step=step, epoch=epoch)
+        self.experiment.log_image(image_data, name=name, step=step)
 
     def log_figure(
         self,
