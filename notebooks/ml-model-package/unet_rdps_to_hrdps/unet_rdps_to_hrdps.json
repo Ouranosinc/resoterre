@@ -179,8 +179,6 @@
         "description": "Four continuous HRDPS fields reconstructed for the same valid time on the 512x512 target rotated grid."
       }
     ],
-    "mlm:total_parameters": 9871888,
-    "mlm:pretrained": false,
     "mlm:hyperparameters": {
       "coarsen_factor": 4,
       "kernel_size": 3,
@@ -208,6 +206,8 @@
       "ssim_k1": 0.01,
       "ssim_k2": 0.03
     },
+    "mlm:total_parameters": 9871888,
+    "mlm:pretrained": false,
     "cube:dimensions": {
       "time": {
         "type": "temporal",

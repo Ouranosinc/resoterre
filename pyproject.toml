@@ -60,8 +60,9 @@ workflow = [
   "snakemake>=9.13.2"
 ]
 stac-mlm = [
+  "httpx>=0.28.1",
   "pystac>=1.15.2",
-  "stac-model>=0.6.1"
+  "stac-model>=0.7.0"
 ]
 
 [project.scripts]
