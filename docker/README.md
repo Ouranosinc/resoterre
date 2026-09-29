@@ -47,11 +47,15 @@ The image uses `configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml` by defau
 From the project root directory:
 
 ```bash
-docker build -f docker/Dockerfile.base -t resoterre-base:latest .
+RESOTERRE_VERSION=$(pip show resoterre | grep Version | awk '{print $2}')
+docker build -f docker/Dockerfile.base -t "resoterre-base:latest" -t "resoterre:${RESOTERRE_VERSION}" .
 ```
 
 ### 2. Build the Inference Image
 
+>[!NOTE]
+> For this next step, you will need the pregenerated matrix and geophysical files.
+> See [Running Inference Locally](#running-inference-locally) to prepare them with a minimal sample run.
 
 #### Build Arguments
 
@@ -73,32 +77,103 @@ model/unet_epoch_mebojo_018.safetensors
 And your matrix files are in the default `matrix/` directory, and your geophysical files are in the default `geophysical/` directory, build the inference image:
 
 ```bash
+RESOTERRE_VERSION=$(pip show resoterre | grep Version | awk '{print $2}')
 docker build -f docker/Dockerfile.inference \
   --build-arg MODEL_PATH='unet_epoch_mebojo_018.safetensors' \
   --build-context model=./model \
   --build-context matrix=./matrix \
   --build-context geophysical=./geophysical \
-  -t resoterre-inference:latest .
+  -t resoterre-inference:latest \
+  -t resoterre-inference:${RESOTERRE_VERSION} \
+  .
 ```
 
 This will copy the specified model file into the image as `/app/model/model.safetensors`, the matrix files into `/app/matrix/`, and the geophysical files into `/app/geophysical/`.
+
+Inside Docker, inference is handled automatically via the snakemake `ENTRYPOINT`.
+This will invoke the same command as [Running Inference Locally](#running-inference-locally) but using preconfigured locations.
 
 ---
 
 ## Running Inference Locally
 
+> [!NOTE]
+> If you pass the sample configuration shown below, you will need to override the paths to your local directories
+> where the geophysical and model weights can be found. For example `path_hrdps_geophysical=./geophysical`.
+> On the first run, the `path_regridding_weights` location will generate the `.npz` matrix files which are the
+> the costiest step in the pipeline. They will be reused on subsequent runs.
+
+> [!NOTE]
+> Official sources of the geophysical files are from [ECCC MSC](https://eccc-msc.github.io/open-data/msc-data/nwp_rdps/readme_rdps_en/).
+> For convenience, they have been made available on [PAVICS THREDDS](https://pavics.ouranos.ca/twitcher/ows/proxy/thredds/catalog/birdhouse/disk3/ouranos/geoconnections/HRDPS/catalog.html).
+
+> [!WARNING]
+> When passing configuration arguments as shown below (`start_datetime`, `end_datetime`),
+> ensure to use the `T` representation, since the script has trouble escaping `<date> <time>`
+> literal string formats from space-delimited arguments.
+
 Locally, you can run inference using snakemake from the project root:
 
 ```bash
 snakemake -s scripts/meta_workflows/downscaling/rdps_to_hrdps.smk \
-  --config config_yaml=configs/downscaling/downscaling_rdps_to_hrdps.yaml \
+  --config \
+    config_yaml="$(realpath configs/downscaling/downscaling_rdps_to_hrdps.yaml)" \
+    start_datetime=20260901T00:00:00 \
+    end_datetime=20260901T23:59:59 \
+    ... \
   -j1 \
   --directory=outputs
 ```
 
 To use a different model or data locally, modify the relevant paths in your config YAML file.
 
-Inside Docker, inference is handled automatically via the snakemake `ENTRYPOINT`. See below for more instructions
+Following is a sample configuration with common configuration overrides.
+
+> [!WARNING]
+> Other parameters from
+> [configs/downscaling/downscaling_rdps_to_hrdps.yaml](../configs/downscaling/downscaling_rdps_to_hrdps.yaml)
+> are still needed below. These are just the "_main parameters_" the inference run will have to consider and customize.
+
+> [!WARNING]
+> Make sure your data structure is aligned as expected by the script.
+> For example, `path_rdps` should contain a `202405/` directory with nested `20240501HH_hhh.nc` NetCDF files,
+> for a preprocessing source on `2024-05-01`, where the `HH` represens `{00, 06, 12, 18}` ranges and `hhh` represents
+> the hour offset from `000` to `012`. They should align with provided source RDPS to downscale the corresponding HRDPS
+> spatio-temporal extents.
+
+```yaml
+path_logs: /tmp/resoterre/logs
+path_output: /tmp/resoterre/outputs
+path_preprocessed_zarr: /tmp/resoterre/outputs
+path_regridding_weights: /tmp/resoterre/matrix
+path_hrdps: null  # Not required for inference need to be null
+path_hrdps_geophysical: /tmp/resoterre/geophysical
+path_rdps: /tmp/resoterre/inputs
+
+# Global settings
+experiment_name: test # output will be generated as zar file with name "inference_{experiment_name}.zarr"
+
+# HRDPS Preprocessing
+hrdps_preprocessing_skip: false
+hrdps_variables:
+    - "orog"  # Providing orog here will generate the default geophysical fields in zarr format in inference mode
+
+# Start at hour 1 considering 7-12 forecast extraction (i.e., HH=06 + 1 for "07:00:00")
+rdps_preprocessing_start_datetime: "2024-05-01 07:00:00"
+rdps_preprocessing_end_datetime: "2024-05-01 08:00:00"  # Match your available data
+
+# Inference
+inference_variables:
+  - "HRDPS_P_TT_10000"
+  - "HRDPS_P_PR_SFC"
+  - "HRDPS_P_UUC_10000"
+  - "HRDPS_P_VVC_10000"
+inference_start_datetime: "2024-05-01 07:00:00"   # align with preprocessed ranges
+inference_end_datetime: "2024-05-01 08:00:00"
+# https://huggingface.co/bstdenis/unet-rdps-to-hrdps-downscaling/tree/main
+path_inference_model: /tmp/resoterre/model/unet_epoch_mebojo_018.safetensors
+inference_device: cpu  # cpu or cuda
+```
 
 ---
 

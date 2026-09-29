@@ -2,83 +2,82 @@
   "type": "Feature",
   "stac_version": "1.1.0",
   "stac_extensions": [
-    "https://stac-extensions.github.io/mlm/v1.5.1/schema.json",
-    "https://stac-extensions.github.io/datacube/v2.2.0/schema.json"
+    "https://stac-extensions.github.io/version/v1.2.0/schema.json",
+    "https://stac-extensions.github.io/scientific/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/mlm/v1.6.0/schema.json",
+    "https://stac-extensions.github.io/file/v2.1.0/schema.json",
+    "https://stac-extensions.github.io/datacube/v2.3.0/schema.json",
+    "https://stac-extensions.github.io/ml-aoi/v0.2.0/schema.json",
+    "https://stac-extensions.github.io/application/v0.1.0/schema.json"
   ],
   "id": "unet_rdps_to_hrdps",
-  "collection": "ml-model-package",
-  "mlm:entrypoint": "resoterre.ml.neural_networks_unet.UNet",
-  "mlm:hyperparameters": {
-    "nb_of_new_epochs": 5,
-    "networks": {
-      "UNet": {
-        "type": "UNet",
-        "in_channels": 5,
-        "out_channels": 2,
-        "depth": 3,
-        "initial_nb_of_hidden_channels": 36,
-        "h_in": 64,
-        "w_in": 64,
-        "resolution_increase_layers": 2
-      }
-    },
-    "data_loader": {
-      "batch_size": 16,
-      "num_workers": 6,
-      "multiprocessing_context": "spawn"
-    },
-    "optimizers": {
-      "UNet": {
-        "type": "Adam",
-        "lr": 0.002,
-        "weight_decay": 1e-05
-      }
-    }
-  },
   "geometry": {
     "type": "Polygon",
     "coordinates": [
       [
         [
-          -158.05,
-          18.35
+          -86.45,
+          37.52
         ],
         [
-          -158.05,
-          79.55
+          -86.45,
+          53.25
         ],
         [
-          -35.41,
-          79.55
+          -64.16,
+          53.25
         ],
         [
-          -35.41,
-          18.35
+          -64.16,
+          37.52
         ],
         [
-          -158.05,
-          18.35
+          -86.45,
+          37.52
         ]
       ]
     ]
   },
   "bbox": [
-    -158.05,
-    18.35,
-    -35.41,
-    79.55
+    -86.45,
+    37.52,
+    -64.16,
+    53.25
   ],
   "properties": {
-    "description": "UNet trained to downscale RDPS meteorological data to HRDPS resolution.",
-    "start_datetime": "2017-05-22T00:00:00Z",
-    "end_datetime": "2024-05-30T18:00:00Z",
-    "datetime": null,
+    "description": "U-Net trained to downscale RDPS meteorological data to HRDPS resolution.",
+    "start_datetime": "2017-05-22T07:00:00Z",
+    "end_datetime": "2100-12-31T23:59:59Z",
+    "license": "Apache-2.0",
+    "providers": [
+      {
+        "name": "Ouranos",
+        "description": "Producer and licensor of the model.",
+        "roles": [
+          "producer",
+          "licensor"
+        ],
+        "url": "https://www.ouranos.ca/"
+      },
+      {
+        "name": "CRIM",
+        "description": "Deployment host and inference-container processor.",
+        "roles": [
+          "host",
+          "processor"
+        ],
+        "url": "https://www.crim.ca/"
+      }
+    ],
+    "version": "0.1.3.dev8",
+    "experimental": true,
+    "sci:citation": "Gauvin St-Denis, B., and Smith, T. J. resoterre (version 0.1.3.dev8). Ouranos.",
     "mlm:framework": "pytorch",
-    "mlm:framework_version": "2.9.0+cu130",
+    "mlm:framework_version": "2.14.0+cu130",
     "mlm:accelerator": "cuda",
     "mlm:accelerator_constrained": false,
     "mlm:name": "UNet RDPS HRDPS Downscaling",
-    "mlm:architecture": "resoterre.ml.neural_networks_unet.UNet",
+    "mlm:architecture": "U-Net",
     "mlm:tasks": [
       "downscaling",
       "super-resolution"
@@ -89,31 +88,62 @@
         "variables": [
           "TT_model_levels",
           "PR",
-          "HU850",
+          "UU_model_levels",
+          "VV_model_levels",
+          "PC",
+          "PN",
+          "TT850",
           "GZ500",
-          "PC"
+          "GZ850",
+          "HU850",
+          "HU700",
+          "TD",
+          "UU850",
+          "VV850"
         ],
         "name": "rdps_inputs",
         "input": {
           "shape": [
             -1,
-            5,
-            64,
-            64
+            14,
+            128,
+            128
           ],
           "dim_order": [
-            "time",
+            "batch",
             "variables",
-            "latitude",
-            "longitude"
+            "rlat",
+            "rlon"
           ],
           "data_type": "float32"
         },
-        "pre_processing_function": {
-          "format": "snakemake",
-          "expression": "snakemake -s scripts/hybrid_data_loaders/rdps_to_hrdps_on_disk.smk --config config_yaml=/path/to/downscaling_preprocessing_rdps_to_hrdps.yaml -j1 --directory=/path/to/workflow/outputs",
-          "description": "Snakemake workflow that regrid RDPS data to 8km resolution, extracts variables, applies normalization, and prepares patches for UNet inference."
-        }
+        "pre_processing_function": null,
+        "description": "Fourteen normalized RDPS meteorological channels on the 128x128 coarse rotated grid. Each flexible batch element represents one independently selected valid time. The time identifies samples in the surrounding dataset but is not a tensor axis because the U-Net does not jointly process a temporal sequence."
+      },
+      {
+        "bands": [],
+        "variables": [
+          "orog",
+          "sftlf"
+        ],
+        "name": "hrdps_geophysical_inputs",
+        "input": {
+          "shape": [
+            -1,
+            2,
+            512,
+            512
+          ],
+          "dim_order": [
+            "batch",
+            "variables",
+            "rlat",
+            "rlon"
+          ],
+          "data_type": "float32"
+        },
+        "pre_processing_function": null,
+        "description": "Static orography and land-fraction channels on the 512x512 target grid. The geographic lat/lon are auxiliary coordinates over rlat/rlon."
       }
     ],
     "mlm:output": [
@@ -121,7 +151,9 @@
         "bands": [],
         "variables": [
           "HRDPS_P_TT_10000",
-          "HRDPS_P_PR_SFC"
+          "HRDPS_P_PR_SFC",
+          "HRDPS_P_UUC_10000",
+          "HRDPS_P_VVC_10000"
         ],
         "name": "hrdps_outputs",
         "tasks": [
@@ -131,183 +163,445 @@
         "result": {
           "shape": [
             -1,
-            2,
-            64,
-            64
+            4,
+            512,
+            512
           ],
           "dim_order": [
-            "time",
+            "batch",
             "variables",
-            "latitude",
-            "longitude"
+            "rlat",
+            "rlon"
           ],
           "data_type": "float32"
         },
-        "post_processing_function": null
+        "post_processing_function": null,
+        "description": "Four continuous HRDPS fields reconstructed for the same valid time on the 512x512 target rotated grid."
       }
     ],
-    "mlm:total_parameters": 2439578,
-    "mlm:pretrained": true,
-    "mlm:pretrained_source": "Custom RDPS-HRDPS dataset",
+    "mlm:hyperparameters": {
+      "coarsen_factor": 4,
+      "kernel_size": 3,
+      "initial_nb_of_hidden_channels": 144,
+      "depth": 2,
+      "reduction_ratio": 4,
+      "learning_rate": 0.002,
+      "weight_decay": 1e-05,
+      "mse_loss_weight": 0.5,
+      "mae_loss_weight": 0.0,
+      "mass_loss_weight": 0.0,
+      "ssim_loss_weight": 0.5,
+      "num_workers": 8,
+      "num_threads": 16,
+      "device": "cpu",
+      "training_batch_size": 64,
+      "global_start_datetime": "2017-05-22 07:00:00",
+      "global_end_datetime": "2024-09-01 12:00:00",
+      "validation_period_start": "2023-01-10 00:00:00",
+      "test_period_start": "2023-06-01 00:00:00",
+      "nb_of_epochs": 18,
+      "optimizer": "Adam",
+      "ssim_kernel_size": 11,
+      "ssim_sigma": 1.5,
+      "ssim_k1": 0.01,
+      "ssim_k2": 0.03
+    },
+    "mlm:total_parameters": 9871888,
+    "mlm:pretrained": false,
     "cube:dimensions": {
       "time": {
         "type": "temporal",
-        "description": "Time dimension",
+        "description": "Valid time associated with each independently processed model sample.",
         "extent": [
-          "2017-05-22T00:00:00Z",
-          "2024-05-30T18:00:00Z"
+          "2017-05-22T07:00:00Z",
+          "2100-12-31T23:59:59Z"
         ],
         "unit": "s"
       },
-      "latitude": {
+      "rlat": {
         "type": "spatial",
-        "description": "Latitude",
-        "extent": [
-          18.35,
-          79.55
-        ],
+        "description": "Row coordinate of the 512x512 HRDPS target array in its rotated-pole grid. The geographic positions are provided by the two-dimensional lat/lon auxiliary coordinates.",
         "axis": "y",
-        "unit": "degree",
-        "reference_system": "EPSG:4326"
-      },
-      "longitude": {
-        "type": "spatial",
-        "description": "Longitude",
         "extent": [
-          -158.05,
-          -35.41
+          0,
+          511
         ],
+        "unit": "index"
+      },
+      "rlon": {
+        "type": "spatial",
+        "description": "Column coordinate of the 512x512 HRDPS target array in its rotated-pole grid. The geographic positions are provided by the two-dimensional lat/lon auxiliary coordinates.",
         "axis": "x",
-        "unit": "degree",
-        "reference_system": "EPSG:4326"
-      },
-      "level": {
-        "type": "spatial",
-        "description": "Pressure levels",
         "extent": [
-          250,
-          850
+          0,
+          511
         ],
-        "values": [
-          850,
-          700,
-          500,
-          250
-        ],
-        "axis": "z",
-        "unit": "hPa"
+        "unit": "index"
       }
     },
     "cube:variables": {
       "TT_model_levels": {
         "dimensions": [
           "time",
-          "latitude",
-          "longitude",
-          "level"
+          "rlat",
+          "rlon"
         ],
         "type": "data",
-        "data_type": "float32"
+        "data_type": "float32",
+        "description": "RDPS air temperature on model levels, normalized before inference."
       },
       "PR": {
         "dimensions": [
           "time",
-          "latitude",
-          "longitude"
+          "rlat",
+          "rlon"
         ],
         "type": "data",
-        "data_type": "float32"
+        "data_type": "float32",
+        "description": "RDPS precipitation rate at the surface, normalized before inference."
       },
-      "HU850": {
+      "UU_model_levels": {
         "dimensions": [
           "time",
-          "latitude",
-          "longitude",
-          "level"
+          "rlat",
+          "rlon"
         ],
         "type": "data",
-        "data_type": "float32"
+        "data_type": "float32",
+        "description": "RDPS eastward wind component on model levels, normalized before inference."
       },
-      "GZ500": {
+      "VV_model_levels": {
         "dimensions": [
           "time",
-          "latitude",
-          "longitude",
-          "level"
+          "rlat",
+          "rlon"
         ],
         "type": "data",
-        "data_type": "float32"
+        "data_type": "float32",
+        "description": "RDPS northward wind component on model levels, normalized before inference."
       },
       "PC": {
         "dimensions": [
           "time",
-          "latitude",
-          "longitude"
+          "rlat",
+          "rlon"
         ],
         "type": "data",
-        "data_type": "float32"
+        "data_type": "float32",
+        "description": "RDPS convective precipitation at the surface, normalized before inference."
+      },
+      "PN": {
+        "dimensions": [
+          "time",
+          "rlat",
+          "rlon"
+        ],
+        "type": "data",
+        "data_type": "float32",
+        "description": "RDPS pressure at the surface, normalized before inference."
+      },
+      "TT850": {
+        "dimensions": [
+          "time",
+          "rlat",
+          "rlon"
+        ],
+        "type": "data",
+        "data_type": "float32",
+        "description": "RDPS air temperature at 850 hPa, normalized before inference."
+      },
+      "GZ500": {
+        "dimensions": [
+          "time",
+          "rlat",
+          "rlon"
+        ],
+        "type": "data",
+        "data_type": "float32",
+        "description": "RDPS geopotential height at 500 hPa, normalized before inference."
+      },
+      "GZ850": {
+        "dimensions": [
+          "time",
+          "rlat",
+          "rlon"
+        ],
+        "type": "data",
+        "data_type": "float32",
+        "description": "RDPS geopotential height at 850 hPa, normalized before inference."
+      },
+      "HU850": {
+        "dimensions": [
+          "time",
+          "rlat",
+          "rlon"
+        ],
+        "type": "data",
+        "data_type": "float32",
+        "description": "RDPS relative humidity at 850 hPa, normalized before inference."
+      },
+      "HU700": {
+        "dimensions": [
+          "time",
+          "rlat",
+          "rlon"
+        ],
+        "type": "data",
+        "data_type": "float32",
+        "description": "RDPS relative humidity at 700 hPa, normalized before inference."
+      },
+      "TD": {
+        "dimensions": [
+          "time",
+          "rlat",
+          "rlon"
+        ],
+        "type": "data",
+        "data_type": "float32",
+        "description": "RDPS dew-point temperature, normalized before inference."
+      },
+      "UU850": {
+        "dimensions": [
+          "time",
+          "rlat",
+          "rlon"
+        ],
+        "type": "data",
+        "data_type": "float32",
+        "description": "RDPS eastward wind component at 850 hPa, normalized before inference."
+      },
+      "VV850": {
+        "dimensions": [
+          "time",
+          "rlat",
+          "rlon"
+        ],
+        "type": "data",
+        "data_type": "float32",
+        "description": "RDPS northward wind component at 850 hPa, normalized before inference."
       },
       "HRDPS_P_TT_10000": {
         "dimensions": [
           "time",
-          "latitude",
-          "longitude",
-          "level"
+          "rlat",
+          "rlon"
         ],
         "type": "data",
-        "data_type": "float32"
+        "data_type": "float32",
+        "description": "HRDPS air temperature at 10 m, reconstructed on the target grid."
       },
       "HRDPS_P_PR_SFC": {
         "dimensions": [
           "time",
-          "latitude",
-          "longitude"
+          "rlat",
+          "rlon"
         ],
         "type": "data",
-        "data_type": "float32"
+        "data_type": "float32",
+        "description": "HRDPS precipitation rate at the surface, reconstructed on the target grid."
+      },
+      "HRDPS_P_UUC_10000": {
+        "dimensions": [
+          "time",
+          "rlat",
+          "rlon"
+        ],
+        "type": "data",
+        "data_type": "float32",
+        "description": "HRDPS eastward wind component at 10 m, reconstructed on the target grid."
+      },
+      "HRDPS_P_VVC_10000": {
+        "dimensions": [
+          "time",
+          "rlat",
+          "rlon"
+        ],
+        "type": "data",
+        "data_type": "float32",
+        "description": "HRDPS northward wind component at 10 m, reconstructed on the target grid."
+      },
+      "orog": {
+        "dimensions": [
+          "rlat",
+          "rlon"
+        ],
+        "type": "data",
+        "data_type": "float32",
+        "description": "Static HRDPS orography on the target rotated grid, aligned to the output patch."
+      },
+      "sftlf": {
+        "dimensions": [
+          "rlat",
+          "rlon"
+        ],
+        "type": "data",
+        "data_type": "float32",
+        "description": "Static HRDPS land-fraction field on the target rotated grid, aligned to the output patch."
+      },
+      "lat": {
+        "dimensions": [
+          "rlat",
+          "rlon"
+        ],
+        "type": "auxiliary",
+        "data_type": "float32",
+        "unit": "degree_north",
+        "description": "Geographic latitude auxiliary coordinate for the rotated grid."
+      },
+      "lon": {
+        "dimensions": [
+          "rlat",
+          "rlon"
+        ],
+        "type": "auxiliary",
+        "data_type": "float32",
+        "unit": "degree_east",
+        "description": "Geographic longitude auxiliary coordinate for the rotated grid."
       }
-    }
+    },
+    "datetime": null
   },
   "links": [
     {
-      "rel": "root",
-      "href": "../../catalog.json",
-      "type": "application/json",
-      "title": "ML Model Catalog"
+      "rel": "derived_from",
+      "href": "https://hirondelle.crim.ca/stac/collections/RDPS_CRIM",
+      "title": "RDPS train samples",
+      "ml-aoi:split": "train",
+      "ml-aoi:role": "feature",
+      "description": "RDPS train-split input samples used as machine-learning features."
     },
     {
-      "rel": "collection",
-      "href": "../collection.json",
-      "type": "application/json",
-      "title": "Machine Learning Model packaging"
+      "rel": "derived_from",
+      "href": "https://hirondelle.crim.ca/stac/collections/HRDPS_CRIM",
+      "title": "HRDPS train samples",
+      "ml-aoi:split": "train",
+      "ml-aoi:role": "label",
+      "description": "HRDPS train-split target samples used as labels and predicted downscaling results."
     },
     {
-      "rel": "parent",
-      "href": "../collection.json",
-      "type": "application/json",
-      "title": "Machine Learning Model packaging"
+      "rel": "derived_from",
+      "href": "https://hirondelle.crim.ca/stac/collections/RDPS_CRIM",
+      "title": "RDPS validate samples",
+      "ml-aoi:split": "validate",
+      "ml-aoi:role": "feature",
+      "description": "RDPS validate-split input samples used as machine-learning features."
+    },
+    {
+      "rel": "derived_from",
+      "href": "https://hirondelle.crim.ca/stac/collections/HRDPS_CRIM",
+      "title": "HRDPS validate samples",
+      "ml-aoi:split": "validate",
+      "ml-aoi:role": "label",
+      "description": "HRDPS validate-split target samples used as labels and predicted downscaling results."
+    },
+    {
+      "rel": "derived_from",
+      "href": "https://hirondelle.crim.ca/stac/collections/RDPS_CRIM",
+      "title": "RDPS test samples",
+      "ml-aoi:split": "test",
+      "ml-aoi:role": "feature",
+      "description": "RDPS test-split input samples used as machine-learning features."
+    },
+    {
+      "rel": "derived_from",
+      "href": "https://hirondelle.crim.ca/stac/collections/HRDPS_CRIM",
+      "title": "HRDPS test samples",
+      "ml-aoi:split": "test",
+      "ml-aoi:role": "label",
+      "description": "HRDPS test-split target samples used as labels and predicted downscaling results."
+    },
+    {
+      "rel": "cite-as",
+      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/804e89a53c78253b4c63175a107cb9aa1bd6ac78/CITATION.cff",
+      "type": "text/yaml",
+      "title": "resoterre citation metadata"
+    },
+    {
+      "rel": "self",
+      "href": "unet_rdps_to_hrdps.json",
+      "type": "application/geo+json"
     }
   ],
   "assets": {
     "model": {
-      "href": "/path/to/models/unet-model.ckpt",
-      "type": "application/octet-stream; application/pytorch",
-      "title": "UNet checkpoint",
-      "description": "UNet trained on RDPS HRDPS downscaling task.",
-      "mlm:artifact_type": "torch.save",
+      "href": "https://huggingface.co/bstdenis/unet-rdps-to-hrdps-downscaling/blob/main/unet_epoch_mebojo_018.safetensors",
+      "type": "application/octet-stream; framework=pytorch",
+      "title": "Epoch 18 U-Net SafeTensors weights",
+      "description": "SafeTensors weights loaded by the resoterre U-Net implementation.",
+      "mlm:artifact_type": "safetensors.torch.save_file",
+      "application:entrypoint": "resoterre.ml.neural_networks_unet:UNet",
+      "file:checksum": "122090e4bbd8583de97cea555072b98479920d1c2c6949daa3254f3c771571cebf6b",
+      "file:size": 39526256,
       "roles": [
         "mlm:model",
-        "mlm:weights"
+        "mlm:weights",
+        "model",
+        "weights",
+        "data"
       ]
     },
     "source_code": {
-      "href": "https://github.com/Ouranosinc/resoterre",
-      "type": "text/html",
-      "title": "Source code for UNet",
-      "description": "GitHub repository containing the PyTorch model and the preprocessing function needed for inference.",
+      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/804e89a53c78253b4c63175a107cb9aa1bd6ac78/scripts/meta_workflows/downscaling/rdps_to_hrdps.smk",
+      "type": "text/x-snakemake",
+      "title": "RDPS-to-HRDPS Snakemake workflow",
+      "description": "Executable Snakemake workflow that preprocesses RDPS data and runs downscaling inference.",
+      "mlm:entrypoint": "snakemake -s scripts/meta_workflows/downscaling/rdps_to_hrdps.smk --config config_yaml=/app/configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml -j1 --directory=/app",
+      "application:entrypoint": "scripts/meta_workflows/downscaling/rdps_to_hrdps.smk",
+      "application:languages": [
+        "Python"
+      ],
+      "file:checksum": "1220fbfe7b7f39796c9e378dc2522a82581ec9024781222327a5d75ba59dc3b32046",
+      "file:size": 1700,
       "roles": [
         "mlm:source_code",
         "code"
+      ]
+    },
+    "configuration": {
+      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/804e89a53c78253b4c63175a107cb9aa1bd6ac78/configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml",
+      "type": "application/yaml",
+      "title": "Training and inference configuration",
+      "description": "Configuration consumed by the Snakemake workflow.",
+      "file:checksum": "1220a34b87d3854e0240380d2026db7eb8ddec651441f1871096bc6da9621d8eca35",
+      "file:size": 3400,
+      "roles": [
+        "configuration",
+        "metadata"
+      ]
+    },
+    "container": {
+      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/804e89a53c78253b4c63175a107cb9aa1bd6ac78/docker/Dockerfile.inference",
+      "type": "text/x-dockerfile",
+      "title": "Inference container definition",
+      "description": "Generic Dockerfile used to build the inference container image.",
+      "application:languages": [
+        "Dockerfile"
+      ],
+      "file:checksum": "12201afe4cb941fb434e8fac2bd83a4ddf3a701993bd050a3bae82584e94b3b0824b",
+      "file:size": 1626,
+      "roles": [
+        "container"
+      ]
+    },
+    "runtime": {
+      "href": "docker://resoterre-inference:0.1.3.dev8",
+      "type": "application/vnd.oci.image.index.v1+json",
+      "title": "resoterre inference container 0.1.3.dev8",
+      "description": "Versioned OCI container that packages PyTorch, Snakemake, the workflow, and model dependencies.",
+      "roles": [
+        "mlm:inference-runtime",
+        "runtime"
+      ]
+    },
+    "citation": {
+      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/804e89a53c78253b4c63175a107cb9aa1bd6ac78/CITATION.cff",
+      "type": "text/yaml",
+      "title": "Citation metadata",
+      "description": "Citation File Format metadata for resoterre.",
+      "file:checksum": "1220ffe80cd84de27fed65be4cd5289bcf00defe4553f2fc7086465228bec4d28476",
+      "file:size": 945,
+      "roles": [
+        "metadata"
       ]
     }
   }

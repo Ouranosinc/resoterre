@@ -377,14 +377,15 @@ class CRCMToZarrFromConfig:
         )
         zarr_datetimes = zarr_datetimes[chunk_idx_start : chunk_idx_end + 1]
         # Manually finding intersection from just year, month, day
-        common_idx_in_netcdf = []
-        for dt_zarr in zarr_datetimes:
-            for i, dt_netcdf in enumerate(list_of_datetimes):
-                if dt_zarr.year == dt_netcdf.year and dt_zarr.month == dt_netcdf.month and dt_zarr.day == dt_netcdf.day:
-                    common_idx_in_netcdf.append(i)
-        if not common_idx_in_netcdf:
+        netcdf_indices_by_date = {(dt.year, dt.month, dt.day): i for i, dt in enumerate(list_of_datetimes)}
+        common_idx_in_netcdf = [
+            netcdf_indices_by_date[(dt_zarr.year, dt_zarr.month, dt_zarr.day)]
+            for dt_zarr in zarr_datetimes
+            if (dt_zarr.year, dt_zarr.month, dt_zarr.day) in netcdf_indices_by_date
+        ]
+        if len(common_idx_in_netcdf) != len(zarr_datetimes):
             logger.warning(
-                "No common time indices found for %s %s %s %s",
+                "Did not find all common time indices for %s %s %s %s",
                 gcm_simulation,
                 variable_name,
                 chunk_idx_start,

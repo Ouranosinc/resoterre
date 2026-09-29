@@ -1,4 +1,4 @@
-"""Module for handling cftime conversion and computations."""
+"""Module for handling cftime conversion and computations for irregular calendars in climate models."""
 
 from datetime import datetime
 from typing import Any
