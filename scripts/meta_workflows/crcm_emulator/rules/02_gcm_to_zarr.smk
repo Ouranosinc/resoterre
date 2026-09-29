@@ -8,6 +8,7 @@ from pathlib import Path
 
 from resoterre.calendar_utils import iter_year_month
 from resoterre.config_utils import config_from_yaml
+from resoterre.experiments.crcm_emulator.cmip6_to_zarr_workflow import get_chunk_indices
 from resoterre.experiments.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig
 
 snakefile_dir = Path(str(workflow.snakefile)).parent
@@ -16,28 +17,26 @@ config_obj = config_from_yaml(CRCMEmulatorConfig, config["config_yaml"])
 init_variable = config_obj.gcm_preprocessing_variables[0]
 init_gcm, init_pathway, init_realization = config_obj.preprocessing_simulations[0]
 init_gcm_str = f"{init_gcm}_{init_pathway}_{init_realization}"
-init_year = config_obj.gcm_preprocessing_start_datetime.year
-init_month = config_obj.gcm_preprocessing_start_datetime.month
-
-wildcard_constraints:
-    year=r"\d{4}",
-    month=r"\d{2}"
-
+chunk_size = config_obj.preprocessing_chunk_size
+chunks_per_task = config_obj.preprocessing_chunks_per_task
 
 def expected_manifests(wildcards):
     list_of_expected_manifests = []
     for simulation in config_obj.preprocessing_simulations:
         simulation_str = f"{simulation[0]}_{simulation[1]}_{simulation[2]}"
-        for year, month in iter_year_month(start_datetime=config_obj.gcm_preprocessing_start_datetime,
-                                           end_datetime=config_obj.gcm_preprocessing_end_datetime):
-            if simulation[1] == "historical" and year >= 2015:
-                continue
-            if simulation[1] != "historical" and year < 2015:
-                continue
+        chunk_indices = get_chunk_indices(
+            gcm=simulation[0],
+            start_datetime=config_obj.gcm_preprocessing_start_datetime,
+            end_datetime=config_obj.gcm_preprocessing_end_datetime,
+            chunk_size=chunk_size,
+            chunks_per_task=chunks_per_task
+        )
+        for chunk_index_tuple in chunk_indices:
+            chunk_str = f"{chunk_index_tuple[0]}_{chunk_index_tuple[1]}"
             for variable_name in config_obj.gcm_preprocessing_variables:
-                full_manifest = f"manifests/gcm_to_zarr_{simulation_str}_{variable_name}_{year}_{month:02d}.done"
+                full_manifest = f"manifests/gcm_to_zarr_{simulation_str}_{variable_name}_{chunk_str}.done"
                 list_of_expected_manifests.append(full_manifest)
-    init_manifest = f"manifests/gcm_to_zarr_{init_gcm_str}_{init_variable}_{init_year}_{init_month:02d}.done"
+    init_manifest = f"manifests/gcm_to_zarr_{init_gcm_str}_{init_variable}_0_{chunk_size * chunks_per_task - 1}.done"
     if not list_of_expected_manifests:
         list_of_expected_manifests.append("manifests/gcm_to_zarr.init.done")
     elif init_manifest in list_of_expected_manifests:
@@ -62,8 +61,8 @@ rule gcm_to_zarr_init:
         init_gcm=init_gcm,
         init_pathway=init_pathway,
         init_realization=init_realization,
-        init_year=init_year,
-        init_month=init_month
+        init_chunk_idx_start=0,
+        init_chunk_idx_end=chunk_size * chunks_per_task - 1
     shell:
         """
         python3 {params.path_script} \
@@ -73,8 +72,8 @@ rule gcm_to_zarr_init:
             --pathway {params.init_pathway} \
             --realization {params.init_realization} \
             --variable_name {params.init_variable_name} \
-            --year {params.init_year} \
-            --month {params.init_month} \
+            --chunk_idx_start {params.init_chunk_idx_start} \
+            --chunk_idx_end {params.init_chunk_idx_end} \
             --initialize
         """
 
@@ -83,7 +82,7 @@ rule gcm_to_zarr:
     input:
         "manifests/gcm_to_zarr.init.done"
     output:
-        touch("manifests/gcm_to_zarr_{gcm}_{pathway}_{realization}_{variable_name}_{year}_{month}.done")
+        touch("manifests/gcm_to_zarr_{gcm}_{pathway}_{realization}_{variable_name}_{i_start}_{i_end}.done")
     params:
         path_script=Path(snakefile_dir, "02_gcm_to_zarr.py"),
         workflow_dir=workflow_dir,
@@ -97,6 +96,6 @@ rule gcm_to_zarr:
             --variable_name {wildcards.variable_name} \
             --gcm {wildcards.gcm} \
             --realization {wildcards.realization} \
-            --year {wildcards.year} \
-            --month {wildcards.month}
+            --chunk_idx_start {wildcards.i_start} \
+            --chunk_idx_end {wildcards.i_end}
         """

@@ -9,6 +9,7 @@ Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:us
 
 Changes
 ^^^^^^^
+* Refactor CRCM emulator preprocessing to produce a single zarr archive. (:issue:`132`), (:pull:`126`).
 * Update ``docker/Dockerfile.inference`` to package the regridding weight matrices and geophysical files (``orog.nc``, ``sftlf.nc``) into the inference image alongside the model. (:pull:`86`).
 * Add ``examples/deploy/downscaling_generate_file_list.cwl`` Common Workflow Language process to list the RDPS files required for a given datetime range. (:pull:`86`).
 * Add ``examples/deploy/downscaling_download_files.cwl`` Common Workflow Language process to download a list of files into a local directory. (:pull:`86`).
