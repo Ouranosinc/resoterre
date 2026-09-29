@@ -69,6 +69,8 @@ class CRCMEmulatorConfig:
         End datetime for GCM preprocessing.
     gcm_preprocessing_variables : list[str]
         List of GCM variables to preprocess.
+    nan_replacement : bool
+        Whether to replace NaN values in the data.
     gcm_preprocessing_allow_overwrite : bool
         Whether to allow overwriting existing preprocessed GCM data.
     path_crcm_preprocessing : Path | None
@@ -152,6 +154,7 @@ class CRCMEmulatorConfig:
     gcm_preprocessing_start_datetime: datetime | None = None
     gcm_preprocessing_end_datetime: datetime | None = None
     gcm_preprocessing_variables: list[str] = field(default_factory=list)
+    nan_replacement: bool = False
     gcm_preprocessing_allow_overwrite: bool = False
     path_crcm_preprocessing: Path | None = None
     crcm_preprocessing_start_datetime: datetime | None = None

@@ -11,6 +11,7 @@ import xarray
 from scipy.sparse import load_npz, save_npz
 
 from resoterre.data_management.geo_utils import GridSpecification, compute_grids_area_weights
+from resoterre.data_management.ndimage_utils import replace_nan_with_window_average
 from resoterre.datasets.cmip6.cmip6_utils import (
     gcm_calendars,
     gcm_variable_levels,
@@ -173,7 +174,6 @@ class GCMToZarrFromConfig:
             if path_output.exists() and not self.config.gcm_preprocessing_allow_overwrite:
                 raise FileExistsError(f"Output file already exists: {path_output}")
             # ToDo: add GCM information to CF metadata
-            # ToDo: this function was not modified for full period format
             crcm_emulator_input_format(
                 path_output=path_output,
                 start_datetime=self.config.gcm_preprocessing_start_datetime,
@@ -285,6 +285,8 @@ class GCMToZarrFromConfig:
         chunk_idx_start: int,
         time_slice: slice,
         level: float | None = None,
+        nan_replacement: bool = False,
+        write_mask: bool = False,
     ) -> None:
         """
         Write a time slice of GCM data to the CRCM zarr dataset, regridding if necessary.
@@ -307,6 +309,10 @@ class GCMToZarrFromConfig:
             Slice object specifying the time indices to write.
         level : float, optional
             Vertical level to select from the GCM data, if applicable.
+        nan_replacement : bool
+            Whether to replace NaN values in the data using a windowed average.
+        write_mask : bool
+            Whether to write the mask.
         """
         # ToDo: should I do this in smaller (8) chunks?
         if level is None:
@@ -327,14 +333,33 @@ class GCMToZarrFromConfig:
         else:
             regrid_data = data
         validate_cmip6_data(regrid_data, variable_name_in_zarr)
+        mask = None
+        if write_mask:
+            mask = np.isnan(regrid_data)
+        # Hard coding that the 1000hPa level does not use NaN replacement
+        if nan_replacement and level != 100000.0:
+            # ToDo: fetch window_size from data analysis (as a function of vertical level)
+            # ToDo: can this be done without a loop?
+            for i in range(regrid_data.shape[0]):
+                regrid_data[i, :, :] = replace_nan_with_window_average(
+                    regrid_data[i, :, :], window_size=15, allow_nan_output=False
+                )
         write_crcm_time_slice_of_data(
             path_output=path_output,
             variable_name=variable_name_in_zarr,
             data=regrid_data,
             time_slice=slice(chunk_idx_start, chunk_idx_start + time_slice.stop - time_slice.start),
+            mask=mask,
         )
 
-    def __call__(self, gcm_simulation: list[str], variable_name: str, chunk_idx_start: int, chunk_idx_end: int) -> None:
+    def __call__(
+        self,
+        gcm_simulation: list[str],
+        variable_name: str,
+        chunk_idx_start: int,
+        chunk_idx_end: int,
+        write_mask: bool = False,
+    ) -> None:
         """
         Convert CMIP6 data to zarr format for a given GCM simulation, variable, and chunk indices.
 
@@ -348,6 +373,8 @@ class GCMToZarrFromConfig:
             Start index of the time chunk to process.
         chunk_idx_end : int
             End index of the time chunk to process.
+        write_mask : bool
+            Whether to write the mask.
         """
         nc_files = self.nc_files(gcm_simulation, variable_name)
         if len(nc_files) == 0:
@@ -388,7 +415,6 @@ class GCMToZarrFromConfig:
         path_output = self.zarr_path(gcm_simulation)
 
         # ToDo: this section is too repetitive
-        gcm_variable_levels_dict = gcm_variable_levels()
         if variable_name in gcm_vertical_variables:
             for level in gcm_vertical_levels:
                 self.write_crcm_time_slice_of_data_with_regrid(
@@ -400,6 +426,8 @@ class GCMToZarrFromConfig:
                     chunk_idx_start=chunk_idx_start,
                     time_slice=my_slice,
                     level=level,
+                    nan_replacement=self.config.nan_replacement,
+                    write_mask=write_mask,
                 )
                 self.debug_figures(
                     xarray_dataset_gcm,
@@ -411,26 +439,28 @@ class GCMToZarrFromConfig:
                     chunk_idx_start=chunk_idx_start,
                     level=int(level),
                 )
-        elif variable_name in gcm_variable_levels_dict:
+        elif variable_name in gcm_variable_levels:
             self.write_crcm_time_slice_of_data_with_regrid(
                 path_output=path_output,
                 gcm_simulation=gcm_simulation,
                 xarray_dataset_gcm=xarray_dataset_gcm,
-                variable_name_in_zarr=gcm_variable_levels_dict[variable_name]["variable_name"],
+                variable_name_in_zarr=gcm_variable_levels[variable_name]["variable_name"],
                 variable_name_in_netcdf=variable_name,
                 chunk_idx_start=chunk_idx_start,
                 time_slice=my_slice,
-                level=int(gcm_variable_levels_dict[variable_name]["level"]),
+                level=int(gcm_variable_levels[variable_name]["level"]),
+                nan_replacement=self.config.nan_replacement,
+                write_mask=write_mask,
             )
             self.debug_figures(
                 xarray_dataset_gcm,
                 gcm_simulation,
-                gcm_variable_levels_dict[variable_name]["variable_name"],
+                gcm_variable_levels[variable_name]["variable_name"],
                 variable_name,
                 list_of_datetimes,
                 list_of_datetimes_slice=list_of_datetimes[my_slice],
                 chunk_idx_start=chunk_idx_start,
-                level=int(gcm_variable_levels_dict[variable_name]["level"]),
+                level=int(gcm_variable_levels[variable_name]["level"]),
             )
         else:
             self.write_crcm_time_slice_of_data_with_regrid(
@@ -441,6 +471,7 @@ class GCMToZarrFromConfig:
                 variable_name_in_netcdf=variable_name,
                 chunk_idx_start=chunk_idx_start,
                 time_slice=my_slice,
+                nan_replacement=self.config.nan_replacement,
             )
             self.debug_figures(
                 xarray_dataset_gcm,
