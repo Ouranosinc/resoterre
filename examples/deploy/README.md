@@ -34,7 +34,7 @@ The `downscaling_unet.cwl` file describes a Common Workflow Language (CWL) Comma
   - `end_datetime` (string, optional): ISO 8601 datetime overriding the config's `inference_end_datetime`.
 
 - **Outputs:**
-	- `inference_output` (Directory): The `inference_<experiment_name>.zarr` directory containing the downscaled inference results.
+  - `inference_output` (Directory): The `inference_<experiment_name>.zarr` directory containing the downscaled inference results.
 
 ### Requirements & Hints
 
@@ -102,24 +102,26 @@ When running without GPU, change `inference_device: cuda` to `inference_device: 
 To deploy the UNet process to a running Weaver instance:
 
 ```bash
-weaver deploy -u `<WEAVER_URL>` --cwl `<PATH_TO>/downscaling_unet.cwl` --id unet
+weaver deploy -u '<WEAVER_URL>' --cwl '<PATH_TO>/downscaling_unet.cwl' --id unet
 ```
 
 
-Replace `<WEAVER_URL>` with your Weaver instance URL (e.g., `http://localhost:4001/`), and `<PATH_TO>` with the path to your CWL and YAML file.
+Replace `<WEAVER_URL>` with your Weaver instance URL (e.g., `http://localhost:4001/`),
+and `<PATH_TO>` with the path to your CWL file.
 
 ## Executing the Process with Weaver
 
 To execute the deployed UNet process using Weaver:
 
 ```bash
-weaver execute -u `<WEAVER_URL>` --id unet -I `<PATH_TO>/execute_unet_cwl_schema.yml`
+weaver execute -u '<WEAVER_URL>' --id unet -I '<PATH_TO>/execute_unet_cwl_schema.yml'
 ```
 
 Replace `<WEAVER_URL>` and `<PATH_TO>` as appropriate for your environment.
 
 
-When executing a process using Weaver, the paths specified in `execute_unet_cwl_schema.yml` must point to files or directories that are **accessible for download** by the Weaver instance.
+When executing a process using Weaver, the input `path` specified in `execute_unet_cwl_schema.yml`
+must point to files or directories that are **accessible for download** by the Weaver instance.
 
 Supported sources include:
 
@@ -127,7 +129,11 @@ Supported sources include:
 - **AWS S3 Buckets**: Files referenced directly from S3 ([see Weaver docs](https://pavics-weaver.readthedocs.io/en/latest/processes.html#aws-s3-bucket-references)).
 - **Vault Upload / Local Files**: Weaver supports a temporary "Vault Upload" feature for File inputs, which also handles local files within the WPS workdir/outdir for job staging ([see details](https://pavics-weaver.readthedocs.io/en/latest/processes.html#file-vault-inputs)).
 
-### How to start a simple file server (if needed)
+### How to start a simple file server
+
+> [!NOTE]
+> These steps are relevant if running a local instance of Weaver (e.g., for testing and debuging operations).
+> If using a remote server, this should be skipped since the server would provided its own file access strategy.
 
 ```bash
 python3 -m http.server 4004 -b <ip> -d <PATH_TO_FOLDER>/
