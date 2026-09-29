@@ -132,7 +132,7 @@ Supported sources include:
 ### How to start a simple file server
 
 > [!NOTE]
-> These steps are relevant if running a local instance of Weaver (e.g., for testing and debuging operations).
+> These steps are relevant if running a local instance of Weaver (e.g., for testing and debugging operations).
 > If using a remote server, this should be skipped since the server would provided its own file access strategy.
 
 ```bash
