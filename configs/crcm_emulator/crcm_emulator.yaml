@@ -88,12 +88,14 @@ debug_gcm_figures:
   - [ "CNRM-ESM2-1", "ssp245", "r1i1p1f2", "psl", 2025, 7, 24 ]
 
 # Comet ML experiment logger, locally export COMET_API_KEY=YOUR_KEY
+# If Comet ML fails to auto-detect the git repository (e.g. for commit/branch metadata),
+# also export COMET_GIT_DIRECTORY=/path/to/resoterre
 logger_config:
   type: ExperimentLogger # same as what's used by register_config
   disabled: true
   project_name: rcm-emulator-ouranous
   workspace: mila-amlrt
-  experiment_name: initial_unet_training
+  # experiment_name is not set here; it defaults to the top-level experiment_name (see crcm_emulator_parse_config)
   tags:
     - crcm_emulator
     - first experiment

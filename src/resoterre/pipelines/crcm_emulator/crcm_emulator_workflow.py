@@ -1,7 +1,7 @@
 """Workflow components for the CRCM emulation task."""
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -213,11 +213,23 @@ def crcm_emulator_parse_config(config: CRCMEmulatorConfig | Path | str) -> CRCME
     -------
     CRCMEmulatorConfig
         Parsed CRCM emulator configuration object.
+
+    Notes
+    -----
+    If ``logger_config.experiment_name`` is not explicitly set, it is populated from the
+    top-level ``experiment_name`` so that the Comet ML experiment name matches the
+    experiment's own name by default.
     """
     if isinstance(config, CRCMEmulatorConfig):
-        return config
+        parsed_config = config
     else:
-        return config_from_yaml(CRCMEmulatorConfig, config)
+        parsed_config = config_from_yaml(CRCMEmulatorConfig, config)
+    if parsed_config.logger_config is not None and parsed_config.logger_config.experiment_name is None:
+        parsed_config = replace(
+            parsed_config,
+            logger_config=replace(parsed_config.logger_config, experiment_name=parsed_config.experiment_name),
+        )
+    return parsed_config
 
 
 class CRCMToZarrFromConfig:
