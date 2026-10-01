@@ -600,9 +600,9 @@ tomlkit==0.13.0 \
     # via
     #   bump-my-version
     #   pylint
-tox==4.58.0 \
-    --hash=sha256:ab0b126a04dd56bc18e6d216386db09335247f2289b54cf534deb5c4ae3a8d2e \
-    --hash=sha256:dcae21f5f015f3a67658e35644cce0d1aa0dedcd06f3927f95d84e1717f6cea5
+tox==4.64.1 \
+    --hash=sha256:3089cfb112f8c5a1fcc652b49e4c708bb00cbaa7c908078ebe470e08f112de4c \
+    --hash=sha256:d10dd88c32e9f15f0ec831f9ebacb9b253f671fd1287d49bead2852fc6225271
     # via
     #   -r requirements_ci.in
     #   tox-gh
@@ -630,6 +630,7 @@ typing-extensions==4.15.0 \
     #   pydantic
     #   pydantic-core
     #   rich-click
+    #   tox
     #   tox-gh
     #   typing-inspection
 typing-inspection==0.4.2 \
