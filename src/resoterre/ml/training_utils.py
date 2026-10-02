@@ -126,7 +126,7 @@ class NNTraining(ABC):
         self.training_metrics_monitor = training_metrics_monitor or []
         self.validation_metrics_monitor = validation_metrics_monitor or []
         self.validation_metric_mode = validation_metric_mode
-        self.experiment_logger = CometMLLogger(logger_config or ExperimentLoggerConfig(disabled=True))
+        self.experiment_logger = CometMLLogger(logger_config)
         self.models: dict[str, torch.nn.Module] = {}
         self.optimizers: dict[str, torch.optim.Optimizer] = {}
         self.lr_schedulers: dict[str, torch.optim.lr_scheduler._LRScheduler] = {}

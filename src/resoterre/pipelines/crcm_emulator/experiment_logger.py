@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import comet_ml
+
 from resoterre.config_utils import register_config
 
 
@@ -77,8 +79,6 @@ class CometMLLogger:
         comet_ml.Experiment | comet_ml.OfflineExperiment
             The created Comet ML experiment instance.
         """
-        import comet_ml
-
         experiment_kwargs: dict[str, Any] = {
             "api_key": self.config.api_key,
             "project_name": self.config.project_name,
