@@ -1,17 +1,30 @@
 """Module for plotting CRCM emulator data analysis results."""
 
 import logging
+from collections.abc import Iterable
+from pathlib import Path
 
 import dask
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import xarray as xr
-import matplotlib.pyplot as plt
-from pathlib import Path
-from collections.abc import Iterable
-
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from resoterre.data_analysis.data_analysis_utils import first_sample, variable_pretty_label
+
+from resoterre.data_analysis.gcm_vs_rcm import SingleVarStats
+from resoterre.data_analysis.utils import first_sample, variable_family, variable_pretty_label
+
+
+# Variable family mapped to the range-and-mean figure it shares.
+# Families not listed, such as psl, each get their own figure.
+RANGE_AND_MEAN_GROUPS: dict[str, str] = {
+    "hus": "hus",
+    "pr": "pr",
+    "ta": "ta",
+    "ua": "ua_va",
+    "va": "ua_va",
+    "zg": "zg",
+}
 
 
 def scenario_from_sim(sim: str) -> str:
@@ -59,9 +72,7 @@ def sim_labels(sims: Iterable[str]) -> dict[str, str]:
     for sim in dict.fromkeys(sims):
         sims_by_scenario.setdefault(scenario_from_sim(sim), []).append(sim)
     return {
-        sim: (scenario if len(group) == 1 else sim)
-        for scenario, group in sims_by_scenario.items()
-        for sim in group
+        sim: (scenario if len(group) == 1 else sim) for scenario, group in sims_by_scenario.items() for sim in group
     }
 
 
@@ -82,11 +93,11 @@ def _save_fig(fig: plt.Figure, path: Path | str, logger: logging.Logger) -> None
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path)
     plt.close(fig)
-    logger.info(f"Saved plot to {path}")
+    logger.info("Saved plot to %s", path)
 
 
 def visualize_gcm_vs_coarsened_rcm(
-    stats_per_var: dict[tuple[str, str], dict],
+    stats_per_var: dict[tuple[str, str], SingleVarStats],
     output_dir: Path | str,
     logger: logging.Logger,
 ) -> None:
@@ -94,13 +105,13 @@ def visualize_gcm_vs_coarsened_rcm(
     Plot GCM fields against coarsened RCM data on the GCM grid.
 
     Saves a 2×3 figure for each ``(simulation, gcm_variable)`` entry in
-    ``pair_store``: time means, climatological difference, first-time samples,
+    ``stats_per_var``: time means, climatological difference, first-time samples,
     and a histogram of pixel differences.
 
     Parameters
     ----------
-    stats_per_var : dict[tuple[str, str], dict]
-        Comparison results from ``compare_gcm_vs_coarsened_rcm``, including
+    stats_per_var : dict[tuple[str, str], SingleVarStats]
+        Comparison results from ``analyze_gcm_vs_coarsened_crcm``, including
         ``gcm``, ``rcm``, ``diff``, and climatology fields.
     output_dir : Path | str
         Directory where the plots are written.
@@ -112,15 +123,17 @@ def visualize_gcm_vs_coarsened_rcm(
     labels = sim_labels(sim for sim, _ in stats_per_var)
 
     bias_lim_by_rcm: dict[str, float] = {}
+
+    # set colourbar limits to be consistent across all plots
     for stats in stats_per_var.values():
-        rcm_var = stats["rcm_variable"]
+        rcm_var = stats["rcm_var"]
         diff_clim_vals = np.asarray(stats["rcm_climatology"] - stats["gcm_climatology"])
         p98 = float(np.nanpercentile(np.abs(diff_clim_vals), 98))
         if np.isfinite(p98):
-            bias_lim_by_rcm[rcm_var] = max(bias_lim_by_rcm.get(rcm_var, 1.0), p98)
+            bias_lim_by_rcm[rcm_var] = max(bias_lim_by_rcm.get(rcm_var, 0.0), p98)
 
     for (sim, gvar), stats in stats_per_var.items():
-        rcm_var = stats["rcm_variable"]
+        rcm_var = stats["rcm_var"]
         gcm, rcm, diff = stats["gcm"], stats["rcm"], stats["diff"]
         valid = diff.notnull()
         sample_step = max(1, int(gcm.sizes["time"]) // 400)
@@ -141,7 +154,11 @@ def visualize_gcm_vs_coarsened_rcm(
         gcm_climatology.plot(ax=axes[0, 0], vmin=vmin, vmax=vmax, add_colorbar=False)
         rcm_climatology.plot(ax=axes[0, 1], vmin=vmin, vmax=vmax, add_colorbar=False)
         im_c = diff_clim.plot(
-            ax=axes[0, 2], vmin=-bias_lim, vmax=bias_lim, cmap="RdBu_r", add_colorbar=False,
+            ax=axes[0, 2],
+            vmin=-bias_lim,
+            vmax=bias_lim,
+            cmap="RdBu_r",
+            add_colorbar=False,
         )
         axes[0, 0].set_title("Time-mean GCM")
         axes[0, 1].set_title(f"Time-mean coarsened {rcm_var}")
@@ -167,73 +184,113 @@ def visualize_gcm_vs_coarsened_rcm(
         _save_fig(fig, output_dir / f"gcm_vs_rcm_{gvar}_{labels[sim]}.png", logger)
 
 
-def visualize_range_and_mean(
-    stats_df: pd.DataFrame,
-    output_dir: Path | str,
-    logger: logging.Logger,
-) -> None:
+def range_and_mean_group(variable: str) -> str:
     """
-    Plot min–max range and mean for each variable in each simulation.
+    Return the range-and-mean plot group for a variable name.
 
     Parameters
     ----------
-    stats_df : pandas.DataFrame
-        Summary statistics including ``min``, ``max``, and ``mean``.
-    output_dir : Path | str
+    variable : str
+        Variable name, such as ``hus850`` or ``tas``.
+
+    Returns
+    -------
+    str
+        Group ID used in the output filename.
+    """
+    family = variable_family(variable)
+    return RANGE_AND_MEAN_GROUPS.get(family, family)
+
+
+def _plot_range_and_mean_group(
+    plot_df: pd.DataFrame,
+    group_id: str,
+    output_dir: Path,
+    logger: logging.Logger,
+) -> None:
+    """
+    Draw one min–max range and mean figure for a variable group.
+
+    Parameters
+    ----------
+    plot_df : pandas.DataFrame
+        Rows for a single group, already sorted.
+    group_id : str
+        Group ID used in the title and filename.
+    output_dir : Path
         Directory where the plot is written.
     logger : logging.Logger
         Logger for logging output.
     """
-    logger.info("Visualizing range and mean")
-
-    plot_df = stats_df.copy()
-
-    plot_df["sim_short"] = plot_df["sim"].map(scenario_from_sim)
-
-    # Sort by variable and scenario for consistent plotting order
-    plot_df = plot_df.sort_values(["variable", "sim_short"]).reset_index(drop=True)
-
-    fig, ax = plt.subplots(figsize=(13, 6))
+    fig, ax = plt.subplots(figsize=(13, max(4.0, 0.35 * len(plot_df) + 2.0)))
     y = np.arange(len(plot_df))
 
-    # Map each variable to a colour
     variables = list(plot_df["variable"].unique())
     cmap = plt.colormaps["tab10"]
     var_colors = {var: cmap(i % 10)[:3] for i, var in enumerate(variables)}
 
-    # Mix colour with white so historical is lighter than ssp245 for the same variable
     hist_mix = 0.5
     base = np.array([var_colors[v] for v in plot_df["variable"]])
     is_hist = plot_df["sim_short"].eq("historical").to_numpy()[:, None]
     colors = np.where(is_hist, (1.0 - hist_mix) * base + hist_mix, base)
 
-    def model_prefix(row):
-        return "GCM" if row["model"].lower() == "gcm" else "CRCM"
-
-    y_labels = plot_df.apply(lambda row: f'{model_prefix(row)} · {row["variable"]} · {row["sim_short"]}', axis=1)
+    y_labels = plot_df.apply(lambda row: f"{row['model'].upper()} · {row['variable']} · {row['sim_short']}", axis=1)
 
     ax.hlines(y, plot_df["min"], plot_df["max"], color=colors, linewidth=2.5, zorder=1)
     ax.scatter(plot_df["mean"], y, c=colors, s=70, zorder=2, edgecolors="white", linewidths=0.8)
     ax.set_yticks(y)
     ax.set_yticklabels(y_labels)
     ax.set_xlabel("Value")
-    ax.set_title("Data mean (dot) with min–max range")
+    group_id_label = group_id.replace("_", " & ")
+    ax.set_title(f"Data mean (dot) with min–max range — {group_id_label}")
     ax.grid(axis="x", alpha=0.3)
 
-    handles = [
-        ax.plot([], [], color=var_colors[var], linewidth=2.5, label=var)[0]
-        for var in variables
-    ]
+    handles = [ax.plot([], [], color=var_colors[var], linewidth=2.5, label=var)[0] for var in variables]
     ax.legend(
         handles=handles,
         title="Lighter = historical\nDarker = ssp245",
         frameon=False,
         loc="center left",
         bbox_to_anchor=(1.02, 0.5),
-        borderaxespad=0.,
+        borderaxespad=0.0,
     )
     fig.tight_layout(rect=[0, 0, 0.80, 1])
-    _save_fig(fig, Path(output_dir) / "range_and_mean.png", logger)
+    _save_fig(fig, output_dir / f"range_and_mean_{group_id}.png", logger)
+
+
+def visualize_range_and_mean(
+    stats_df: pd.DataFrame,
+    output_dir: Path | str,
+    logger: logging.Logger,
+) -> None:
+    """
+    Plot min–max range and mean, one figure per variable family.
+
+    Groups are ``hus``, ``pr``, ``ta`` (includes ``tas``), ``ua``/``va``
+    (includes ``uas``/``vas``), and ``zg``. Any other family, such as ``psl``,
+    is written to its own file.
+
+    Parameters
+    ----------
+    stats_df : pandas.DataFrame
+        Summary statistics including ``min``, ``max``, and ``mean``.
+    output_dir : Path | str
+        Directory where the plots are written.
+    logger : logging.Logger
+        Logger for logging output.
+    """
+    logger.info("Visualizing range and mean")
+    output_dir = Path(output_dir)
+
+    plot_df = stats_df.copy()
+    plot_df["sim_short"] = plot_df["sim"].map(scenario_from_sim)
+    plot_df["group"] = plot_df["variable"].map(range_and_mean_group)
+    plot_df = plot_df.sort_values(["group", "variable", "sim_short"]).reset_index(drop=True)
+
+    for group_id, group_df in plot_df.groupby("group", sort=False):
+        _plot_range_and_mean_group(
+            group_df.reset_index(drop=True), group_id=str(group_id), output_dir=output_dir, logger=logger
+        )
 
 
 def visualize_temporal_mean_and_sample(

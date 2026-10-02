@@ -1,4 +1,3 @@
-import datetime
 import logging
 
 import numpy as np
@@ -6,34 +5,40 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from resoterre.data_analysis.data_analysis_utils import (
-    analyze_nan_clusters,
-    filter_data,
+from resoterre.data_analysis.gcm_vs_rcm import (
     analyze_gcm_vs_coarsened_crcm,
-    compute_stats,
-    matching_rcm_variable,
+    map_rcm_to_gcm_grid,
+    mean_pool_coarsen,
+    single_var_gcm_vs_crcm,
+)
+from resoterre.data_analysis.nan_clusters import (
+    analyze_nan_clusters,
     max_largest_cluster_pct,
     nan_cluster_sizes,
-    stats_to_dataframe,
-    write_dataframe_to_csv,
-    get_time_period,
-    variable_family,
-    mean_pool_coarsen,
-    map_rcm_to_gcm_grid,
-    stats_gcm_vs_crcm,
-    summarize_data,
-    select_valid_times,
 )
-from resoterre.data_analysis.data_analysis_plots import (
-    visualize_temporal_mean_and_sample,
-    visualize_gcm_vs_coarsened_rcm,
+from resoterre.data_analysis.plots import (
+    range_and_mean_group,
     scenario_from_sim,
     sim_labels,
+    visualize_gcm_vs_coarsened_rcm,
+    visualize_range_and_mean,
+    visualize_temporal_mean_and_sample,
+)
+from resoterre.data_analysis.summary_stats import (
+    compute_stats,
+    filter_data,
+    select_data_by_indices,
+    summarize_data,
+)
+from resoterre.data_analysis.utils import (
+    matching_rcm_variable,
+    variable_family,
+    write_dataframe_to_csv,
 )
 
 
 class _FakeEmulatorDataset:
-    """Minimal stand-in for CRCMEmulatorDataset used by select_valid_data_in_range."""
+    """Minimal stand-in for CRCMEmulatorDataset used by filter_data and summarize_data."""
 
     def __init__(
         self,
@@ -69,8 +74,8 @@ def test_filter_data_keeps_in_window_days():
     data_gcm, data_crcm = filter_data(
         dataset=dataset,
         logger=logging.getLogger("test"),
-        start_date=datetime.datetime(2000, 1, 2),
-        end_date=datetime.datetime(2000, 1, 3),
+        start_date="2000-01-02",
+        end_date="2000-01-03",
     )
 
     assert list(data_gcm) == ["sim_a"]
@@ -95,8 +100,8 @@ def test_filter_data_skips_simulations_outside_window():
     data_gcm, data_crcm = filter_data(
         dataset=dataset,
         logger=logging.getLogger("test"),
-        start_date=datetime.datetime(2000, 1, 2),
-        end_date=datetime.datetime(2000, 1, 3),
+        start_date="2000-01-02",
+        end_date="2000-01-03",
     )
 
     assert list(data_gcm) == ["in_range"]
@@ -120,10 +125,10 @@ def test_filter_data_without_dates_keeps_all_valid_indices_pairs():
     assert data_crcm["sim_a"].sizes["time"] == 3
 
 
-def test_select_valid_times_uses_slice_for_contiguous_indices():
+def test_select_data_by_indices_returns_contiguous_indices():
     ds = _daily_dataset("ta850", "2000-01-01", 5)
 
-    selected = select_valid_times(ds, [1, 2, 3])
+    selected = select_data_by_indices(ds, np.array([1, 2, 3]))
 
     assert selected.sizes["time"] == 3
     np.testing.assert_array_equal(selected["ta850"].values, [1.0, 2.0, 3.0])
@@ -132,14 +137,14 @@ def test_select_valid_times_uses_slice_for_contiguous_indices():
         pd.date_range("2000-01-02", periods=3, freq="D"),
     )
 
-    single = select_valid_times(ds["ta850"], [4])
+    single = select_data_by_indices(ds["ta850"], np.array([4]))
     np.testing.assert_array_equal(single.values, [4.0])
 
 
-def test_select_valid_times_selects_scattered_indices():
+def test_select_data_by_indices_selects_scattered_indices():
     ds = _daily_dataset("ta850", "2000-01-01", 5)
 
-    selected = select_valid_times(ds, [0, 2, 4])
+    selected = select_data_by_indices(ds, np.array([0, 2, 4]))
 
     assert selected.sizes["time"] == 3
     np.testing.assert_array_equal(selected["ta850"].values, [0.0, 2.0, 4.0])
@@ -149,7 +154,7 @@ def test_select_valid_times_selects_scattered_indices():
     )
 
 
-def test_summarize_data_writes_gcm_and_crcm_rows(tmp_path):
+def test_summarize_data(tmp_path):
     gcm = _daily_dataset("ta850", "2000-01-01", 5)
     crcm = _daily_dataset("tas", "2000-01-01", 5)
     dataset = _FakeEmulatorDataset(
@@ -163,15 +168,15 @@ def test_summarize_data_writes_gcm_and_crcm_rows(tmp_path):
         dataset=dataset,
         output_dir=tmp_path,
         logger=logging.getLogger("test"),
-        start_date=datetime.datetime(2000, 1, 2),
-        end_date=datetime.datetime(2000, 1, 3),
+        start_date="2000-01-02",
+        end_date="2000-01-03",
     )
 
     assert list(stats_df.columns) == [
         "sim",
         "model",
         "variable",
-        "n_samples",
+        "n_time_steps",
         "pct_non_nan_values",
         "mean",
         "std",
@@ -179,9 +184,9 @@ def test_summarize_data_writes_gcm_and_crcm_rows(tmp_path):
         "max",
         "range",
     ]
-    assert list(zip(stats_df["model"], stats_df["variable"])) == [("gcm", "ta850"), ("crcm", "tas")]
+    assert list(zip(stats_df["model"], stats_df["variable"], strict=True)) == [("gcm", "ta850"), ("crcm", "tas")]
     assert set(stats_df["sim"]) == {"sim_a"}
-    assert set(stats_df["n_samples"]) == {2}
+    assert set(stats_df["n_time_steps"]) == {2}
     # Filtered days are 2000-01-02 and 2000-01-03, whose values are 1.0 and 2.0.
     assert stats_df[stats_df["model"] == "crcm"]["mean"].values[0] == pytest.approx(1.5)
     assert stats_df[stats_df["model"] == "crcm"]["std"].values[0] == pytest.approx(0.5)
@@ -210,18 +215,11 @@ def test_summarize_data_raises_when_no_days_in_range(tmp_path):
             dataset=dataset,
             output_dir=tmp_path,
             logger=logging.getLogger("test"),
-            start_date=datetime.datetime(1999, 1, 1),
-            end_date=datetime.datetime(1999, 1, 31),
+            start_date="1999-01-01",
+            end_date="1999-01-31",
         )
 
     assert not (tmp_path / "simulation_stats.csv").exists()
-
-
-def test_get_time_period_accepts_python_datetime_against_datetime64():
-    times = xr.DataArray(pd.date_range("2000-01-01", periods=5, freq="D"), dims="time")
-    times.encoding.update({"units": "days since 2000-01-01", "calendar": "standard", "dtype": np.dtype("int64")})
-    mask = get_time_period(times, datetime.datetime(2000, 1, 2), datetime.datetime(2000, 1, 3))
-    np.testing.assert_array_equal(mask, [False, True, True, False, False])
 
 
 def _spatial_dataset(
@@ -302,6 +300,108 @@ def test_variable_family_maps_surface_onto_pressure_level_stem():
     assert variable_family("zg500") == "zg"
 
 
+def test_range_and_mean_group_combines_wind_families():
+    assert range_and_mean_group("hus850") == "hus"
+    assert range_and_mean_group("huss") == "hus"
+    assert range_and_mean_group("pr") == "pr"
+    assert range_and_mean_group("ta850") == "ta"
+    assert range_and_mean_group("tas") == "ta"
+    assert range_and_mean_group("ua850") == "ua_va"
+    assert range_and_mean_group("vas") == "ua_va"
+    assert range_and_mean_group("zg500") == "zg"
+    assert range_and_mean_group("psl") == "psl"
+
+
+def test_visualize_range_and_mean_writes_one_png_per_group(tmp_path):
+    stats_df = pd.DataFrame(
+        [
+            {
+                "sim": "CNRM-ESM2-1_historical_r1i1p1f2",
+                "model": "gcm",
+                "variable": "hus850",
+                "min": 0.0,
+                "max": 0.02,
+                "mean": 0.01,
+            },
+            {
+                "sim": "CNRM-ESM2-1_ssp245_r1i1p1f2",
+                "model": "gcm",
+                "variable": "hus850",
+                "min": 0.0,
+                "max": 0.02,
+                "mean": 0.01,
+            },
+            {
+                "sim": "CNRM-ESM2-1_historical_r1i1p1f2",
+                "model": "gcm",
+                "variable": "ta850",
+                "min": 250.0,
+                "max": 290.0,
+                "mean": 270.0,
+            },
+            {
+                "sim": "CNRM-ESM2-1_historical_r1i1p1f2",
+                "model": "crcm",
+                "variable": "tas",
+                "min": 250.0,
+                "max": 290.0,
+                "mean": 270.0,
+            },
+            {
+                "sim": "CNRM-ESM2-1_historical_r1i1p1f2",
+                "model": "gcm",
+                "variable": "ua850",
+                "min": -10.0,
+                "max": 10.0,
+                "mean": 0.0,
+            },
+            {
+                "sim": "CNRM-ESM2-1_historical_r1i1p1f2",
+                "model": "gcm",
+                "variable": "va850",
+                "min": -10.0,
+                "max": 10.0,
+                "mean": 0.0,
+            },
+            {
+                "sim": "CNRM-ESM2-1_historical_r1i1p1f2",
+                "model": "gcm",
+                "variable": "zg850",
+                "min": 1000.0,
+                "max": 1600.0,
+                "mean": 1400.0,
+            },
+            {
+                "sim": "CNRM-ESM2-1_historical_r1i1p1f2",
+                "model": "gcm",
+                "variable": "pr",
+                "min": 0.0,
+                "max": 0.001,
+                "mean": 0.0001,
+            },
+            {
+                "sim": "CNRM-ESM2-1_historical_r1i1p1f2",
+                "model": "gcm",
+                "variable": "psl",
+                "min": 98000.0,
+                "max": 103000.0,
+                "mean": 101000.0,
+            },
+        ]
+    )
+
+    visualize_range_and_mean(stats_df, tmp_path, logging.getLogger("test"))
+
+    assert {p.name for p in tmp_path.glob("range_and_mean_*.png")} == {
+        "range_and_mean_hus.png",
+        "range_and_mean_pr.png",
+        "range_and_mean_ta.png",
+        "range_and_mean_ua_va.png",
+        "range_and_mean_zg.png",
+        "range_and_mean_psl.png",
+    }
+
+
 def test_matching_rcm_variable_pairs_by_family():
     rcm_variables = ["tas", "pr", "uas", "vas", "huss"]
     assert matching_rcm_variable("ta1000", rcm_variables) == "tas"
@@ -375,20 +475,22 @@ def test_analyze_gcm_vs_coarsened_crcm(tmp_path):
                 {
                     "tas": (
                         ("time", "y", "x"),
-                        np.array([
+                        np.array(
                             [
-                                [0, 0, 1, 1],
-                                [0, 0, 1, 1],
-                                [2, 2, 3, 3],
-                                [2, 2, 3, 3],
-                            ],
-                            [
-                                [4, 4, 5, 5],
-                                [4, 4, 5, 5],
-                                [6, 6, 7, 7],
-                                [6, 6, 7, 7],
-                            ],
-                        ])
+                                [
+                                    [0, 0, 1, 1],
+                                    [0, 0, 1, 1],
+                                    [2, 2, 3, 3],
+                                    [2, 2, 3, 3],
+                                ],
+                                [
+                                    [4, 4, 5, 5],
+                                    [4, 4, 5, 5],
+                                    [6, 6, 7, 7],
+                                    [6, 6, 7, 7],
+                                ],
+                            ]
+                        ),
                     )
                 },
                 coords={
@@ -398,22 +500,20 @@ def test_analyze_gcm_vs_coarsened_crcm(tmp_path):
                 },
             )
         },
-   
         gcm_variables=["ta850"],
         rcm_variables=["tas"],
         coarsen_factor=2,
         output_dir=tmp_path,
         logger=logging.getLogger("test"),
     )
-    
 
     csv_path = tmp_path / "gcm_vs_coarsened_rcm.csv"
     assert csv_path.is_file()
     stats_df = pd.read_csv(csv_path)
     assert list(stats_df.columns) == [
         "sim",
-        "gcm",
-        "rcm",
+        "gcm_var",
+        "rcm_var",
         "n_valid",
         "pct_valid",
         "bias",
@@ -423,8 +523,8 @@ def test_analyze_gcm_vs_coarsened_crcm(tmp_path):
     ]
     assert len(stats_df) == 1
     assert stats_df.loc[0, "sim"] == "historical"
-    assert stats_df.loc[0, "gcm"] == "ta850"
-    assert stats_df.loc[0, "rcm"] == "tas"
+    assert stats_df.loc[0, "gcm_var"] == "ta850"
+    assert stats_df.loc[0, "rcm_var"] == "tas"
     assert list(stats_per_var) == [("historical", "ta850")]
 
     assert stats_per_var[("historical", "ta850")]["n_valid"] == 8
@@ -466,7 +566,7 @@ def test_compare_gcm_vs_coarsened_rcm_skips_unpaired_variables(tmp_path):
 
     assert set(stats_per_var) == {("historical", "ta850"), ("historical", "ua850")}
     stats_df = pd.read_csv(tmp_path / "gcm_vs_coarsened_rcm.csv")
-    assert set(zip(stats_df["gcm"], stats_df["rcm"])) == {("ta850", "tas"), ("ua850", "uas")}
+    assert set(zip(stats_df["gcm_var"], stats_df["rcm_var"], strict=True)) == {("ta850", "tas"), ("ua850", "uas")}
 
 
 def test_filter_data_keeps_gcm_and_crcm_indices_paired():
@@ -489,21 +589,24 @@ def test_filter_data_keeps_gcm_and_crcm_indices_paired():
 
     # test only one start_date value raises error
     with pytest.raises(ValueError):
-        filter_data(dataset, logging.getLogger("test"), start_date=datetime.datetime(2000, 1, 1))
+        filter_data(dataset, logging.getLogger("test"), start_date="2000-01-01")
 
 
 def test_compare_gcm_rcm_recovers_a_known_offset():
     gcm = _spatial_dataset("tas", "2000-01-01", 4)["tas"]
     rcm = gcm + 2.5
 
-    stats = stats_gcm_vs_crcm(gcm, rcm)
+    stats = single_var_gcm_vs_crcm(gcm, rcm, "tas")
 
+    assert stats["rcm_var"] == "tas"
     assert stats["n_valid"] == gcm.size
     assert stats["pct_valid_pixels"] == 100.0
     assert stats["bias"] == pytest.approx(2.5)
     assert stats["mae"] == pytest.approx(2.5)
     assert stats["rmse"] == pytest.approx(2.5)
     assert stats["pearson_r_clim"] == pytest.approx(1.0)
+    xr.testing.assert_equal(stats["gcm"], gcm)
+    xr.testing.assert_equal(stats["rcm"], rcm)
 
 
 def test_compare_gcm_rcm_ignores_pixels_missing_in_either_model():
@@ -511,8 +614,9 @@ def test_compare_gcm_rcm_ignores_pixels_missing_in_either_model():
     rcm = gcm + 1.0
     rcm = rcm.where(rcm["x"] > 0)  # drop one column of the RCM field
 
-    stats = stats_gcm_vs_crcm(gcm, rcm)
+    stats = single_var_gcm_vs_crcm(gcm, rcm, "tas")
 
+    assert stats["rcm_var"] == "tas"
     assert stats["n_valid"] < gcm.size
     assert stats["bias"] == pytest.approx(1.0)
 
@@ -541,7 +645,7 @@ def test_max_largest_cluster_pct_matches_across_block_sizes():
     mask[2, 0:2, 0:2] = True  # 4 of 16 pixels -> 25%
     mask_da = xr.DataArray(mask, dims=("time", "y", "x"))
 
-    assert max_largest_cluster_pct(mask) == pytest.approx(25.0)
+    assert max_largest_cluster_pct(mask_da) == pytest.approx(25.0)
     # Streaming a DataArray in blocks must give the same answer as one array.
     assert max_largest_cluster_pct(mask_da, block_size=1) == pytest.approx(25.0)
     assert max_largest_cluster_pct(mask_da, block_size=2) == pytest.approx(25.0)
@@ -563,11 +667,10 @@ def test_compute_stats_summary_matches_numpy():
     ds = _spatial_dataset("tas", "2000-01-01", 4)
     values = ds["tas"].values
 
-    stats = compute_stats(ds)
-    stats_df = stats_to_dataframe("sim_a", "gcm", stats, logging.getLogger("test"))
+    stats_df = compute_stats(ds, ["tas"], "sim_a", "gcm", logging.getLogger("test"))
 
     assert list(stats_df["variable"]) == ["tas"]
-    assert int(stats_df.loc[0, "n_samples"]) == 4
+    assert int(stats_df.loc[0, "n_time_steps"]) == 4
     assert int(stats_df.loc[0, "pct_non_nan_values"]) == 100
     assert stats_df.loc[0, "mean"] == pytest.approx(float(values.mean()))
     assert stats_df.loc[0, "std"] == pytest.approx(float(values.std()))  # ddof=0
@@ -588,6 +691,7 @@ def test_analyze_nan_clusters(tmp_path):
         variables=["tas"],
         output_dir=tmp_path,
         logger=logging.getLogger("test"),
+        mostly_nan_threshold=0.99,
     )
 
     assert nan_df.loc[0, "n_clusters"] == 2

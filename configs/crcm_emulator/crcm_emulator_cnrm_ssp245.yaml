@@ -99,8 +99,8 @@ num_threads: 2
 training_device: cuda
 
 debug_crcm_figures:
-  - ["CNRM-ESM2-1", "historical", "r1i1p1f2", "tas", 2000, 1, 2]
-  - ["CNRM-ESM2-1", "ssp245", "r1i1p1f2", "uas", 2025, 7, 24]
+  - [ "CNRM-ESM2-1", "historical", "r1i1p1f2", "tas", 2000, 1, 2 ]
+  - [ "CNRM-ESM2-1", "ssp245", "r1i1p1f2", "uas", 2025, 7, 24 ]
 debug_gcm_figures:
-  - ["CNRM-ESM2-1", "historical", "r1i1p1f2", "ta850", 2000, 1, 2]
-  - ["CNRM-ESM2-1", "ssp245", "r1i1p1f2", "psl", 2025, 7, 24]
+  - [ "CNRM-ESM2-1", "historical", "r1i1p1f2", "ta850", 2000, 1, 2 ]
+  - [ "CNRM-ESM2-1", "ssp245", "r1i1p1f2", "psl", 2025, 7, 24 ]

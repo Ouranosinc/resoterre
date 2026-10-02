@@ -43,6 +43,8 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         Maximum number of open xarray datasets to cache.
     apply_normalization : bool
         Whether to apply normalization to the input data.
+    experiment_name : str
+        Name of the experiment.
     """
 
     def __init__(
