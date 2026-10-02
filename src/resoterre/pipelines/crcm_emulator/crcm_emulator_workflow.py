@@ -1,7 +1,7 @@
 """Workflow components for the CRCM emulation task."""
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -17,10 +17,11 @@ from resoterre.datasets.crcm.crcm_utils import (
     validate_crcm_data,
     version_realization_mapping,
 )
-from resoterre.experiments.crcm_emulator.crcm_emulator_zarr import (
+from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import (
     crcm_emulator_output_format,
     write_crcm_time_slice_of_data,
 )
+from resoterre.pipelines.crcm_emulator.experiment_logger import ExperimentLoggerConfig
 from resoterre.plots.nd_plots import CustomPColorMesh
 
 
@@ -133,6 +134,9 @@ class CRCMEmulatorConfig:
     debug_gcm_figures : list[list[str]]
         Debugging GCM figures of the form
         [gcm_name, emission_scenario, ensemble_member, variable_name, year, month, day].
+    logger_config : ExperimentLoggerConfig | None
+        Configuration for the Comet ML experiment logger used during training. If None, a disabled
+        (no-op) logger configuration is used.
     """
 
     experiment_name: str | None = None
@@ -193,6 +197,7 @@ class CRCMEmulatorConfig:
     inference_device: str | None = None
     debug_crcm_figures: list[list[str | int]] = field(default_factory=list)
     debug_gcm_figures: list[list[str | int]] = field(default_factory=list)
+    logger_config: ExperimentLoggerConfig | None = None
 
 
 def crcm_emulator_parse_config(config: CRCMEmulatorConfig | Path | str) -> CRCMEmulatorConfig:
@@ -208,11 +213,23 @@ def crcm_emulator_parse_config(config: CRCMEmulatorConfig | Path | str) -> CRCME
     -------
     CRCMEmulatorConfig
         Parsed CRCM emulator configuration object.
+
+    Notes
+    -----
+    If ``logger_config.experiment_name`` is not explicitly set, it is populated from the
+    top-level ``experiment_name`` so that the Comet ML experiment name matches the
+    experiment's own name by default.
     """
     if isinstance(config, CRCMEmulatorConfig):
-        return config
+        parsed_config = config
     else:
-        return config_from_yaml(CRCMEmulatorConfig, config)
+        parsed_config = config_from_yaml(CRCMEmulatorConfig, config)
+    if parsed_config.logger_config is not None and parsed_config.logger_config.experiment_name is None:
+        parsed_config = replace(
+            parsed_config,
+            logger_config=replace(parsed_config.logger_config, experiment_name=parsed_config.experiment_name),
+        )
+    return parsed_config
 
 
 class CRCMToZarrFromConfig:

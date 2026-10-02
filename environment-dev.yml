@@ -44,3 +44,5 @@ dependencies:
   - types-click >=7.1.0
   - vulture >=2.14
   - watchdog >=6.0.0
+  - pip:
+    - comet_ml >=3.51.0
