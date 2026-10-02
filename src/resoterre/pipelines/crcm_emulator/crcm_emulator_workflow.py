@@ -139,8 +139,13 @@ class CRCMEmulatorConfig:
         (no-op) logger configuration is used.
     """
 
+    normalization_start_date: datetime | None = None
+    normalization_end_date: datetime | None = None
+
     experiment_name: str | None = None
     executing_institution: str = "unspecified"
+    path_data: Path | None = None
+    path_preprocessed: Path | None = None
     path_output: Path | None = None
     path_regridding_weights: Path | None = None
     path_models: Path | None = None

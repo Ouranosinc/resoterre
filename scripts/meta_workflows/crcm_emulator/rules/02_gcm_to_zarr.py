@@ -4,8 +4,8 @@ import argparse
 import logging
 from pathlib import Path
 
-from resoterre.experiments.crcm_emulator.cmip6_to_zarr_workflow import GCMToZarrFromConfig
 from resoterre.logging_utils import start_root_logger
+from resoterre.pipelines.crcm_emulator.cmip6_to_zarr_workflow import GCMToZarrFromConfig
 
 
 logger = logging.getLogger(__name__)

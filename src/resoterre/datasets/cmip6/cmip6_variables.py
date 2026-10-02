@@ -18,6 +18,8 @@ _stats_shortcut = {
     "hus50": [0.0, 0.02, 0.0, 0.02, 0.0, 0.02],
     "hus10": [0.0, 0.02, 0.0, 0.02, 0.0, 0.02],
     "psl": [90000.0, 109000.0, 95000.0, 105000.0, 98000.0, 104000.0],
+    "tas": [198.15, 318.15, 263.15, 293.15, 243.15, 303.15],
+    "pr": [0.0, 0.02, 0.00001, 0.001, 0.0, 0.001],
     "ta1000": [198.15, 318.15, 263.15, 293.15, 253.15, 293.15],
     "ta850": [198.15, 318.15, 263.15, 293.15, 253.15, 293.15],
     "ta700": [198.15, 318.15, 263.15, 293.15, 263.15, 293.15],
@@ -195,6 +197,45 @@ cmip6_variables["vas"] = VariableHandler(
     log_normalize=False,
     normalize_min=_stats_shortcut["vas"][4],
     normalize_max=_stats_shortcut["vas"][5],
+)
+
+cmip6_variables["tas"] = VariableHandler(
+    "tas",
+    "K",
+    netcdf_key="tas",
+    target_cf_units="K",
+    min_value=_stats_shortcut["tas"][0],
+    max_value=_stats_shortcut["tas"][1],
+    mean_min=_stats_shortcut["tas"][2],
+    mean_max=_stats_shortcut["tas"][3],
+    clip_min=None,
+    clip_max=None,
+    nan_min=None,
+    nan_max=None,
+    cumulative=False,
+    log_normalize=False,
+    normalize_min=_stats_shortcut["tas"][4],
+    normalize_max=_stats_shortcut["tas"][5],
+)
+
+cmip6_variables["pr"] = VariableHandler(
+    "pr",
+    "kg m-2 s-1",
+    netcdf_key="pr",
+    target_cf_units="kg m-2 s-1",
+    min_value=_stats_shortcut["pr"][0],
+    max_value=_stats_shortcut["pr"][1],
+    mean_min=_stats_shortcut["pr"][2],
+    mean_max=_stats_shortcut["pr"][3],
+    clip_min=None,
+    clip_max=None,
+    nan_min=None,
+    nan_max=None,
+    cumulative=False,
+    log_normalize=True,
+    normalize_min=_stats_shortcut["pr"][4],
+    normalize_max=_stats_shortcut["pr"][5],
+    normalize_log_offset=1e-8,
 )
 
 cmip6_variables["zg1000"] = VariableHandler(

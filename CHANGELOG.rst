@@ -5,10 +5,12 @@ Changelog
 `Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
 ----------------------------------------------------------------
 
-Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:user:`Zeitsperre`), Nazim Azeli (:user:`Nazim-crim`), Francis Charette-Migneault (:user:`fmigneault`)
+Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:user:`Zeitsperre`), Nazim Azeli (:user:`Nazim-crim`), Francis Charette-Migneault (:user:`fmigneault`), Christina Isaicu (:user:`cisaic`)
 
 Changes
 ^^^^^^^
+* Add ``data_analysis`` package for the CRCM emulator: summary statistics, NaN cluster analysis, GCM versus coarsened RCM comparison, and range, mean, and sample plots (:issue:`91`), (:pull:`133`).
+* Add ``scripts/meta_workflows/crcm_emulator/01_data_analysis.py`` to run data analysis from a CRCM emulator config (:issue:`91`), (:pull:`133`).
 * Refactor CRCM emulator preprocessing to produce a single zarr archive. (:issue:`132`), (:pull:`126`).
 * Add ``CometMLLogger`` and ``ExperimentLoggerConfig`` classes to ``resoterre.pipelines.crcm_emulator.experiment_logger`` and integrate Comet ML experiment tracking (parameters, metrics, images/figures) into the CRCM emulator training pipeline. (:issue:`119`, :pull:`127`).
 * Update ``docker/Dockerfile.inference`` to package the regridding weight matrices and geophysical files (``orog.nc``, ``sftlf.nc``) into the inference image alongside the model. (:pull:`86`).
