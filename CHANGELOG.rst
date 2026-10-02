@@ -9,8 +9,14 @@ Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:us
 
 Changes
 ^^^^^^^
-* Add ``data_analysis`` package for the CRCM emulator: summary statistics, NaN cluster analysis, GCM versus coarsened RCM comparison, and range, mean, and sample plots (:pull:`133`).
-* Add ``scripts/meta_workflows/crcm_emulator/01_data_analysis.py`` to run data analysis from a CRCM emulator config (:pull:`133`).
+* Add ``data_analysis`` package for the CRCM emulator: summary statistics, NaN cluster analysis, GCM versus coarsened RCM comparison, and range, mean, and sample plots (:issue:`91`), (:pull:`133`).
+* Add ``scripts/meta_workflows/crcm_emulator/01_data_analysis.py`` to run data analysis from a CRCM emulator config (:issue:`91`), (:pull:`133`).
+* Refactor CRCM emulator preprocessing to produce a single zarr archive. (:issue:`132`), (:pull:`126`).
+* Add ``CometMLLogger`` and ``ExperimentLoggerConfig`` classes to ``resoterre.pipelines.crcm_emulator.experiment_logger`` and integrate Comet ML experiment tracking (parameters, metrics, images/figures) into the CRCM emulator training pipeline. (:issue:`119`, :pull:`127`).
+* Update ``docker/Dockerfile.inference`` to package the regridding weight matrices and geophysical files (``orog.nc``, ``sftlf.nc``) into the inference image alongside the model. (:pull:`86`).
+* Add ``examples/deploy/downscaling_generate_file_list.cwl`` Common Workflow Language process to list the RDPS files required for a given datetime range. (:pull:`86`).
+* Add ``examples/deploy/downscaling_download_files.cwl`` Common Workflow Language process to download a list of files into a local directory. (:pull:`86`).
+* Add ``examples/deploy/downscaling_unet_workflow.cwl`` Common Workflow Language workflow chaining the file list generation, file download, and UNet inference processes. (:pull:`86`).
 * Drop support for Python 3.10. (:pull:`76`).
 * Add support for Python 3.14. (:pull:`65`).
 * Add ``data_info`` module. (:pull:`52`).

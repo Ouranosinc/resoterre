@@ -9,7 +9,6 @@ path_crcm_data: /Path/to/MRCC5-CMIP6
 # Global parameters
 tile_size: 608
 coarsen_factor: 8
-apply_normalization: false
 normalization_start_date: "1971-01-01"
 normalization_end_date: "2000-12-31"
 

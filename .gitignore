@@ -217,3 +217,12 @@ model/
 
 # Data files
 *.tar.gz
+
+geophysical/
+inputs/
+matrix/
+data/
+dataset/
+output/
+outputs/
+workflow/

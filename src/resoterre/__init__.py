@@ -20,7 +20,7 @@
 
 __author__ = """Blaise Gauvin St-Denis"""
 __email__ = "gauvin-st-denis.blaise@ouranos.ca"
-__version__ = "0.1.3-dev.7"
+__version__ = "0.1.3-dev.9"
 
 from pathlib import Path
 

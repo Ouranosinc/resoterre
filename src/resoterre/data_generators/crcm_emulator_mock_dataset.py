@@ -68,11 +68,11 @@ class CRCMEmulatorMockDataset(td.Dataset):  # type: ignore[misc]
             Dictionary containing the input data, target data, and associated metadata.
         """
         emission_data = {
-            "CO2": 1.0,
-            "CH4": 1.0,
-            "N2O": 1.0,
-            "CFC12": 1.0,
-            "CFC11_eq": 1.0,
+            "CO2": np.array(1.0, dtype=np.float32),
+            "CH4": np.array(1.0, dtype=np.float32),
+            "N2O": np.array(1.0, dtype=np.float32),
+            "CFC12": np.array(1.0, dtype=np.float32),
+            "CFC11_eq": np.array(1.0, dtype=np.float32),
         }
 
         return {
@@ -80,8 +80,8 @@ class CRCMEmulatorMockDataset(td.Dataset):  # type: ignore[misc]
                 np.float32
             ),
             "target": np.random.rand(self.num_output_channels, self.tile_size, self.tile_size).astype(np.float32),
-            "year": np.array(2024),
-            "month": np.array(6),
-            "day": np.array(6),
+            "year": np.array(2024, dtype=np.float32),
+            "month": np.array(6, dtype=np.float32),
+            "day": np.array(6, dtype=np.float32),
             **emission_data,
         }

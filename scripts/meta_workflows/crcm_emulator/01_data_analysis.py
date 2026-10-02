@@ -23,8 +23,8 @@ from resoterre.data_analysis.summary_stats import (
     filter_data,
     summarize_data,
 )
-from resoterre.experiments.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig
 
 
 if __name__ == "__main__":
@@ -61,9 +61,8 @@ if __name__ == "__main__":
         gcm_variables=config.gcm_training_variables,
         crcm_variables=config.crcm_preprocessing_variables,
         time_periods=[[config.crcm_preprocessing_start_datetime, config.crcm_preprocessing_end_datetime]],
-        apply_normalization=config.apply_normalization,
         experiment_name=str(config.experiment_name),
-        max_open_dataset=len(
+        max_open_datasets=len(
             config.preprocessing_simulations
         ),  # to avoid memory errors when datasets get closed on eviction
     )

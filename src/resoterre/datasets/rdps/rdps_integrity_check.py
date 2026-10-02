@@ -31,6 +31,8 @@ class RDPSML1File:
         Datetime corresponding to the file.
     forecast_hour : int, optional
         Forecast hour corresponding to the file.
+    use_flat_rdps_directory_structure : bool, optional
+        Whether to use a flat RDPS directory structure.
 
     Notes
     -----
@@ -43,6 +45,7 @@ class RDPSML1File:
         path_data: Path | str | None = None,
         datetime_input: datetime | None = None,
         forecast_hour: int | None = None,
+        use_flat_rdps_directory_structure: bool = False,
     ) -> None:
         if (path_nc_file is not None) and (path_data is not None):
             raise ValueError("Either path_nc_file or path_data must be provided, not both.")
@@ -50,9 +53,15 @@ class RDPSML1File:
             raise ValueError("Either path_nc_file or path_data must be provided.")
         if (path_data is not None) and ((datetime_input is None) or (forecast_hour is None)):
             raise ValueError("If path_data is provided, datetime_input and forecast_hour must also be provided.")
+        self.use_flat_rdps_directory_structure = use_flat_rdps_directory_structure
         if path_nc_file is not None:
             self.path_nc_file = Path(path_nc_file)
-            self.path_data = self.path_nc_file.parent.parent
+            if self.path_nc_file.stem[0:6] == str(self.path_nc_file.parent):
+                self.use_flat_rdps_directory_structure = False
+                self.path_data = self.path_nc_file.parent.parent
+            else:
+                self.use_flat_rdps_directory_structure = True
+                self.path_data = self.path_nc_file.parent
             self.datetime = datetime.strptime(self.path_nc_file.stem[0:10], "%Y%m%d%H")
             self.forecast_hour = int(self.path_nc_file.stem[12:14])
         elif path_data is not None:
@@ -63,7 +72,7 @@ class RDPSML1File:
             self.forecast_hour = int(forecast_hour)
             self.path_nc_file = Path(
                 self.path_data,
-                f"{self.datetime.strftime('%Y%m')}",
+                "" if self.use_flat_rdps_directory_structure else f"{self.datetime.strftime('%Y%m')}",
                 f"{self.datetime.strftime('%Y%m%d%H')}_{str(self.forecast_hour).zfill(3)}.nc",
             )
         self.forecast_start_str = self.datetime.strftime("%Y%m%d%H")
@@ -95,6 +104,7 @@ class RDPSML1File:
             path_data=self.path_data,
             datetime_input=self.datetime,
             forecast_hour=previous_forecast_hour,
+            use_flat_rdps_directory_structure=self.use_flat_rdps_directory_structure,
         )
 
 

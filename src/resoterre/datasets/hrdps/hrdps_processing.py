@@ -526,7 +526,7 @@ def save_hrdps_zarr_format(
 
     zarr_ds = xarray.open_zarr(path_output)
     time_intersection = np.where(zarr_ds["time"].values == np.array(datetimes, dtype="datetime64[ns]")[0])[0]
-    if not time_intersection:
+    if not time_intersection.size:
         logger.warning("datetime not found in target zarr: %s", datetimes[0])
     idx = int(time_intersection[0])
     is_empty = zarr_ds["is_empty"][:, idx : idx + len(datetimes)].values
@@ -596,6 +596,50 @@ def create_hrdps_grid_spec(
     )
     hrdps_grid_spec.coarsen_tile(key="high_res", key_coarse="coarse", factor=coarsen_factor)
     return hrdps_grid_spec
+
+
+def datetime_to_forecast_files(
+    path_hrdps: Path | str, variable_name: str, current_datetime: datetime
+) -> list[tuple[Path, Any]]:
+    """
+    Convert a datetime to the corresponding forecast files.
+
+    Parameters
+    ----------
+    path_hrdps : Path | str
+        Path to the HRDPS data directory.
+    variable_name : str
+        Name of the HRDPS variable.
+    current_datetime : datetime
+        The current date to process.
+
+    Returns
+    -------
+    list[tuple[Path, Any]]
+        List of forecast file paths and associated slice objects.
+    """
+    if current_datetime.hour != 0 or current_datetime.minute != 0 or current_datetime.second != 0:
+        raise ValueError("current_datetime must be at the start of the day (00:00:00).")
+    # Assuming initial valid forecast time is 7.
+    forecast_files = []
+    next_datetime = current_datetime - timedelta(hours=12)
+    for i in range(5):
+        path_hrdps_file = Path(
+            path_hrdps,
+            "0-12",
+            variable_name,
+            str(next_datetime.year),
+            f"{next_datetime.year}{next_datetime.month:02d}{next_datetime.day:02d}{next_datetime.hour:02d}.nc",
+        )
+        idx_min = 7
+        idx_max = 13
+        if i == 0:
+            idx_min = 12
+        if i == 4:
+            idx_max = 12
+        forecast_files.append((path_hrdps_file, slice(idx_min, idx_max)))
+        next_datetime = next_datetime + timedelta(hours=6)
+    return forecast_files
 
 
 class HRDPSToZarr:
@@ -720,13 +764,70 @@ class HRDPSToZarr:
 
         ds.close()
 
+    def process_day(self, variable_name: str, current_datetime: datetime) -> None:
+        """
+        Process a single day for a given variable and date.
+
+        Parameters
+        ----------
+        variable_name : str
+            Name of the variable to process.
+        current_datetime : datetime
+            Current date to process.
+        """
+        forecast_files = datetime_to_forecast_files(
+            self.config.path_hrdps or "",
+            variable_name,
+            current_datetime,
+        )
+        if self.hrdps_grid_spec is None:
+            self.init_grid_spec()
+        if self.hrdps_grid_spec is None:
+            raise RuntimeError("hrdps_grid_spec is None. This should not happen.")
+        if self.path_hrdps_zarr is None:
+            raise RuntimeError("path_hrdps_zarr is None. This should not happen.")
+        for path_hrdps_file, hrdps_slice in forecast_files:
+            if self.config.path_hrdps is None:
+                if self.config.path_hrdps_geophysical is None:
+                    raise ValueError(
+                        "Either path_hrdps or path_hrdps_geophysical must be specified in the configuration."
+                    )
+                ds = xarray.open_dataset(Path(self.config.path_hrdps_geophysical, f"{variable_name}.nc"))
+            else:
+                hrdps_caspar_file = hrdps_integrity_check.HRDPSCasparFile(path_hrdps_file)
+                dataset_info = hrdps_integrity_check.hrdps_caspar_individual_file_check(
+                    hrdps_caspar_file, forecast_hours=[7, 8, 9, 10, 11, 12]
+                )
+                if not dataset_info._properties.get("valid_for_ml", [False, False, False])[2]:
+                    return
+                ds = xarray.open_dataset(path_hrdps_file)
+            save_hrdps_from_origin(
+                self.path_hrdps_zarr,
+                ds,
+                variable_name=variable_name,
+                t_slice=hrdps_slice,
+                i_slice=self.hrdps_grid_spec.i_slice,
+                j_slice=self.hrdps_grid_spec.j_slice,
+                expected_variables=self.zarr_hrdps_variables,
+                start_datetime=self.config.zarr_start_datetime,
+                end_datetime=self.config.zarr_end_datetime,
+                path_hrdps_geophysical=self.config.path_hrdps_geophysical,
+            )
+            # ToDo: reimplement, also allow changing the forecast step?
+            # tag = [variable_name, current_datetime.year, current_datetime.month, current_datetime.day, forecast_hour]
+            # if tag in self.config.debug_hrdps_to_zarr_figures:
+            #     self.debug_figures(hrdps_caspar_file, ds, variable_name, current_datetime, forecast_hour)
+
+            ds.close()
+        if self.config.compute_upscaled_version:
+            raise NotImplementedError("Upscaled version computation is not implemented yet.")
+
     def __call__(self) -> None:
         """Process all forecast hours for all variables within the specified date range."""
         for variable_name in self.config.hrdps_variables:
             current_day = self.start_day
             while current_day <= self.end_day:
-                for forecast_hour in [0, 6, 12, 18]:
-                    self.process_forecast_hour(variable_name, current_day, forecast_hour)
+                self.process_day(variable_name, current_day)
                 current_day += timedelta(days=1)
 
     def debug_figures(
