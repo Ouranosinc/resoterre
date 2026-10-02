@@ -9,8 +9,8 @@ Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:us
 
 Changes
 ^^^^^^^
-* Add ``data_analysis`` package for the CRCM emulator: summary statistics, NaN cluster analysis, GCM versus coarsened RCM comparison, and range, mean, and sample plots.
-* Add ``scripts/meta_workflows/crcm_emulator/01_data_analysis.py`` to run data analysis from a CRCM emulator config.
+* Add ``data_analysis`` package for the CRCM emulator: summary statistics, NaN cluster analysis, GCM versus coarsened RCM comparison, and range, mean, and sample plots (:pull:`133`).
+* Add ``scripts/meta_workflows/crcm_emulator/01_data_analysis.py`` to run data analysis from a CRCM emulator config (:pull:`133`).
 * Drop support for Python 3.10. (:pull:`76`).
 * Add support for Python 3.14. (:pull:`65`).
 * Add ``data_info`` module. (:pull:`52`).
