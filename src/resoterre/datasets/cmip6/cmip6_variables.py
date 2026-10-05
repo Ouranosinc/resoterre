@@ -1,9 +1,23 @@
 """Specifications for CMIP6 variables."""
 
 import copy
+import csv
+from importlib.resources import files
 
 from resoterre.data_management.variables import VariableHandler, VariableHandlerCollection
 
+
+gcm_vertical_levels: list[float] = [100000.0, 85000.0, 70000.0, 50000.0, 25000.0, 10000.0, 5000.0, 1000.0]
+
+resources = files("resoterre").joinpath("data", "simulation_stats.csv")
+with resources.open("r", encoding="utf-8") as f:
+    csv_data = list(csv.DictReader(f))
+
+_nonnegative_variables = ["hus", "pr", "psl", "ta", "tas"]
+for variable_name in ["hus", "ta"]:
+    _nonnegative_variables.extend(
+        f"{variable_name}{int(vertical_level / 100)}" for vertical_level in gcm_vertical_levels
+    )
 
 # Ranges for North America domain
 # ToDo: validate long term statistics
@@ -47,14 +61,36 @@ _stats_shortcut = {
     "va10": [-40.0, 40.0, -10.0, 10.0, -20.0, 20.0],
     "vas": [-40.0, 40.0, -10.0, 10.0, -20.0, 20.0],
     "zg1000": [-150.0, 600.0, 0.0, 350.0, 0.0, 350.0],
-    "zg850": [1000.0, 2000.0, 1100.0, 1900.0, 1100.0, 1900.0],  # ToDo: compute real statistics
-    "zg700": [1500.0, 4500.0, 2000.0, 4000.0, 2000.0, 4000.0],  # ToDo: compute real statistics
-    "zg500": [2500.0, 8500.0, 3500.0, 7500.0, 3500.0, 7500.0],  # ToDo: compute real statistics
+    "zg850": [],
+    "zg700": [],
+    "zg500": [],
     "zg250": [7500.0, 13500.0, 8500.0, 12500.0, 8500.0, 12500.0],  # ToDo: compute real statistics
     "zg100": [13000.0, 19000.0, 14000.0, 18000.0, 14000.0, 18000.0],  # ToDo: compute real statistics
     "zg50": [17500.0, 23500.0, 18500.0, 22500.0, 18500.0, 22500.0],  # ToDo: compute real statistics
     "zg10": [26000.0, 33000.0, 27000.0, 32000.0, 27000.0, 33000.0],
 }
+
+for csv_import_line in csv_data:
+    if csv_import_line["model"] != "gcm":
+        continue
+    variable_name = csv_import_line["variable"]
+    variable_min = float(csv_import_line["min"])
+    variable_max = float(csv_import_line["max"])
+    normalize_min = float(csv_import_line["mean"]) - 3 * float(csv_import_line["std"])
+    normalize_max = float(csv_import_line["mean"]) + 3 * float(csv_import_line["std"])
+    if variable_name in _nonnegative_variables:
+        if variable_max < 0.0:
+            raise ValueError(f"Variable {variable_name} is nonnegative but has a max value < 0.")
+        variable_min = max(variable_min, 0.0)
+        normalize_min = max(normalize_min, 0.0)
+    _stats_shortcut[variable_name] = [
+        variable_min,
+        variable_max,
+        variable_min,
+        variable_max,
+        normalize_min,
+        normalize_max,
+    ]
 
 cmip6_variables = VariableHandlerCollection()
 
@@ -69,8 +105,8 @@ cmip6_variables["hus1000"] = VariableHandler(
     max_value=_stats_shortcut["hus1000"][1],
     mean_min=_stats_shortcut["hus1000"][2],
     mean_max=_stats_shortcut["hus1000"][3],
-    clip_min=None,
-    clip_max=None,
+    clip_min=0.0,
+    clip_max=1.0,
     nan_min=None,
     nan_max=None,
     cumulative=False,
