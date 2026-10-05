@@ -137,10 +137,14 @@ class CRCMEmulatorConfig:
     logger_config : ExperimentLoggerConfig | None
         Configuration for the Comet ML experiment logger used during training. If None, a disabled
         (no-op) logger configuration is used.
+    normalization_start_date : str | None
+        Start date for normalization of the data.
+    normalization_end_date : str | None
+        End date for normalization of the data.
     """
 
-    normalization_start_date: datetime | None = None
-    normalization_end_date: datetime | None = None
+    normalization_start_date: str | None = None
+    normalization_end_date: str | None = None
 
     experiment_name: str | None = None
     executing_institution: str = "unspecified"

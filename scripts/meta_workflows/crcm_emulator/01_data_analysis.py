@@ -2,15 +2,13 @@
 Performs a data analysis on the CRCM emulator dataset.
 
 To run:
-python 01_data_analysis.py --config config.yaml
-Config file is in the configs folder, directly outside of the project root
+python 01_data_analysis.py --config Path/to/config.yaml
 """
 
 import argparse
 import logging
 from pathlib import Path
 
-from resoterre import PROJECT_ROOT
 from resoterre.config_utils import config_from_yaml
 from resoterre.data_analysis.gcm_vs_rcm import analyze_gcm_vs_coarsened_crcm
 from resoterre.data_analysis.nan_clusters import analyze_nan_clusters
@@ -34,9 +32,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # ===== LOAD CONFIG =====
-    # config stored in configs folder, outside of the project root
-    config_path = PROJECT_ROOT.parent / "configs" / "crcm_emulator" / f"{args.config}"
-    config = config_from_yaml(CRCMEmulatorConfig, config_path)
+    config = config_from_yaml(CRCMEmulatorConfig, args.config)
 
     # ===== LOGGING SETUP =====
     if config.path_output is None:
@@ -75,8 +71,8 @@ if __name__ == "__main__":
         dataset=dataset,
         output_dir=output_dir,
         logger=logger,
-        start_date=str(config.normalization_start_date),
-        end_date=str(config.normalization_end_date),
+        start_date=config.normalization_start_date,
+        end_date=config.normalization_end_date,
     )
 
     visualize_range_and_mean(
