@@ -2,8 +2,24 @@
 Changelog
 =========
 
-`Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
-----------------------------------------------------------------
+..
+    `Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
+    ----------------------------------------------------------------
+
+    Contributors:
+
+    Changes
+    ^^^^^^^
+    * No change.
+
+    Fixes
+    ^^^^^
+    * No change.
+
+.. _changes_0.1.3-dev.10:
+
+`v0.1.3-dev.10 <https://github.com/Ouranosinc/resoterre/tree/v0.1.3-dev.10>`_ (2026-10-05)
+----------------------------------------------------------------------------
 
 Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:user:`Zeitsperre`), Nazim Azeli (:user:`Nazim-crim`), Francis Charette-Migneault (:user:`fmigneault`)
 
