@@ -8,7 +8,8 @@
     "https://stac-extensions.github.io/file/v2.1.0/schema.json",
     "https://stac-extensions.github.io/datacube/v2.3.0/schema.json",
     "https://stac-extensions.github.io/ml-aoi/v0.2.0/schema.json",
-    "https://stac-extensions.github.io/application/v0.1.0/schema.json"
+    "https://stac-extensions.github.io/application/v0.1.0/schema.json",
+    "https://stac-extensions.github.io/vcs/v0.1.0/schema.json"
   ],
   "id": "unet_rdps_to_hrdps",
   "geometry": {
@@ -459,6 +460,9 @@
         "description": "Geographic longitude auxiliary coordinate for the rotated grid."
       }
     },
+    "vcs:type": "git",
+    "vcs:branch": "main",
+    "vcs:revision": "5d4d884a775fb84ea9b12404c47aefc5ee8d8fa8",
     "datetime": null
   },
   "links": [
@@ -515,6 +519,74 @@
       "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/5d4d884a775fb84ea9b12404c47aefc5ee8d8fa8/CITATION.cff",
       "type": "text/yaml",
       "title": "resoterre citation metadata"
+    },
+    {
+      "rel": "application",
+      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/5d4d884a775fb84ea9b12404c47aefc5ee8d8fa8/examples/deploy/downscaling_unet_workflow.cwl",
+      "type": "application/cwl+yaml",
+      "title": "RDPS-to-HRDPS downscaling CWL workflow",
+      "file:size": 2624,
+      "file:checksum": "122054639a4072d5fb7e2a0039975ca8446e9fc3e95e91c91f9f4b37bebd3e798937",
+      "description": "CWL Workflow chaining the file listing, download and U-Net inference steps.",
+      "application:languages": [
+        "Common Workflow Language"
+      ],
+      "vcs:type": "git",
+      "vcs:branch": "main",
+      "vcs:revision": "5d4d884a775fb84ea9b12404c47aefc5ee8d8fa8"
+    },
+    {
+      "rel": "application",
+      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/5d4d884a775fb84ea9b12404c47aefc5ee8d8fa8/examples/deploy/downscaling_generate_file_list.cwl",
+      "type": "application/cwl+yaml",
+      "title": "RDPS file listing CWL tool",
+      "file:size": 2284,
+      "file:checksum": "1220b41206d6ae38ceedfb499c179851d670555a73bfe7a70819ba47b511c1f78f01",
+      "description": "CWL CommandLineTool listing the RDPS files required for a requested datetime range.",
+      "application:languages": [
+        "Common Workflow Language"
+      ],
+      "vcs:type": "git",
+      "vcs:branch": "main",
+      "vcs:revision": "5d4d884a775fb84ea9b12404c47aefc5ee8d8fa8"
+    },
+    {
+      "rel": "application",
+      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/5d4d884a775fb84ea9b12404c47aefc5ee8d8fa8/examples/deploy/downscaling_download_files.cwl",
+      "type": "application/cwl+yaml",
+      "title": "RDPS download CWL tool",
+      "file:size": 1611,
+      "file:checksum": "1220cfe6377d576e12763fa6e0f89f1fbc61a587475fbacf29c0d4921cdba758db19",
+      "description": "CWL CommandLineTool downloading the listed RDPS files into a local directory.",
+      "application:languages": [
+        "Common Workflow Language"
+      ],
+      "vcs:type": "git",
+      "vcs:branch": "main",
+      "vcs:revision": "5d4d884a775fb84ea9b12404c47aefc5ee8d8fa8"
+    },
+    {
+      "rel": "application",
+      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/5d4d884a775fb84ea9b12404c47aefc5ee8d8fa8/examples/deploy/downscaling_unet.cwl",
+      "type": "application/cwl+yaml",
+      "title": "U-Net inference CWL tool",
+      "file:size": 2359,
+      "file:checksum": "122081999f65ffb1cf3256b1a72a3aed25134b4ba446acea1b781b5a783f6ac6b09f",
+      "description": "CWL CommandLineTool running the U-Net downscaling inference on the downloaded RDPS data.",
+      "application:languages": [
+        "Common Workflow Language"
+      ],
+      "vcs:type": "git",
+      "vcs:branch": "main",
+      "vcs:revision": "5d4d884a775fb84ea9b12404c47aefc5ee8d8fa8"
+    },
+    {
+      "rel": "vcs",
+      "href": "https://github.com/Ouranosinc/resoterre.git",
+      "title": "resoterre source repository",
+      "vcs:type": "git",
+      "vcs:branch": "main",
+      "vcs:revision": "5d4d884a775fb84ea9b12404c47aefc5ee8d8fa8"
     },
     {
       "rel": "self",
