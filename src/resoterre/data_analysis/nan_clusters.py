@@ -116,7 +116,7 @@ def analyze_nan_clusters(
             nan_mask = ds[var].isnull()
 
             always, ever = dask.compute(
-nan_mask.mean("time") >= mostly_nan_threshold,
+                nan_mask.mean("time") >= mostly_nan_threshold,
                 nan_mask.any("time"),
             )
 
