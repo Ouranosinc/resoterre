@@ -6,8 +6,8 @@ from pathlib import Path
 
 import numcodecs  # noqa: F401  # Imported to register logger for disabling
 
-from resoterre.experiments.crcm_emulator.crcm_emulator_workflow import CRCMToZarrFromConfig
 from resoterre.logging_utils import start_root_logger
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import CRCMToZarrFromConfig
 
 
 logger = logging.getLogger(__name__)
