@@ -11,11 +11,11 @@ from torch.utils import data as td
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 
 from resoterre.datasets.hrdps.hrdps_processing import create_hrdps_grid_spec
-from resoterre.experiments.rdps_to_hrdps_downscaling import rdps_to_hrdps_workflow
 from resoterre.hybrid_data_loaders.rdps_to_hrdps import RDPSToHRDPSZarrDataset
 from resoterre.logging_utils import readable_value
 from resoterre.ml.ml_loops import MinimaTracker
 from resoterre.ml.neural_networks_unet import UNet
+from resoterre.pipelines.rdps_to_hrdps_downscaling import rdps_to_hrdps_workflow
 from resoterre.plots.ml_sample_plot import ml_sample_figures
 from resoterre.utils import ActionScheduler
 
