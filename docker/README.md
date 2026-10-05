@@ -137,7 +137,7 @@ Following is a sample configuration with common configuration overrides.
 > [!WARNING]
 > Make sure your data structure is aligned as expected by the script.
 > For example, `path_rdps` should contain a `202405/` directory with nested `20240501HH_hhh.nc` NetCDF files,
-> for a preprocessing source on `2024-05-01`, where the `HH` represens `{00, 06, 12, 18}` ranges and `hhh` represents
+> for a preprocessing source on `2024-05-01`, where the `HH` represents `{00, 06, 12, 18}` ranges and `hhh` represents
 > the hour offset from `000` to `012`. They should align with provided source RDPS to downscale the corresponding HRDPS
 > spatio-temporal extents.
 
@@ -151,7 +151,7 @@ path_hrdps_geophysical: /tmp/resoterre/geophysical
 path_rdps: /tmp/resoterre/inputs
 
 # Global settings
-experiment_name: test # output will be generated as zar file with name "inference_{experiment_name}.zarr"
+experiment_name: test # output will be generated as Zarr file with name "inference_{experiment_name}.zarr"
 
 # HRDPS Preprocessing
 hrdps_preprocessing_skip: false
