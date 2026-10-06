@@ -9,9 +9,17 @@ path_crcm_data: /Path/to/MRCC5-CMIP6
 # Global parameters
 tile_size: 608
 coarsen_factor: 8
-normalization_start_date: "1971-01-01"
-normalization_end_date: "2000-12-31"
 
+# Windows for data analysis
+windows:
+  -
+    - "1951-01-01"
+    - "2014-12-31"
+    - "historical"
+  -
+    - "2015-01-01"
+    - "2100-12-31"
+    - "ssp245"
 # GCM preprocessing
 path_gcm_preprocessing: /Path/to/preprocessed/gcm_preprocessing
 preprocessing_simulations:
@@ -72,15 +80,24 @@ crcm_training_variables:
 training_periods:
   -
     - "1951-01-01"
-    - "2070-12-31"
+    - "1984-12-31"
+  -
+    - "2015-01-01"
+    - "2069-12-31"
 validation_periods:
   -
-    - "2071-01-01"
-    - "2085-12-31"
+    - "1985-01-01"
+    - "1999-12-31"
+  -
+    - "2070-01-01"
+    - "2084-12-31"
 test_periods:
   -
-    - "2086-01-01"
-    - "2100-12-31"
+    - "2000-01-01"
+    - "2014-12-31"
+  -
+    - "2070-01-01"
+    - "2084-12-31"
 
 # Training parameters
 training_batch_size: 2

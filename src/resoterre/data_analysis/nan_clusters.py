@@ -12,6 +12,9 @@ from scipy.ndimage import label, sum_labels
 from resoterre.data_analysis.utils import write_dataframe_to_csv
 
 
+logger = logging.getLogger(__name__)
+
+
 def nan_cluster_sizes(mask_2d: np.ndarray, connectivity: int = 8) -> np.ndarray:
     """
     Return the sizes of connected NaN clusters in a 2D mask, largest first.
@@ -75,8 +78,7 @@ def analyze_nan_clusters(
     model_data: dict[str, xr.Dataset],
     variables: list[str],
     output_dir: Path | str,
-    logger: logging.Logger,
-    mostly_nan_threshold: float = 1,
+    mostly_nan_threshold: float = 1.0,
 ) -> pd.DataFrame:
     """
     Analyze NaN clusters for model variables across simulations.
@@ -89,8 +91,6 @@ def analyze_nan_clusters(
         Variable names to analyze.
     output_dir : Path | str
         Directory where the summary CSV is written.
-    logger : logging.Logger
-        Logger for logging output.
     mostly_nan_threshold : float, optional
         Fraction of time steps a pixel must be NaN to count as persistently missing.
 
@@ -145,6 +145,6 @@ def analyze_nan_clusters(
                 }
             )
 
-    write_dataframe_to_csv(pd.DataFrame(rows), output_dir, "nan_clusters", logger)
+    write_dataframe_to_csv(pd.DataFrame(rows), output_dir, "nan_clusters")
 
     return pd.DataFrame(rows)

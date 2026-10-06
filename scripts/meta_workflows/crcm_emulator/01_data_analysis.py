@@ -9,6 +9,8 @@ import argparse
 import logging
 from pathlib import Path
 
+import numpy as np
+
 from resoterre.config_utils import config_from_yaml
 from resoterre.data_analysis.gcm_vs_rcm import analyze_gcm_vs_coarsened_crcm
 from resoterre.data_analysis.nan_clusters import analyze_nan_clusters
@@ -25,7 +27,8 @@ from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulator
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Run CRCM emulator data analysis for the YAML configuration given by ``--config``."""
     # ===== ARGUMENTS =====
     parser = argparse.ArgumentParser(description="Data analysis for the CRCM emulator")
     parser.add_argument("--config", type=str, required=True, help="Yaml configuration file")
@@ -47,7 +50,7 @@ if __name__ == "__main__":
         datefmt="%Y-%m-%d %H:%M:%S",
         level=logging.INFO,
     )
-    logger = logging.getLogger(str(log_file))
+    logger = logging.getLogger(__name__)
 
     # ===== LOAD DATASET =====
     dataset = CRCMEmulatorDataset(
@@ -70,51 +73,41 @@ if __name__ == "__main__":
     stats_df = summarize_data(
         dataset=dataset,
         output_dir=output_dir,
-        logger=logger,
-        start_date=config.normalization_start_date,
-        end_date=config.normalization_end_date,
+        time_periods=config.training_periods,
     )
 
     visualize_range_and_mean(
         stats_df=stats_df,
         output_dir=output_dir,
-        logger=logger,
+        range_and_mean_groups=config.range_and_mean_groups,
+        surface_variables=config.surface_variables,
     )
 
-    windows = [
-        ("1951-01-01", "2014-12-31", "historical"),
-        ("2015-01-01", "2100-12-31", "ssp245"),
-    ]
-
-    for start_date, end_date, scenario in windows:
+    for start_date, end_date, scenario in config.windows:
         scenario_dir = output_dir / scenario
         scenario_dir.mkdir(parents=True, exist_ok=True)
         logger.info("Filtering data for %s from %s to %s", scenario, start_date, end_date)
         data_gcm, data_crcm = filter_data(
             dataset=dataset,
-            logger=logger,
-            start_date=start_date,
-            end_date=end_date,
+            time_periods=[[np.datetime64(start_date), np.datetime64(end_date)]],
         )
         if not data_gcm:
-            logger.info("skip %s: no simulations in %s → %s", scenario, start_date, end_date)
+            logger.warning("skip %s: no simulations in %s → %s", scenario, start_date, end_date)
             continue
         if not data_crcm:
-            logger.info("skip %s: no simulations in %s → %s", scenario, start_date, end_date)
+            logger.warning("skip %s: no simulations in %s → %s", scenario, start_date, end_date)
             continue
 
         analyze_nan_clusters(
             model_data=data_gcm,
             variables=config.gcm_training_variables,
             output_dir=scenario_dir,
-            logger=logger,
         )
 
         visualize_temporal_mean_and_sample(
             data_gcm=data_gcm,
             data_crcm=data_crcm,
             output_dir=scenario_dir,
-            logger=logger,
         )
 
         if config.coarsen_factor is None:
@@ -127,11 +120,14 @@ if __name__ == "__main__":
             rcm_variables=config.crcm_preprocessing_variables,
             coarsen_factor=config.coarsen_factor,
             output_dir=scenario_dir,
-            logger=logger,
+            surface_variables=config.surface_variables,
         )
 
         visualize_gcm_vs_coarsened_rcm(
             stats_per_var=stats,
             output_dir=scenario_dir,
-            logger=logger,
         )
+
+
+if __name__ == "__main__":
+    main()

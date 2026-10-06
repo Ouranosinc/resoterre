@@ -15,7 +15,6 @@ from resoterre.ml.data_loader_utils import normalize
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
 class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
@@ -104,7 +103,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     variable_idx = variables_in_gcm_zarr.index(variable_name)
                     time_slice = slice(gcm_initial_time_idx, gcm_final_time_idx + 1)
                     is_computed = xarray_dataset_gcm["is_computed"][variable_idx, time_slice].values
-                    valid_time_idx = (np.where(is_computed)[0] + gcm_initial_time_idx).tolist()
+                    valid_time_idx = (np.where(is_computed)[0]).tolist()
                     if valid_gcm_time_idx is None:
                         valid_gcm_time_idx = {x + gcm_initial_time_idx for x in valid_time_idx}
                     else:

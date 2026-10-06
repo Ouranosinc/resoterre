@@ -10,6 +10,9 @@ import xarray as xr
 from resoterre.data_analysis.utils import EmulatorDatasetLike, group_indices_by_sim, write_dataframe_to_csv
 
 
+logger = logging.getLogger(__name__)
+
+
 def select_data_by_indices(data: xr.DataArray | xr.Dataset, time_idxs: np.ndarray) -> xr.DataArray | xr.Dataset:
     """
     Return only the requested data from an xarray object.
@@ -40,26 +43,22 @@ def select_data_by_indices(data: xr.DataArray | xr.Dataset, time_idxs: np.ndarra
 
 def filter_data(
     dataset: EmulatorDatasetLike,
-    logger: logging.Logger,
-    start_date: str | None = None,
-    end_date: str | None = None,
+    time_periods: list[list[np.datetime64]] | None = None,
 ) -> tuple[dict[str, xr.Dataset], dict[str, xr.Dataset]]:
     """
     Filter GCM and CRCM data to paired valid times in an optional window.
 
-    When both dates are given, keep indices inside ``start_date`` to ``end_date``,
-    then keep times where both models have data.
+    When time periods are given, keep indices inside each time period,
+    then keep indices where both models have data.
 
     Parameters
     ----------
     dataset : EmulatorDatasetLike
         Dataset providing GCM and CRCM zarr stores and valid time indices.
-    logger : logging.Logger
-        Logger for logging output.
-    start_date : str, optional
-        Inclusive start of the analysis window.
-    end_date : str, optional
-        Inclusive end of the analysis window.
+    time_periods : list of list of numpy.datetime64, optional
+        Time windows. Each window is a start date and an end date.
+        Multiple (possibly overlapping) time periods are supported.
+        If provided, all indices in any period are merged, avoiding duplicates.
 
     Returns
     -------
@@ -67,16 +66,7 @@ def filter_data(
         Filtered GCM data keyed by simulation name.
     data_crcm : dict[str, xarray.Dataset]
         Filtered CRCM data keyed by simulation name.
-
-    Raises
-    ------
-    ValueError
-        If exactly one of ``start_date`` and ``end_date`` is provided.
     """
-    # Ensure both start and end date are provided or neither.
-    if (start_date is None) ^ (end_date is None):
-        raise ValueError("start_date and end_date must both be provided or both be None")
-
     # Create dictionary of (key: simulation name, value: list of (gcm_idx, crcm_idx) valid pairs)
     valid_idxs_by_sim = group_indices_by_sim(dataset)
 
@@ -87,20 +77,22 @@ def filter_data(
         data_gcm = dataset.get_open_dataset("gcm", sim)
         data_crcm = dataset.get_open_dataset("crcm", sim)
 
-        # If start and end date are provided, constrain the data to the time period.
-        if start_date is not None and end_date is not None:
-            # using gcm time array to get boolean mask of timestamps in range, assuming synchronized with crcm
-            in_range = (data_gcm["time"].values >= np.datetime64(start_date)) & (
-                data_gcm["time"].values <= np.datetime64(end_date)
-            )
-            gcm_crcm_idxs = [(gcm_idx, crcm_idx) for gcm_idx, crcm_idx in gcm_crcm_idxs if in_range[gcm_idx]]
+        # If time periods are provided, constrain the data to the time periods.
+        if time_periods is not None:
+            selected_gcm_crcm_idxs: set[tuple[int, int]] = set()
+            for period in time_periods:
+                start_date, end_date = period[0], period[1]
+                in_range = (data_gcm["time"].values >= start_date) & (data_gcm["time"].values <= end_date)
+                selected_gcm_crcm_idxs.update(
+                    (gcm_idx, crcm_idx) for gcm_idx, crcm_idx in gcm_crcm_idxs if in_range[gcm_idx]
+                )
+            gcm_crcm_idxs = list(selected_gcm_crcm_idxs)
+            if not gcm_crcm_idxs:
+                logger.info("skip %s: no days in %s → %s", sim, start_date, end_date)
+                continue
 
         # Make sure indices are sorted and unique
         gcm_crcm_idxs = sorted(set(gcm_crcm_idxs))
-
-        if not gcm_crcm_idxs:
-            logger.info("skip %s: no days in %s → %s", sim, start_date, end_date)
-            continue
 
         # Split into GCM and CRCM indices
         gcm_idxs, crcm_idxs = np.asarray(list(zip(*gcm_crcm_idxs, strict=True)))
@@ -117,7 +109,6 @@ def compute_stats(
     variables: list[str],
     sim_name: str,
     model_type: str,
-    logger: logging.Logger,
     block_size: int = 104,
 ) -> pd.DataFrame:
     """
@@ -133,8 +124,6 @@ def compute_stats(
         Name of the simulation.
     model_type : str
         Model name, either ``gcm`` or ``crcm``.
-    logger : logging.Logger
-        Logger for logging output.
     block_size : int, optional
         Number of time steps loaded at once.
 
@@ -163,7 +152,7 @@ def compute_stats(
 
     rows = []
     for var, stats in stats_by_var.items():
-        logger.info("...computing statistics for %s for %s from %s...", var, sim_name, model_type)
+        logger.info("...computing statistics for %s for %s from %s", var, sim_name, model_type)
         count = stats["n_valid"]
         mean = stats["sum"] / count if count else np.nan
         variance = (stats["sumsq"] / count - mean**2) if count else np.nan  # Population variance
@@ -198,9 +187,7 @@ def compute_stats(
 def summarize_data(
     dataset: EmulatorDatasetLike,
     output_dir: Path | str,
-    logger: logging.Logger,
-    start_date: str | None = None,
-    end_date: str | None = None,
+    time_periods: list[list[np.datetime64]],
 ) -> pd.DataFrame:
     """
     Summarize GCM and CRCM statistics for each simulation over a date range.
@@ -215,12 +202,8 @@ def summarize_data(
         Dataset providing GCM and CRCM zarr stores and valid time indices.
     output_dir : Path | str
         Directory where the summary CSV is written.
-    logger : logging.Logger
-        Logger for logging output.
-    start_date : str, optional
-        Inclusive start of the analysis window.
-    end_date : str, optional
-        Inclusive end of the analysis window.
+    time_periods : list of list of numpy.datetime64
+        Time windows. Each window is a start date and an end date.
 
     Returns
     -------
@@ -232,7 +215,7 @@ def summarize_data(
     ValueError
         If no simulation has valid days in the requested date range.
     """
-    data_gcm, data_crcm = filter_data(dataset, logger, start_date, end_date)
+    data_gcm, data_crcm = filter_data(dataset, time_periods)
 
     variables_gcm = dataset.gcm_variables
     variables_crcm = dataset.crcm_variables
@@ -240,17 +223,17 @@ def summarize_data(
     frames: list[pd.DataFrame] = []
     for sim in data_gcm:
         n_days = data_gcm[sim].sizes["time"]
-        logger.info("Summarizing %s from %s to %s with %s days", sim, start_date, end_date, n_days)
+        logger.info("Summarizing %s over %s with %s days", sim, time_periods, n_days)
 
-        stats_gcm = compute_stats(data_gcm[sim], variables_gcm, sim, "gcm", logger)
-        stats_crcm = compute_stats(data_crcm[sim], variables_crcm, sim, "crcm", logger)
+        stats_gcm = compute_stats(data_gcm[sim], variables_gcm, sim, "gcm")
+        stats_crcm = compute_stats(data_crcm[sim], variables_crcm, sim, "crcm")
         frames.append(stats_gcm)
         frames.append(stats_crcm)
 
     if not frames:
-        raise ValueError(f"No simulations have valid days in {start_date} → {end_date}.")
+        raise ValueError(f"No simulations have valid days in {time_periods}.")
 
     stats_df = pd.concat(frames, ignore_index=True)
 
-    write_dataframe_to_csv(stats_df, output_dir, "simulation_stats", logger)
+    write_dataframe_to_csv(stats_df, output_dir, "simulation_stats")
     return stats_df
