@@ -5,13 +5,13 @@ build-backend = "flit_core.buildapi"
 [project]
 name = "resoterre"
 authors = [
-  {name = "Blaise Gauvin St-Denis", email = "gauvin-st-denis.blaise@ouranos.ca"}
+  { name = "Blaise Gauvin St-Denis", email = "gauvin-st-denis.blaise@ouranos.ca" }
 ]
 maintainers = [
-  {name = "Blaise Gauvin St-Denis", email = "gauvin-st-denis.blaise@ouranos.ca"},
-  {name = "Trevor James Smith", email = "smith.trevorj@ouranos.ca"}
+  { name = "Blaise Gauvin St-Denis", email = "gauvin-st-denis.blaise@ouranos.ca" },
+  { name = "Trevor James Smith", email = "smith.trevorj@ouranos.ca" }
 ]
-readme = {file = "README.rst", content-type = "text/x-rst"}
+readme = { file = "README.rst", content-type = "text/x-rst" }
 requires-python = ">=3.11.0"
 keywords = ["resoterre"]
 license = "Apache-2.0"
@@ -121,10 +121,10 @@ dev = [
   "types-click >=7.1.0",
   "types-PyYAML >=6.0.12.20240917",
   "watchdog >=6.0.0",
-  {include-group = "docs"},
-  {include-group = "lint"},
-  {include-group = "test"},
-  {include-group = "tox"}
+  { include-group = "docs" },
+  { include-group = "lint" },
+  { include-group = "test" },
+  { include-group = "tox" }
 ]
 
 [tool]

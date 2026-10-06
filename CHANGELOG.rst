@@ -19,7 +19,7 @@ Changelog
 .. _changes_0.1.3-dev.10:
 
 `v0.1.3-dev.10 <https://github.com/Ouranosinc/resoterre/tree/v0.1.3-dev.10>`_ (2026-10-05)
-----------------------------------------------------------------------------
+------------------------------------------------------------------------------------------
 
 Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:user:`Zeitsperre`), Nazim Azeli (:user:`Nazim-crim`), Francis Charette-Migneault (:user:`fmigneault`)
 
@@ -86,7 +86,7 @@ Changes
 
 Fixes
 ^^^^^
-* Fix STAC colleciton ``extent`` misaligned against generated Item (:pull:`146`).
+* Fix STAC collection ``extent`` misaligned against generated Item (:pull:`146`).
 * Fix typing issues with data_loader_kwargs. (:pull:`64`).
 * Fix broken types-PyYAML dependency in environment-dev.yml. (:pull:`64`).
 * Set GitHub workflows to support Python version 3.13. (:pull:`22`).
