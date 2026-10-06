@@ -4,34 +4,12 @@ import argparse
 import logging
 from pathlib import Path
 
-from resoterre.experiments.crcm_emulator.cmip6_to_zarr_workflow import GCMToZarrFromConfig
 from resoterre.logging_utils import start_root_logger
+from resoterre.pipelines.crcm_emulator.cmip6_to_zarr_workflow import GCMToZarrFromConfig
+from resoterre.snakemake_utils import parse_bool
 
 
 logger = logging.getLogger(__name__)
-
-
-# ToDo: move to a utility module for command-line argument parsing
-def parse_bool(value: str) -> bool:
-    """
-    Parse a boolean command-line value.
-
-    Parameters
-    ----------
-    value : str
-        Command-line value to parse as boolean.
-
-    Returns
-    -------
-    bool
-        Parsed boolean value.
-    """
-    normalized_value = value.lower()
-    if normalized_value in {"true", "1", "yes"}:
-        return True
-    if normalized_value in {"false", "0", "no"}:
-        return False
-    raise argparse.ArgumentTypeError(f"Expected a boolean value, got: {value}")
 
 
 if __name__ == "__main__":
@@ -46,6 +24,7 @@ if __name__ == "__main__":
     parser.add_argument("--variable_name", type=str, required=True, help="GCM variable to process")
     parser.add_argument("--chunk_idx_start", type=int, required=True, help="Initial chunk index")
     parser.add_argument("--chunk_idx_end", type=int, required=True, help="Final chunk index")
+    # write_mask will with a snakemake wildcard, need the option to explicitly pass True/False values
     parser.add_argument(
         "--write_mask", type=parse_bool, required=True, help="Whether to write the mask for the variable"
     )

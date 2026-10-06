@@ -336,8 +336,9 @@ class GCMToZarrFromConfig:
         mask = None
         if write_mask:
             mask = np.isnan(regrid_data)
-        # Hard coding that the 1000hPa level does not use NaN replacement
         if nan_replacement and level != 100000.0:
+            if level == 10000.0:
+                raise NotImplementedError("NaN replacement for level 10000.0 is not implemented")
             # ToDo: fetch window_size from data analysis (as a function of vertical level)
             # ToDo: can this be done without a loop?
             for i in range(regrid_data.shape[0]):
