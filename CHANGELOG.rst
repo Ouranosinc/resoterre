@@ -2,6 +2,7 @@
 Changelog
 =========
 
+
 `Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
 ----------------------------------------------------------------
 
@@ -12,6 +13,22 @@ Changes
 * Add ``data_analysis`` package for the CRCM emulator: summary statistics, NaN cluster analysis, GCM versus coarsened RCM comparison, and range, mean, and sample plots. ``scripts/meta_workflows/crcm_emulator/01_data_analysis.py`` provides a workflow to run the data analysis from a CRCM emulator config (:issue:`91`, :pull:`133`).
 * Refactor CRCM emulator preprocessing to produce a single zarr archive. (:issue:`132`), (:pull:`126`).
 * Add ``CometMLLogger`` and ``ExperimentLoggerConfig`` classes to ``resoterre.pipelines.crcm_emulator.experiment_logger`` and integrate Comet ML experiment tracking (parameters, metrics, images/figures) into the CRCM emulator training pipeline. (:issue:`119`, :pull:`127`).
+
+Fixes
+^^^^^
+* No change.
+
+.. _changes_0.1.3-dev.10:
+
+`v0.1.3-dev.10 <https://github.com/Ouranosinc/resoterre/tree/v0.1.3-dev.10>`_ (2026-10-05)
+------------------------------------------------------------------------------------------
+
+Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:user:`Zeitsperre`), Nazim Azeli (:user:`Nazim-crim`), Francis Charette-Migneault (:user:`fmigneault`)
+
+Changes
+^^^^^^^
+* Align notebook and STAC item generation with latest ``0.1.3-dev.10`` (:pull:`146`).
+* Add STAC Item ``application``/``vcs`` metadata references (:pull:`146`).
 * Update ``docker/Dockerfile.inference`` to package the regridding weight matrices and geophysical files (``orog.nc``, ``sftlf.nc``) into the inference image alongside the model. (:pull:`86`).
 * Add ``examples/deploy/downscaling_generate_file_list.cwl`` Common Workflow Language process to list the RDPS files required for a given datetime range. (:pull:`86`).
 * Add ``examples/deploy/downscaling_download_files.cwl`` Common Workflow Language process to download a list of files into a local directory. (:pull:`86`).
@@ -71,6 +88,7 @@ Changes
 
 Fixes
 ^^^^^
+* Fix STAC collection ``extent`` misaligned against generated Item (:pull:`146`).
 * Fix typing issues with data_loader_kwargs. (:pull:`64`).
 * Fix broken types-PyYAML dependency in environment-dev.yml. (:pull:`64`).
 * Set GitHub workflows to support Python version 3.13. (:pull:`22`).

@@ -8,7 +8,8 @@
     "https://stac-extensions.github.io/file/v2.1.0/schema.json",
     "https://stac-extensions.github.io/datacube/v2.3.0/schema.json",
     "https://stac-extensions.github.io/ml-aoi/v0.2.0/schema.json",
-    "https://stac-extensions.github.io/application/v0.1.0/schema.json"
+    "https://stac-extensions.github.io/application/v0.1.0/schema.json",
+    "https://stac-extensions.github.io/vcs/v0.1.0/schema.json"
   ],
   "id": "unet_rdps_to_hrdps",
   "geometry": {
@@ -69,9 +70,9 @@
         "url": "https://www.crim.ca/"
       }
     ],
-    "version": "0.1.3.dev8",
+    "version": "0.1.3-dev.10",
     "experimental": true,
-    "sci:citation": "Gauvin St-Denis, B., and Smith, T. J. resoterre (version 0.1.3.dev8). Ouranos.",
+    "sci:citation": "Gauvin St-Denis, B., and Smith, T. J. resoterre (version 0.1.3-dev.10). Ouranos.",
     "mlm:framework": "pytorch",
     "mlm:framework_version": "2.14.0+cu130",
     "mlm:accelerator": "cuda",
@@ -459,6 +460,10 @@
         "description": "Geographic longitude auxiliary coordinate for the rotated grid."
       }
     },
+    "vcs:type": "git",
+    "vcs:branch": "main",
+    "vcs:revision": "f08a79b9a1906a8752c5774b050e90f81f2d1bcb",
+    "vcs:tag": "0.1.3-dev.10",
     "datetime": null
   },
   "links": [
@@ -512,9 +517,82 @@
     },
     {
       "rel": "cite-as",
-      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/804e89a53c78253b4c63175a107cb9aa1bd6ac78/CITATION.cff",
+      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/f08a79b9a1906a8752c5774b050e90f81f2d1bcb/CITATION.cff",
       "type": "text/yaml",
       "title": "resoterre citation metadata"
+    },
+    {
+      "rel": "application",
+      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/f08a79b9a1906a8752c5774b050e90f81f2d1bcb/examples/deploy/downscaling_unet_workflow.cwl",
+      "type": "application/cwl+yaml",
+      "title": "RDPS-to-HRDPS downscaling CWL workflow",
+      "file:size": 2624,
+      "file:checksum": "122054639a4072d5fb7e2a0039975ca8446e9fc3e95e91c91f9f4b37bebd3e798937",
+      "description": "CWL Workflow chaining the file listing, download and U-Net inference steps.",
+      "application:languages": [
+        "Common Workflow Language"
+      ],
+      "vcs:type": "git",
+      "vcs:branch": "main",
+      "vcs:revision": "f08a79b9a1906a8752c5774b050e90f81f2d1bcb",
+      "vcs:tag": "0.1.3-dev.10"
+    },
+    {
+      "rel": "application",
+      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/f08a79b9a1906a8752c5774b050e90f81f2d1bcb/examples/deploy/downscaling_generate_file_list.cwl",
+      "type": "application/cwl+yaml",
+      "title": "RDPS file listing CWL tool",
+      "file:size": 2284,
+      "file:checksum": "1220b41206d6ae38ceedfb499c179851d670555a73bfe7a70819ba47b511c1f78f01",
+      "description": "CWL CommandLineTool listing the RDPS files required for a requested datetime range.",
+      "application:languages": [
+        "Common Workflow Language"
+      ],
+      "vcs:type": "git",
+      "vcs:branch": "main",
+      "vcs:revision": "f08a79b9a1906a8752c5774b050e90f81f2d1bcb",
+      "vcs:tag": "0.1.3-dev.10"
+    },
+    {
+      "rel": "application",
+      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/f08a79b9a1906a8752c5774b050e90f81f2d1bcb/examples/deploy/downscaling_download_files.cwl",
+      "type": "application/cwl+yaml",
+      "title": "RDPS download CWL tool",
+      "file:size": 1611,
+      "file:checksum": "1220cfe6377d576e12763fa6e0f89f1fbc61a587475fbacf29c0d4921cdba758db19",
+      "description": "CWL CommandLineTool downloading the listed RDPS files into a local directory.",
+      "application:languages": [
+        "Common Workflow Language"
+      ],
+      "vcs:type": "git",
+      "vcs:branch": "main",
+      "vcs:revision": "f08a79b9a1906a8752c5774b050e90f81f2d1bcb",
+      "vcs:tag": "0.1.3-dev.10"
+    },
+    {
+      "rel": "application",
+      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/f08a79b9a1906a8752c5774b050e90f81f2d1bcb/examples/deploy/downscaling_unet.cwl",
+      "type": "application/cwl+yaml",
+      "title": "U-Net inference CWL tool",
+      "file:size": 2359,
+      "file:checksum": "122081999f65ffb1cf3256b1a72a3aed25134b4ba446acea1b781b5a783f6ac6b09f",
+      "description": "CWL CommandLineTool running the U-Net downscaling inference on the downloaded RDPS data.",
+      "application:languages": [
+        "Common Workflow Language"
+      ],
+      "vcs:type": "git",
+      "vcs:branch": "main",
+      "vcs:revision": "f08a79b9a1906a8752c5774b050e90f81f2d1bcb",
+      "vcs:tag": "0.1.3-dev.10"
+    },
+    {
+      "rel": "vcs",
+      "href": "https://github.com/Ouranosinc/resoterre.git",
+      "title": "resoterre source repository",
+      "vcs:type": "git",
+      "vcs:branch": "main",
+      "vcs:revision": "f08a79b9a1906a8752c5774b050e90f81f2d1bcb",
+      "vcs:tag": "0.1.3-dev.10"
     },
     {
       "rel": "self",
@@ -541,7 +619,7 @@
       ]
     },
     "source_code": {
-      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/804e89a53c78253b4c63175a107cb9aa1bd6ac78/scripts/meta_workflows/downscaling/rdps_to_hrdps.smk",
+      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/f08a79b9a1906a8752c5774b050e90f81f2d1bcb/scripts/meta_workflows/downscaling/rdps_to_hrdps.smk",
       "type": "text/x-snakemake",
       "title": "RDPS-to-HRDPS Snakemake workflow",
       "description": "Executable Snakemake workflow that preprocesses RDPS data and runs downscaling inference.",
@@ -558,19 +636,19 @@
       ]
     },
     "configuration": {
-      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/804e89a53c78253b4c63175a107cb9aa1bd6ac78/configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml",
+      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/f08a79b9a1906a8752c5774b050e90f81f2d1bcb/configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml",
       "type": "application/yaml",
       "title": "Training and inference configuration",
       "description": "Configuration consumed by the Snakemake workflow.",
-      "file:checksum": "1220a34b87d3854e0240380d2026db7eb8ddec651441f1871096bc6da9621d8eca35",
-      "file:size": 3400,
+      "file:checksum": "1220386fc766bf6ab79ef6a9dd6f0ac3f706669bf09a037be02b87991b159af44136",
+      "file:size": 3606,
       "roles": [
         "configuration",
         "metadata"
       ]
     },
     "container": {
-      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/804e89a53c78253b4c63175a107cb9aa1bd6ac78/docker/Dockerfile.inference",
+      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/f08a79b9a1906a8752c5774b050e90f81f2d1bcb/docker/Dockerfile.inference",
       "type": "text/x-dockerfile",
       "title": "Inference container definition",
       "description": "Generic Dockerfile used to build the inference container image.",
@@ -584,9 +662,9 @@
       ]
     },
     "runtime": {
-      "href": "docker://resoterre-inference:0.1.3.dev8",
+      "href": "docker://resoterre-inference:0.1.3-dev.10",
       "type": "application/vnd.oci.image.index.v1+json",
-      "title": "resoterre inference container 0.1.3.dev8",
+      "title": "resoterre inference container 0.1.3-dev.10",
       "description": "Versioned OCI container that packages PyTorch, Snakemake, the workflow, and model dependencies.",
       "roles": [
         "mlm:inference-runtime",
@@ -594,12 +672,12 @@
       ]
     },
     "citation": {
-      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/804e89a53c78253b4c63175a107cb9aa1bd6ac78/CITATION.cff",
+      "href": "https://raw.githubusercontent.com/Ouranosinc/resoterre/f08a79b9a1906a8752c5774b050e90f81f2d1bcb/CITATION.cff",
       "type": "text/yaml",
       "title": "Citation metadata",
       "description": "Citation File Format metadata for resoterre.",
-      "file:checksum": "1220ffe80cd84de27fed65be4cd5289bcf00defe4553f2fc7086465228bec4d28476",
-      "file:size": 945,
+      "file:checksum": "1220557681a4920870a82cad16713a122e0c9ed49d33c6cd5c57f7396921506f3c5e",
+      "file:size": 952,
       "roles": [
         "metadata"
       ]
