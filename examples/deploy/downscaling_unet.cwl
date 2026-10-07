@@ -13,6 +13,7 @@ doc: |
   into the inference image.
 
 s:dateCreated: "2026-01-30T10:42:53-05:00"
+s:version: "0.1.3.dev10"
 s:softwareVersion: "0.1.3-dev.10"
 s:codeRepository: "https://github.com/Ouranosinc/resoterre"
 s:license: "https://spdx.org/licenses/Apache-2.0"

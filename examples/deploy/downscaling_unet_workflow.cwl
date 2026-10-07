@@ -13,6 +13,7 @@ doc: |
   inference on that directory.
 
 s:dateCreated: "2026-09-09T10:36:53-04:00"
+s:version: "0.1.3.dev10"
 s:softwareVersion: "0.1.3-dev.10"
 s:codeRepository: "https://github.com/Ouranosinc/resoterre"
 s:license: "https://spdx.org/licenses/Apache-2.0"
