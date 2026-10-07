@@ -92,19 +92,10 @@ class MinimaTracker(dict[str, MinimumTracker]):
     ----------
     d : dict[str, MinimumTracker], optional
         Initial dictionary of metric names to MinimumTracker instances.
-    minimum_metrics_to_track : list[str], optional
-        List of metric names to ensure trackers are initialized.
     """
 
-    def __init__(
-        self, d: dict[str, MinimumTracker] | None = None, minimum_metrics_to_track: list[str] | None = None
-    ) -> None:
-        d = d or {}
-        if minimum_metrics_to_track is not None:
-            for metric_name in minimum_metrics_to_track:
-                if metric_name not in d:
-                    d[metric_name] = MinimumTracker()
-        super().__init__(d)
+    def __init__(self, d: dict[str, MinimumTracker] | None = None) -> None:
+        super().__init__(d or {})
 
     def update_minima(
         self,
@@ -134,10 +125,11 @@ class MinimaTracker(dict[str, MinimumTracker]):
         """
         new_minima = False
         for key, value in metrics_values.items():
-            if key in self:
-                new_minimum = self[key].update_minimum(iteration, value, epoch=epoch)
-                if new_minimum and (return_true_for is None or key in return_true_for):
-                    new_minima = True
+            if key not in self:
+                self[key] = MinimumTracker()
+            new_minimum = self[key].update_minimum(iteration, value, epoch=epoch)
+            if new_minimum and (return_true_for is None or key in return_true_for):
+                new_minima = True
         return new_minima
 
 
