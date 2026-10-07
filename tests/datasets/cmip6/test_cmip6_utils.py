@@ -21,3 +21,13 @@ def test_validate_cmip6_data_max():
 def test_validate_cmip6_data_mean():
     data = np.array([250.0, 250.0])
     assert cmip6_utils.validate_cmip6_data(data, "ta1000") is False
+
+
+def test_validate_cmip6_data_tas():
+    data = np.array([270.0, 280.0])
+    assert cmip6_utils.validate_cmip6_data(data, "tas") is True
+
+
+def test_validate_cmip6_data_pr():
+    data = np.array([0.0001, 0.0002])
+    assert cmip6_utils.validate_cmip6_data(data, "pr") is True
