@@ -1,8 +1,50 @@
 cwlVersion: v1.2
 class: CommandLineTool
 $namespaces:
+  s: "https://schema.org/"
   iana: "https://www.iana.org/assignments/media-types/"
   edam: "http://edamontology.org/"
+
+label: List RDPS forecast files
+doc: |
+  List the RDPS forecast files required to cover the requested datetime range.
+  Each listed file is prefixed with the provided data root so the result can be
+  consumed directly by the download step.
+
+s:dateCreated: "2026-09-04T11:45:32-04:00"
+s:softwareVersion: "0.1.3-dev.10"
+s:codeRepository: "https://github.com/Ouranosinc/resoterre"
+s:license: "https://spdx.org/licenses/Apache-2.0"
+s:citation: "https://github.com/Ouranosinc/resoterre/blob/0.1.3-dev.10/CITATION.cff"
+s:releaseNotes: "https://github.com/Ouranosinc/resoterre/blob/0.1.3-dev.10/CHANGELOG.rst"
+
+s:author:
+  - class: s:Person
+    s:identifier: "https://orcid.org/0009-0004-9049-2092"
+    s:email: gauvin-st-denis.blaise@ouranos.ca
+    s:name: Blaise Gauvin St-Denis
+    s:affiliation: Ouranos
+  - class: s:Person
+    s:identifier: "https://orcid.org/0000-0001-5393-8359"
+    s:email: smith.trevorj@ouranos.ca
+    s:name: Trevor James Smith
+    s:affiliation: Ouranos
+s:contributor:
+  - class: s:Person
+    s:identifier: "https://orcid.org/0000-0003-4862-3349"
+    s:email: francis.charette-migneault@luqia.ca
+    s:name: Francis Charette-Migneault
+    s:affiliation: Technologies Luqia
+  - class: s:Person
+    s:email: nazim.azeli@luqia.ca
+    s:name: Nazim Azeli
+    s:affiliation: Technologies Luqia
+
+s:keywords:
+  - RDPS
+  - forecast
+  - file listing
+  - downscaling
 
 requirements:
   InlineJavascriptRequirement: {}
