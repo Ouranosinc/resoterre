@@ -83,6 +83,7 @@ def main() -> None:
         surface_variables=config.surface_variables,
     )
 
+    # TODO: handle np.datetime64 vs cftime comparison in cftime_utils
     for start_date, end_date, scenario in config.windows:
         scenario_dir = output_dir / scenario
         scenario_dir.mkdir(parents=True, exist_ok=True)

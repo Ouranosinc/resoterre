@@ -77,6 +77,7 @@ def filter_data(
         data_gcm = dataset.get_open_dataset("gcm", sim)
         data_crcm = dataset.get_open_dataset("crcm", sim)
 
+        # TODO: handle np.datetime64 vs cftime comparison in cftime_utils
         # If time periods are provided, constrain the data to the time periods.
         if time_periods is not None:
             selected_gcm_crcm_idxs: set[tuple[int, int]] = set()

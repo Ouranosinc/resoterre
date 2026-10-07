@@ -6,7 +6,7 @@ Changelog
 `Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
 ----------------------------------------------------------------
 
-Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Trevor James Smith (:user:`Zeitsperre`), Nazim Azeli (:user:`Nazim-crim`), Francis Charette-Migneault (:user:`fmigneault`), Christina Isaicu (:user:`cisaic`)
+Contributors: Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Hager Radi (:user:`hager.radi`), Christina Isaicu (:user:`cisaic`)
 
 Changes
 ^^^^^^^
