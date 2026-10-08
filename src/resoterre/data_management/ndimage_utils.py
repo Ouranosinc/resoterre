@@ -33,11 +33,13 @@ def replace_nan_with_2d_window_average(
 
     value_mean = uniform_filter(np.where(nan_values, 0.0, image).astype(np.float64), size=window, mode="reflect")
     valid_fraction = uniform_filter((~nan_values).astype(np.float64), size=window, mode="reflect")
+    # Initially allow NaN values to remain if the surrounding window is entirely NaN
+    valid_fraction[valid_fraction == 0] = np.nan
 
-    if np.any(valid_fraction == 0):
-        raise ValueError("All values are NaN")
     filled_data = np.where(nan_values, value_mean / valid_fraction, image)
     if not allow_nan_output and np.any(np.isnan(filled_data)):
-        raise ValueError("NaN values remain in the filled data but allow_nan_output is False")
+        raise ValueError(
+            f"NaN values remain in the filled data with window size {window_size} but allow_nan_output is False"
+        )
 
     return filled_data
