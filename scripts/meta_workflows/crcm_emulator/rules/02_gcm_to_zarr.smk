@@ -8,9 +8,9 @@ from pathlib import Path
 
 from resoterre.calendar_utils import iter_year_month
 from resoterre.config_utils import config_from_yaml
-from resoterre.datasets.cmip6.cmip6_utils import gcm_vertical_variables, gcm_vertical_levels
-from resoterre.experiments.crcm_emulator.cmip6_to_zarr_workflow import get_chunk_indices
-from resoterre.experiments.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig
+from resoterre.datasets.cmip6.cmip6_utils import gcm_vertical_variables
+from resoterre.pipelines.crcm_emulator.cmip6_to_zarr_workflow import get_chunk_indices
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig
 
 snakefile_dir = Path(str(workflow.snakefile)).parent
 workflow_dir = Path.cwd()

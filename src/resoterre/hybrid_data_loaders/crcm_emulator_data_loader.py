@@ -1,5 +1,6 @@
 """Module for loading CRCM emulator data from zarr files."""
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,9 @@ from resoterre.datasets.cmip6.cmip6_utils import gcm_variable_levels
 from resoterre.datasets.cmip6.cmip6_variables import cmip6_variables
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
 from resoterre.ml.data_loader_utils import normalize
+
+
+logger = logging.getLogger(__name__)
 
 
 class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
@@ -37,6 +41,8 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         Whether to keep 3D variables structure in the dataset.
     max_open_datasets : int
         Maximum number of open xarray datasets to cache.
+    experiment_name : str
+        Name of the experiment.
     """
 
     def __init__(
@@ -49,7 +55,9 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         time_periods: list[Any],
         keep_3d_variables: bool = False,
         max_open_datasets: int = 2,
+        experiment_name: str = "",
     ) -> None:
+        self.experiment_name = experiment_name
         self.path_gcm_preprocessing = path_gcm_preprocessing
         self.path_crcm_preprocessing = path_crcm_preprocessing
         self.gcm_variables = gcm_variables
@@ -101,7 +109,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     variable_idx = variables_in_gcm_zarr.index(variable_name)
                     time_slice = slice(gcm_initial_time_idx, gcm_final_time_idx + 1)
                     is_computed = xarray_dataset_gcm["is_computed"][variable_idx, time_slice].values
-                    valid_time_idx = np.where(is_computed)[0].tolist()
+                    valid_time_idx = (np.where(is_computed)[0]).tolist()
                     if valid_gcm_time_idx is None:
                         valid_gcm_time_idx = {x + gcm_initial_time_idx for x in valid_time_idx}
                     else:

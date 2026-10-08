@@ -139,7 +139,45 @@ class CRCMEmulatorConfig:
     logger_config : ExperimentLoggerConfig | None
         Configuration for the Comet ML experiment logger used during training. If None, a disabled
         (no-op) logger configuration is used.
+    normalization_start_date : str | None
+        Start date for normalization of the data.
+    normalization_end_date : str | None
+        End date for normalization of the data.
+    range_and_mean_groups : dict[str, str]
+        Variable family mapped to the range-and-mean figure it shares. Families that are
+        not listed each get their own figure.
+    surface_variables : dict[str, str]
+        Surface variable mapped onto the stem of its pressure-level counterpart, so a
+        surface RCM field can be paired with a pressure-level GCM field of the same family.
+    windows: list[list[tuple[str, str]]]
+        List of windows for data analysis. Each window contains a start date and an end date.
     """
+
+    normalization_start_date: str | None = None
+    normalization_end_date: str | None = None
+
+    windows: list[list[str]] = field(default_factory=list)
+
+    # TODO when we config refactor, we will not have to hardcode repeat this mapping here.
+    range_and_mean_groups: dict[str, str] = field(
+        default_factory=lambda: {
+            "hus": "hus",
+            "pr": "pr",
+            "ta": "ta",
+            "ua": "ua_va",
+            "va": "ua_va",
+            "zg": "zg",
+        }
+    )
+    surface_variables: dict[str, str] = field(
+        default_factory=lambda: {
+            "tas": "ta",
+            "uas": "ua",
+            "vas": "va",
+            "huss": "hus",
+            "ps": "ps",
+        }
+    )
 
     experiment_name: str | None = None
     executing_institution: str = "unspecified"
