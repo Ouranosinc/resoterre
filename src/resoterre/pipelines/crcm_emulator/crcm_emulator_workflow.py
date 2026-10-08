@@ -72,6 +72,8 @@ class CRCMEmulatorConfig:
         List of GCM variables to preprocess.
     nan_replacement : bool
         Whether to replace NaN values in the data.
+    nan_replacement_window_sizes : list[list[int]]
+        Window sizes for NaN replacement in the form [vertical_level, window_size]
     gcm_preprocessing_allow_overwrite : bool
         Whether to allow overwriting existing preprocessed GCM data.
     path_crcm_preprocessing : Path | None
@@ -197,6 +199,7 @@ class CRCMEmulatorConfig:
     gcm_preprocessing_end_datetime: datetime | None = None
     gcm_preprocessing_variables: list[str] = field(default_factory=list)
     nan_replacement: bool = False
+    nan_replacement_window_sizes: list[list[int]] = field(default_factory=list)
     gcm_preprocessing_allow_overwrite: bool = False
     path_crcm_preprocessing: Path | None = None
     crcm_preprocessing_start_datetime: datetime | None = None
