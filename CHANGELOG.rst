@@ -10,6 +10,7 @@ Contributors: Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Hager Rad
 
 Changes
 ^^^^^^^
+* Add option to fill NaN values with a windowed mean. (:issue:`130`, :pull:`134`).
 * Add ``data_analysis`` package for the CRCM emulator: summary statistics, NaN cluster analysis, GCM versus coarsened RCM comparison, and range, mean, and sample plots. ``scripts/meta_workflows/crcm_emulator/01_data_analysis.py`` provides a workflow to run the data analysis from a CRCM emulator config (:issue:`91`, :pull:`133`).
 * Refactor CRCM emulator preprocessing to produce a single zarr archive. (:issue:`132`), (:pull:`126`).
 * Add ``CometMLLogger`` and ``ExperimentLoggerConfig`` classes to ``resoterre.pipelines.crcm_emulator.experiment_logger`` and integrate Comet ML experiment tracking (parameters, metrics, images/figures) into the CRCM emulator training pipeline. (:issue:`119`, :pull:`127`).

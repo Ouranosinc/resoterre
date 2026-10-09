@@ -1,3 +1,4 @@
+import argparse
 import datetime
 import json
 import tempfile
@@ -114,3 +115,20 @@ def test_shell_script_args_from_config():
         keys=["start_datetime", "end_datetime"],
     )
     assert args_str == " --start_datetime 20260901T00:00:00 --end_datetime 20260901T23:59:59"
+
+
+def test_parse_bool():
+    assert snakemake_utils.parse_bool("true") is True
+    assert snakemake_utils.parse_bool("True") is True
+    assert snakemake_utils.parse_bool("1") is True
+    assert snakemake_utils.parse_bool("yes") is True
+    assert snakemake_utils.parse_bool("Yes") is True
+    assert snakemake_utils.parse_bool("false") is False
+    assert snakemake_utils.parse_bool("False") is False
+    assert snakemake_utils.parse_bool("0") is False
+    assert snakemake_utils.parse_bool("no") is False
+    assert snakemake_utils.parse_bool("No") is False
+    try:
+        snakemake_utils.parse_bool("invalid")
+    except argparse.ArgumentTypeError as e:
+        assert str(e) == "Expected a boolean value, got: invalid"
