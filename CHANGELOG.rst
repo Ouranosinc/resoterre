@@ -2,19 +2,18 @@
 Changelog
 =========
 
-..
-    `Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
-    ----------------------------------------------------------------
+`Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
+----------------------------------------------------------------
 
-    Contributors:
+Contributors: Francis Charette-Migneault (:user:`fmigneault`)
 
-    Changes
-    ^^^^^^^
-    * No change.
+Changes
+^^^^^^^
+* Improve CWL metadata corresponding to deployable processes from resoterre source code version, authors and additional references (:pull:`148`).
 
-    Fixes
-    ^^^^^
-    * No change.
+Fixes
+^^^^^
+* Fix ``vcs:tag`` reference in the notebook and corresponding STAC Item produced from it to refer to the actual Git tags for the repository.
 
 .. _changes_0.1.3-dev.10:
 
