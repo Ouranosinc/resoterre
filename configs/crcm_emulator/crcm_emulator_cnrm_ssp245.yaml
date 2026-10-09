@@ -46,9 +46,6 @@ gcm_preprocessing_variables:
   - va
   - zg
 nan_replacement: true
-nan_replacement_window_sizes:
-  - [ 850, 15 ]
-  - [ 700, 5 ]
 gcm_preprocessing_allow_overwrite: false
 
 # CRCM preprocessing (uses preprocessing_simulations from GCM preprocessing)

@@ -24,7 +24,7 @@ if __name__ == "__main__":
     parser.add_argument("--variable_name", type=str, required=True, help="GCM variable to process")
     parser.add_argument("--chunk_idx_start", type=int, required=True, help="Initial chunk index")
     parser.add_argument("--chunk_idx_end", type=int, required=True, help="Final chunk index")
-    # write_mask will with a snakemake wildcard, need the option to explicitly pass True/False values
+    # write_mask will be a snakemake wildcard, need the option to explicitly pass True/False values
     parser.add_argument(
         "--write_mask", type=parse_bool, required=True, help="Whether to write the mask for the variable"
     )

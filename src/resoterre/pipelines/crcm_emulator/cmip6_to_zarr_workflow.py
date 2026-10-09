@@ -11,7 +11,7 @@ import xarray
 from scipy.sparse import load_npz, save_npz
 
 from resoterre.data_management.geo_utils import GridSpecification, compute_grids_area_weights
-from resoterre.data_management.ndimage_utils import replace_nan_with_2d_window_average
+from resoterre.data_management.ndimage_utils import replace_nan_with_auto_2d_window_average
 from resoterre.datasets.cmip6.cmip6_utils import (
     gcm_calendars,
     gcm_variable_levels,
@@ -287,7 +287,6 @@ class GCMToZarrFromConfig:
         time_slice: slice,
         level: float | None = None,
         nan_replacement: bool = False,
-        nan_replacement_window_sizes: list[list[int]] | None = None,
         write_mask: bool = False,
     ) -> None:
         """
@@ -313,13 +312,9 @@ class GCMToZarrFromConfig:
             Vertical level to select from the GCM data, if applicable.
         nan_replacement : bool
             Whether to replace NaN values in the data using a windowed average.
-        nan_replacement_window_sizes : list[list[int]] | None
-            Window sizes for NaN replacement in the form [vertical_level, window_size].
         write_mask : bool
             Whether to write the mask.
         """
-        if nan_replacement_window_sizes is None:
-            nan_replacement_window_sizes = []
         # ToDo: should I do this in smaller (8) chunks?
         if level is None:
             data = xarray_dataset_gcm[variable_name_in_netcdf][time_slice, :, :].values.astype(np.float32)
@@ -343,21 +338,13 @@ class GCMToZarrFromConfig:
         if write_mask:
             mask = np.isnan(regrid_data)
         if nan_replacement:
-            # ToDo: this really should be a config preprocessing step
-            nan_replacement_window_sizes_dict = {x[0]: x[1] for x in nan_replacement_window_sizes}
             if level is None:
                 pass
             elif level == 100000.0:
                 # Using the minimum here is arbitrary.
                 regrid_data[np.isnan(regrid_data)] = cmip6_variables[variable_name_in_zarr].min
-            elif int(level) // 100 in nan_replacement_window_sizes_dict:
-                regrid_data = replace_nan_with_2d_window_average(
-                    regrid_data,
-                    window_size=nan_replacement_window_sizes_dict[int(level) // 100],
-                    allow_nan_output=False,
-                )
-            if np.any(np.isnan(regrid_data)):
-                raise ValueError("NaN values remain in the regridded data after attempting replacement.")
+            elif np.any(np.isnan(regrid_data)):
+                regrid_data = replace_nan_with_auto_2d_window_average(regrid_data)
         write_crcm_time_slice_of_data(
             path_output=path_output,
             variable_name=variable_name_in_zarr,
@@ -441,7 +428,6 @@ class GCMToZarrFromConfig:
                     time_slice=my_slice,
                     level=level,
                     nan_replacement=self.config.nan_replacement,
-                    nan_replacement_window_sizes=self.config.nan_replacement_window_sizes,
                     write_mask=write_mask,
                 )
                 self.debug_figures(
@@ -465,7 +451,6 @@ class GCMToZarrFromConfig:
                 time_slice=my_slice,
                 level=int(gcm_variable_levels[variable_name]["level"]),
                 nan_replacement=self.config.nan_replacement,
-                nan_replacement_window_sizes=self.config.nan_replacement_window_sizes,
                 write_mask=write_mask,
             )
             self.debug_figures(
@@ -488,7 +473,6 @@ class GCMToZarrFromConfig:
                 chunk_idx_start=chunk_idx_start,
                 time_slice=my_slice,
                 nan_replacement=self.config.nan_replacement,
-                nan_replacement_window_sizes=self.config.nan_replacement_window_sizes,
             )
             self.debug_figures(
                 xarray_dataset_gcm,
