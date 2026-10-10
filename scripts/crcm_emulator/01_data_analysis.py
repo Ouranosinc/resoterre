@@ -44,11 +44,13 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     log_file = output_dir / "data_analysis.log"
     logging.basicConfig(
-        filename=log_file,
-        filemode="a",
         format="%(asctime)s %(levelname)s:%(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         level=logging.INFO,
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler(),
+        ],
     )
     logger = logging.getLogger(__name__)
 
