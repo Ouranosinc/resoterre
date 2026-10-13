@@ -15,7 +15,7 @@ workflow_dir = Path.cwd()
 config_obj = config_from_yaml(CRCMEmulatorConfig, config["config_yaml"])
 upstream_manifest = config.get("upstream_manifest")
 upstream_input = [upstream_manifest] if upstream_manifest else []
-nb_of_epochs = config_obj.nb_of_epochs
+nb_of_epochs = config_obj.training.nb_of_epochs
 
 
 def expected_manifests(wildcards):

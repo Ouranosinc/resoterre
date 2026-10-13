@@ -23,8 +23,8 @@ workflow_dir = Path.cwd()
 config_obj = config_from_yaml(RDPSToHRDPSConfig, config["config_yaml"])
 config_obj = rdps_to_hrdps_config_replace_for_inference(config_obj, SimpleNamespace(**config))
 additional_script_args = shell_script_args_from_config(config, ["start_datetime", "end_datetime"])
-start_datetime = config_obj.rdps_preprocessing_start_datetime
-end_datetime = config_obj.rdps_preprocessing_end_datetime
+start_datetime = config_obj.preprocessing.rdps.start_datetime
+end_datetime = config_obj.preprocessing.rdps.end_datetime
 start_year = start_datetime.year
 start_month = start_datetime.month
 
@@ -35,9 +35,9 @@ wildcard_constraints:
 
 def expected_manifests(wildcards):
     list_of_expected_manifests = []
-    for rdps_variable in config_obj.rdps_variables:
+    for rdps_variable in config_obj.preprocessing.rdps.variables:
         for year, month in iter_year_month(start_datetime=start_datetime, end_datetime=end_datetime):
-            if rdps_variable == config_obj.rdps_variables[0] and year == start_year and month == start_month:
+            if rdps_variable == config_obj.preprocessing.rdps.variables[0] and year == start_year and month == start_month:
                 continue
             list_of_expected_manifests.append(
                 f"manifests/rdps_to_zarr_{rdps_variable}_{year}{month:02d}.done")
@@ -53,12 +53,12 @@ rule all:
 rule rdps_to_zarr_init:
     output:
         touch("manifests/rdps_to_zarr_init.done"),
-        touch(f"manifests/rdps_to_zarr_{config_obj.rdps_variables[0]}_{start_year}{start_month:02d}.done")
+        touch(f"manifests/rdps_to_zarr_{config_obj.preprocessing.rdps.variables[0]}_{start_year}{start_month:02d}.done")
     params:
         path_script=Path(snakefile_dir, "01_rdps_to_zarr.py"),
         workflow_dir=workflow_dir,
         config_yaml=config["config_yaml"],
-        init_variable_name=config_obj.rdps_variables[0],
+        init_variable_name=config_obj.preprocessing.rdps.variables[0],
         init_year=start_year,
         init_month=start_month,
         additional_script_args=additional_script_args,

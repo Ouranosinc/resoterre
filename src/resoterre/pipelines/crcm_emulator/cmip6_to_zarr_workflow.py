@@ -10,6 +10,7 @@ import numpy as np
 import xarray
 from scipy.sparse import load_npz, save_npz
 
+from resoterre.config import CRCMEmulatorConfig
 from resoterre.data_management.geo_utils import GridSpecification, compute_grids_area_weights
 from resoterre.datasets.cmip6.cmip6_utils import (
     gcm_calendars,
@@ -20,7 +21,7 @@ from resoterre.datasets.cmip6.cmip6_utils import (
 )
 from resoterre.datasets.crcm.crcm_utils import crcm_north_america_grid_coordinates
 from resoterre.io_utils import path_with_uuid
-from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig, crcm_emulator_parse_config
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import (
     crcm_emulator_input_format,
     write_crcm_time_slice_of_data,
@@ -109,10 +110,10 @@ class GCMToZarrFromConfig:
 
     def __init__(self, config: CRCMEmulatorConfig, initialize_zarr: bool = False):
         self.config = crcm_emulator_parse_config(config)
-        if self.config.gcm_preprocessing_start_datetime is None:
-            raise ValueError("config.gcm_preprocessing_start_datetime is None")
-        if self.config.gcm_preprocessing_end_datetime is None:
-            raise ValueError("config.gcm_preprocessing_end_datetime is None")
+        if self.config.preprocessing.gcm.start_datetime is None:
+            raise ValueError("config.preprocessing.gcm.start_datetime is None")
+        if self.config.preprocessing.gcm.end_datetime is None:
+            raise ValueError("config.preprocessing.gcm.end_datetime is None")
         if initialize_zarr:
             self.initialize_zarr()
 
@@ -132,9 +133,9 @@ class GCMToZarrFromConfig:
         """
         gcm_str = "_".join(gcm_simulation)
         model_str = f"crcm_emulator_input_{gcm_str}"
-        if self.config.path_gcm_preprocessing is None:
-            raise ValueError("config.path_gcm_preprocessing is None")
-        return Path(self.config.path_gcm_preprocessing, f"{model_str}.zarr")
+        if self.config.preprocessing.gcm.path is None:
+            raise ValueError("config.preprocessing.gcm.path is None")
+        return Path(self.config.preprocessing.gcm.path, f"{model_str}.zarr")
 
     def emission_paths(self, gcm_simulation: list[str]) -> list[Path]:
         """
@@ -150,41 +151,41 @@ class GCMToZarrFromConfig:
         list[Path]
             List of paths to the emission data files.
         """
-        if self.config.path_emission_data is None:
-            raise ValueError("config.path_emission_data is None")
-        historical_path = Path(self.config.path_emission_data, "greenhouse_gases_hist3.dat")
+        if self.config.paths.emission_data is None:
+            raise ValueError("config.paths.emission_data is None")
+        historical_path = Path(self.config.paths.emission_data, "greenhouse_gases_hist3.dat")
         if gcm_simulation[1] == "historical":
             # defaulting to SSP245 when there is no data in the future.
-            ssp_path = Path(self.config.path_emission_data, "GHG_SSP245.dat")
+            ssp_path = Path(self.config.paths.emission_data, "GHG_SSP245.dat")
         else:
-            ssp_path = Path(self.config.path_emission_data, f"GHG_{gcm_simulation[1].upper()}.dat")
+            ssp_path = Path(self.config.paths.emission_data, f"GHG_{gcm_simulation[1].upper()}.dat")
         return [historical_path, ssp_path]
 
     def initialize_zarr(self) -> None:
         """Initialize the zarr dataset for each GCM simulation in the preprocessing range."""
-        if self.config.path_gcm_preprocessing is None:
-            raise ValueError("config.path_gcm_preprocessing is None")
-        if self.config.gcm_preprocessing_start_datetime is None:
+        if self.config.preprocessing.gcm.path is None:
+            raise ValueError("config.preprocessing.gcm.path is None")
+        if self.config.preprocessing.gcm.start_datetime is None:
             raise ValueError("GCM preprocessing start datetime must be specified.")
-        if self.config.gcm_preprocessing_end_datetime is None:
+        if self.config.preprocessing.gcm.end_datetime is None:
             raise ValueError("GCM preprocessing end datetime must be specified.")
-        for gcm_simulation in self.config.preprocessing_simulations:
+        for gcm_simulation in self.config.preprocessing.simulations:
             path_output = self.zarr_path(gcm_simulation)
-            if path_output.exists() and not self.config.gcm_preprocessing_allow_overwrite:
+            if path_output.exists() and not self.config.preprocessing.gcm.allow_overwrite:
                 raise FileExistsError(f"Output file already exists: {path_output}")
             # ToDo: add GCM information to CF metadata
             # ToDo: this function was not modified for full period format
             crcm_emulator_input_format(
                 path_output=path_output,
-                start_datetime=self.config.gcm_preprocessing_start_datetime,
-                end_datetime=self.config.gcm_preprocessing_end_datetime,
-                expected_variables=self.config.gcm_preprocessing_variables,
+                start_datetime=self.config.preprocessing.gcm.start_datetime,
+                end_datetime=self.config.preprocessing.gcm.end_datetime,
+                expected_variables=self.config.preprocessing.gcm.variables,
                 institution=self.config.executing_institution,
-                tile_size=self.config.tile_size,
-                coarsen_factor=self.config.coarsen_factor,
+                tile_size=self.config.data.tile_size,
+                coarsen_factor=self.config.data.coarsen_factor,
                 calendar=gcm_calendars[gcm_simulation[0]],
                 path_emissions=self.emission_paths(gcm_simulation),
-                chunk_size=self.config.preprocessing_chunk_size,
+                chunk_size=self.config.preprocessing.chunk_size,
             )
 
     def nc_files(self, gcm_simulation: list[str], variable_name: str) -> list[Path]:
@@ -204,10 +205,10 @@ class GCMToZarrFromConfig:
             List of paths to the NetCDF files.
         """
         gcm_str = "_".join(gcm_simulation)
-        if self.config.path_gcm_data is None:
-            raise ValueError("config.path_gcm_data is None")
+        if self.config.paths.gcm_data is None:
+            raise ValueError("config.paths.gcm_data is None")
         nc_files = sorted(
-            list(Path(self.config.path_gcm_data, gcm_simulation[0]).glob(f"{variable_name}_day_{gcm_str}_*.nc"))
+            list(Path(self.config.paths.gcm_data, gcm_simulation[0]).glob(f"{variable_name}_day_{gcm_str}_*.nc"))
         )
         return nc_files
 
@@ -227,14 +228,14 @@ class GCMToZarrFromConfig:
         Any
             Sparse matrix for regridding.
         """
-        if self.config.coarsen_factor is None:
-            raise ValueError("config.coarsen_factor is None")
-        grid_str = f"tile_size_{self.config.tile_size}_coarsen_factor_{self.config.coarsen_factor}"
-        path_regridding_weights = self.config.path_regridding_weights
+        if self.config.data.coarsen_factor is None:
+            raise ValueError("config.data.coarsen_factor is None")
+        grid_str = f"tile_size_{self.config.data.tile_size}_coarsen_factor_{self.config.data.coarsen_factor}"
+        path_regridding_weights = self.config.paths.regridding_weights
         if path_regridding_weights is None:
-            if self.config.path_gcm_preprocessing is None:
-                raise ValueError("config.path_gcm_preprocessing is None")
-            path_regridding_weights = Path(self.config.path_gcm_preprocessing, "csr_matrix")
+            if self.config.preprocessing.gcm.path is None:
+                raise ValueError("config.preprocessing.gcm.path is None")
+            path_regridding_weights = Path(self.config.preprocessing.gcm.path, "csr_matrix")
         path_coo_matrix_output = Path(path_regridding_weights, f"{gcm_simulation[0]}_to_crcm_{grid_str}_coo_matrix.npz")
         if not path_coo_matrix_output.is_file():
             nc_files = self.nc_files(gcm_simulation, variable_name)
@@ -247,8 +248,8 @@ class GCMToZarrFromConfig:
             )
             _, _, lon, lat = crcm_north_america_grid_coordinates()
             crcm_grid_spec = GridSpecification(lon, lat)
-            crcm_grid_spec.sub_tile(key="high_res", tile_size=self.config.tile_size, set_to_active=True)
-            crcm_grid_spec.coarsen_tile(key="high_res", key_coarse="coarse", factor=self.config.coarsen_factor)
+            crcm_grid_spec.sub_tile(key="high_res", tile_size=self.config.data.tile_size, set_to_active=True)
+            crcm_grid_spec.coarsen_tile(key="high_res", key_coarse="coarse", factor=self.config.data.coarsen_factor)
             crcm_grid_spec.active_tile = "coarse"
             # Hack to ensure gcm longitudes are in the same range as crcm longitudes
             if gcm_2d_lon.min() >= 0:
@@ -316,8 +317,8 @@ class GCMToZarrFromConfig:
                 xarray_dataset_gcm[variable_name_in_netcdf].sel(plev=level)[time_slice, :, :].values.astype(np.float32)
             )
 
-        if self.config.coarsen_factor is not None:
-            coarse_tile_size = self.config.tile_size // self.config.coarsen_factor
+        if self.config.data.coarsen_factor is not None:
+            coarse_tile_size = self.config.data.tile_size // self.config.data.coarsen_factor
             cnrm_to_crcm_csr_matrix = self.compute_csr_matrix(gcm_simulation, variable_name_in_netcdf)
             regrid_data = np.zeros((data.shape[0], coarse_tile_size, coarse_tile_size))
             for t in range(data.shape[0]):
@@ -360,11 +361,11 @@ class GCMToZarrFromConfig:
             calendar=xarray_dataset_gcm["time"].attrs["calendar"],
             only_use_cftime_datetimes=True,
         )
-        if self.config.gcm_preprocessing_end_datetime is None:
+        if self.config.preprocessing.gcm.end_datetime is None:
             raise ValueError("GCM preprocessing end datetime must be specified.")
         zarr_datetimes = xarray.cftime_range(
-            start=self.config.gcm_preprocessing_start_datetime,
-            end=self.config.gcm_preprocessing_end_datetime + timedelta(seconds=1),  # Fixing precision issues
+            start=self.config.preprocessing.gcm.start_datetime,
+            end=self.config.preprocessing.gcm.end_datetime + timedelta(seconds=1),  # Fixing precision issues
             freq="D",
             calendar=gcm_calendars[gcm_simulation[0]],
         )
@@ -488,7 +489,7 @@ class GCMToZarrFromConfig:
             Vertical level to select from the GCM data, if applicable.
         """
         custom_pcolormesh = CustomPColorMesh(scale_factor=2.0)
-        for debug_list in self.config.debug_gcm_figures:
+        for debug_list in self.config.debug.gcm_figures:
             if debug_list[0:3] != gcm_simulation or debug_list[3] != variable_name_in_zarr:
                 continue
             for i, dt in enumerate(list_of_datetimes_slice):
@@ -504,8 +505,8 @@ class GCMToZarrFromConfig:
                 else:
                     plot_data = xarray_dataset_gcm[variable_name_in_netcdf].sel(plev=level).isel(time=t).values
                 gcm_str = "_".join(gcm_simulation)
-                if self.config.path_output is None:
-                    raise ValueError("config.path_output is None")
+                if self.config.paths.output is None:
+                    raise ValueError("config.paths.output is None")
                 custom_pcolormesh.plot(
                     plot_data,
                     vmin_quantile=0.001,
@@ -513,7 +514,7 @@ class GCMToZarrFromConfig:
                     vmin=custom_pcolormesh.vmin,
                     vmax=custom_pcolormesh.vmax,
                     path_output=Path(
-                        self.config.path_output, f"{variable_name_in_zarr}_{gcm_str}_raw_time_idx_{t:06d}.png"
+                        self.config.paths.output, f"{variable_name_in_zarr}_{gcm_str}_raw_time_idx_{t:06d}.png"
                     ),
                 )
                 zarr_data = xarray.open_zarr(self.zarr_path(gcm_simulation))
@@ -526,7 +527,7 @@ class GCMToZarrFromConfig:
                     vmin=custom_pcolormesh.vmin,
                     vmax=custom_pcolormesh.vmax,
                     path_output=Path(
-                        self.config.path_output,
+                        self.config.paths.output,
                         f"{variable_name_in_zarr}_{gcm_str}_raw_time_idx_{t:06d}_zarr_time_idx_{zarr_time_idx:06d}.png",
                     ),
                 )

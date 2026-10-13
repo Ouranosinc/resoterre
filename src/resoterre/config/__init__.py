@@ -1,0 +1,96 @@
+"""
+Configuration models for resoterre.
+
+All configuration classes are frozen pydantic models.
+"""
+
+from resoterre.config.base import BaseConfig
+from resoterre.config.crcm_emulator import (
+    CRCMEmulatorAnalysisConfig,
+    CRCMEmulatorConfig,
+    CRCMEmulatorDataConfig,
+    CRCMEmulatorDebugConfig,
+    CRCMEmulatorInferenceConfig,
+    CRCMEmulatorLossConfig,
+    CRCMEmulatorModelConfig,
+    CRCMEmulatorPathsConfig,
+    CRCMEmulatorPreprocessingConfig,
+    CRCMEmulatorSourcePreprocessingConfig,
+    CRCMEmulatorTrainingConfig,
+    ExperimentLoggerConfig,
+)
+from resoterre.config.downscaling import (
+    HRDPSPreprocessingConfig,
+    HRDPSToZarrConfig,
+    RDPSPreprocessingConfig,
+    RDPSToHRDPSConfig,
+    RDPSToHRDPSDataConfig,
+    RDPSToHRDPSDatasetConfig,
+    RDPSToHRDPSDebugConfig,
+    RDPSToHRDPSDiagnosticsConfig,
+    RDPSToHRDPSInferenceConfig,
+    RDPSToHRDPSInferenceSettingsConfig,
+    RDPSToHRDPSLossConfig,
+    RDPSToHRDPSModelConfig,
+    RDPSToHRDPSOnDiskConfig,
+    RDPSToHRDPSPathsConfig,
+    RDPSToHRDPSPreprocessingConfig,
+    RDPSToHRDPSTrainingConfig,
+)
+from resoterre.config.ml import (
+    DataLoaderConfig,
+    DenseUNetConfig,
+    LossPlotConfig,
+    MachineLearningDataPlotConfig,
+    NeuralNetworkLoopConfig,
+    NeuralNetworksManagerConfig,
+    OptimizerConfig,
+    PurgeModelFilesConfig,
+    UNetConfig,
+    UNetReconstructionRunnerConfig,
+)
+
+
+UNetReconstructionRunnerConfig.model_rebuild(_types_namespace={"RDPSToHRDPSDatasetConfig": RDPSToHRDPSDatasetConfig})
+
+__all__ = [
+    "BaseConfig",
+    "CRCMEmulatorAnalysisConfig",
+    "CRCMEmulatorConfig",
+    "CRCMEmulatorDataConfig",
+    "CRCMEmulatorDebugConfig",
+    "CRCMEmulatorInferenceConfig",
+    "CRCMEmulatorLossConfig",
+    "CRCMEmulatorModelConfig",
+    "CRCMEmulatorPathsConfig",
+    "CRCMEmulatorPreprocessingConfig",
+    "CRCMEmulatorSourcePreprocessingConfig",
+    "CRCMEmulatorTrainingConfig",
+    "DataLoaderConfig",
+    "DenseUNetConfig",
+    "ExperimentLoggerConfig",
+    "HRDPSPreprocessingConfig",
+    "HRDPSToZarrConfig",
+    "LossPlotConfig",
+    "MachineLearningDataPlotConfig",
+    "NeuralNetworkLoopConfig",
+    "NeuralNetworksManagerConfig",
+    "OptimizerConfig",
+    "PurgeModelFilesConfig",
+    "RDPSPreprocessingConfig",
+    "RDPSToHRDPSConfig",
+    "RDPSToHRDPSDataConfig",
+    "RDPSToHRDPSDatasetConfig",
+    "RDPSToHRDPSDebugConfig",
+    "RDPSToHRDPSDiagnosticsConfig",
+    "RDPSToHRDPSInferenceConfig",
+    "RDPSToHRDPSInferenceSettingsConfig",
+    "RDPSToHRDPSLossConfig",
+    "RDPSToHRDPSModelConfig",
+    "RDPSToHRDPSOnDiskConfig",
+    "RDPSToHRDPSPathsConfig",
+    "RDPSToHRDPSPreprocessingConfig",
+    "RDPSToHRDPSTrainingConfig",
+    "UNetConfig",
+    "UNetReconstructionRunnerConfig",
+]

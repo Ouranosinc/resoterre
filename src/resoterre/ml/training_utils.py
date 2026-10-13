@@ -13,11 +13,12 @@ import torch
 from safetensors.torch import save_file as save_as_safetensors
 from torch.utils import data as td
 
+from resoterre.config import ExperimentLoggerConfig
 from resoterre.data_management.timeseries import MultiTimeseries
 from resoterre.logging_utils import CustomLogging, logging_delay_sequence, readable_delta_t
 from resoterre.ml.ml_loops import MinimaTracker
 from resoterre.ml.ml_utils import log_device_info
-from resoterre.pipelines.crcm_emulator.experiment_logger import CometMLLogger, ExperimentLoggerConfig
+from resoterre.pipelines.crcm_emulator.experiment_logger import CometMLLogger
 
 
 logger = CustomLogging(caller=logging.getLogger(__name__))
@@ -171,7 +172,7 @@ class NNTraining(ABC):
         -------
         dict
             A dictionary representation of the training configuration. Empty by default; subclasses
-            should override this method to expose their own configuration (e.g. from a dataclass).
+            should override this method to expose their own configuration (e.g. from a pydantic model).
         """
         return {}
 

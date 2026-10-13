@@ -1,7 +1,8 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from resoterre.pipelines.crcm_emulator.experiment_logger import CometMLLogger, ExperimentLoggerConfig
+from resoterre.config import ExperimentLoggerConfig
+from resoterre.pipelines.crcm_emulator.experiment_logger import CometMLLogger
 
 
 def test_experiment_logger_config_defaults():

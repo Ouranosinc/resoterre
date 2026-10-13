@@ -1,57 +1,15 @@
 """Comet ML experiment logging utilities."""
 
 import logging
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import comet_ml
 
-from resoterre.config_utils import register_config
+from resoterre.config import ExperimentLoggerConfig
 
 
 logger = logging.getLogger(__name__)
-
-
-@register_config("ExperimentLogger")
-@dataclass(frozen=True, slots=True)
-class ExperimentLoggerConfig:
-    """
-    Configuration for the logger.
-
-    Attributes
-    ----------
-    api_key : str, optional
-        The Comet ML API key. If None, Comet ML will attempt to resolve it from the environment
-        (e.g. the ``COMET_API_KEY`` environment variable) or from a local ``.comet.config`` file.
-    project_name : str, optional
-        The name of the Comet ML project to log the experiment to.
-    workspace : str, optional
-        The name of the Comet ML workspace to log the experiment to.
-    experiment_name : str, optional
-        A name to assign to the Comet ML experiment.
-    tags : list[str], optional
-        A list of tags to attach to the Comet ML experiment.
-    offline : bool
-        Whether to run the experiment in offline mode, storing logs locally instead of sending them to Comet ML.
-    offline_directory : Path | str, optional
-        The directory in which offline experiment archives are stored, when ``offline`` is True.
-    disabled : bool
-        Whether Comet ML logging is disabled entirely. Useful for local runs or tests where tracking is not desired.
-    log_code : bool
-        Whether to let Comet ML automatically capture and upload the calling script's source code.
-        Defaults to False.
-    """
-
-    api_key: str | None = None
-    project_name: str | None = None
-    workspace: str | None = None
-    experiment_name: str | None = None
-    tags: list[str] | None = field(default_factory=list)
-    offline: bool = False
-    offline_directory: Path | str | None = None
-    disabled: bool = False
-    log_code: bool = False
 
 
 class CometMLLogger:

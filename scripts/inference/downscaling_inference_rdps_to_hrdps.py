@@ -2,8 +2,8 @@
 
 import argparse
 
-from resoterre.experiments.rdps_to_hrdps_workflow import inference_from_preprocessed_data
 from resoterre.io_utils import override_config_paths
+from resoterre.pipelines.rdps_to_hrdps_workflow import inference_from_preprocessed_data
 
 
 def parse_args() -> argparse.Namespace:

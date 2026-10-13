@@ -1,21 +1,30 @@
 import tempfile
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
 import xarray
+from pydantic import Field
 
+from resoterre.config import (
+    BaseConfig,
+    NeuralNetworksManagerConfig,
+    OptimizerConfig,
+    RDPSToHRDPSConfig,
+    RDPSToHRDPSInferenceConfig,
+    UNetConfig,
+)
 from resoterre.data_management.netcdf_utils import CFVariables
-from resoterre.ml.network_manager import AdamConfig, NeuralNetworksManager, NeuralNetworksManagerConfig
-from resoterre.ml.neural_networks_unet import UNet, UNetConfig
+from resoterre.ml.network_manager import NeuralNetworksManager
+from resoterre.ml.neural_networks_unet import UNet
 from resoterre.pipelines.rdps_to_hrdps_downscaling import rdps_to_hrdps_workflow
 
 
 def test_save_model_output():
     with tempfile.TemporaryDirectory() as tmp_dir:
-        config = rdps_to_hrdps_workflow.RDPSToHRDPSInferenceConfig(path_output=Path(tmp_dir))
+        config = RDPSToHRDPSInferenceConfig(path_output=Path(tmp_dir))
 
         # ToDo: if this needs to be used in multiple places, create a benchmark module for it
         cf_coordinates = CFVariables()
@@ -106,14 +115,13 @@ def test_save_model_output():
 
 
 # ToDo: This should be a known class somewhere else
-@dataclass(frozen=True, slots=True)
-class CustomConfig:
+class CustomConfig(BaseConfig):
     device: str = "cpu"
-    networks: dict[str, Any] = field(default_factory=dict)
+    networks: dict[str, Any] = Field(default_factory=dict)
     networks_manager: NeuralNetworksManagerConfig = NeuralNetworksManagerConfig()
-    optimizers: dict[str, Any] = field(default_factory=dict)
-    lr_schedulers: dict[str, Any] = field(default_factory=dict)
-    UNet_kwargs: dict[str, Any] = field(default_factory=lambda: {"in_channels": 2, "out_channels": 2})
+    optimizers: dict[str, Any] = Field(default_factory=dict)
+    lr_schedulers: dict[str, Any] = Field(default_factory=dict)
+    UNet_kwargs: dict[str, Any] = Field(default_factory=lambda: {"in_channels": 2, "out_channels": 2})
 
 
 def test_inference_from_preprocessed_data():
@@ -217,7 +225,7 @@ def test_inference_from_preprocessed_data():
                 )
             },
             networks_manager=NeuralNetworksManagerConfig(),
-            optimizers={"UNet": AdamConfig(weight_decay=0.0002)},
+            optimizers={"UNet": OptimizerConfig(weight_decay=0.0002)},
         )
         network_manager = NeuralNetworksManager.from_neural_networks_info(
             neural_networks_info={"UNet": {"class": UNet}}, runner_config=config
@@ -291,3 +299,23 @@ def test_rdps_datetimes_to_forecast_files_no_year_month_subdirectory():
     assert str(files[3]) == "2024022912_006.nc"
     assert str(files[4]) == "2024022912_007.nc"
     assert str(files[5]) == "2024022912_008.nc"
+
+
+def test_rdps_to_hrdps_config_replace_for_inference():
+    config = RDPSToHRDPSConfig.model_validate(
+        {
+            "preprocessing": {"rdps": {"variables": ["PR"], "use_flat_directory_structure": True}},
+            "inference": {"device": "cpu"},
+        }
+    )
+    args = SimpleNamespace(start_datetime="2024-05-01T07:00:00", end_datetime="2024-05-01T08:00:00")
+    new_config = rdps_to_hrdps_workflow.rdps_to_hrdps_config_replace_for_inference(config, args)
+    start, end = datetime(2024, 5, 1, 7), datetime(2024, 5, 1, 8)
+    assert new_config.preprocessing.global_start_datetime == datetime(2024, 5, 1)
+    assert new_config.preprocessing.global_end_datetime == datetime(2024, 5, 1, 23, 59, 59)
+    for group in (new_config.preprocessing.hrdps, new_config.preprocessing.rdps, new_config.inference):
+        assert (group.start_datetime, group.end_datetime) == (start, end)
+    assert new_config.preprocessing.rdps.variables == ["PR"]
+    assert new_config.preprocessing.rdps.use_flat_directory_structure
+    assert new_config.inference.device == "cpu"
+    assert config.inference.start_datetime is None

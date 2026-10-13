@@ -29,7 +29,7 @@ upstream_input = [upstream_manifest] if upstream_manifest else []
 
 def expected_manifests(wildcards):
     list_of_expected_manifests = []
-    for variable_name in config_obj.inference_variables:
+    for variable_name in config_obj.inference.variables:
         list_of_expected_manifests.append(
             f"manifests/rdps_to_hrdps_inference_{variable_name}.done")
     return list_of_expected_manifests
