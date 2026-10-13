@@ -11,7 +11,7 @@ import xarray
 from scipy.sparse import load_npz, save_npz
 
 from resoterre.data_management.geo_utils import GridSpecification, compute_grids_area_weights
-from resoterre.data_management.ndimage_utils import replace_nan_with_window_average
+from resoterre.data_management.ndimage_utils import replace_nan_with_auto_2d_window_average
 from resoterre.datasets.cmip6.cmip6_utils import (
     gcm_calendars,
     gcm_variable_levels,
@@ -19,6 +19,7 @@ from resoterre.datasets.cmip6.cmip6_utils import (
     gcm_vertical_variables,
     validate_cmip6_data,
 )
+from resoterre.datasets.cmip6.cmip6_variables import cmip6_variables
 from resoterre.datasets.crcm.crcm_utils import crcm_north_america_grid_coordinates
 from resoterre.io_utils import path_with_uuid
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig, crcm_emulator_parse_config
@@ -336,14 +337,14 @@ class GCMToZarrFromConfig:
         mask = None
         if write_mask:
             mask = np.isnan(regrid_data)
-        # Hard coding that the 1000hPa level does not use NaN replacement
-        if nan_replacement and level != 100000.0:
-            # ToDo: fetch window_size from data analysis (as a function of vertical level)
-            # ToDo: can this be done without a loop?
-            for i in range(regrid_data.shape[0]):
-                regrid_data[i, :, :] = replace_nan_with_window_average(
-                    regrid_data[i, :, :], window_size=15, allow_nan_output=False
-                )
+        if nan_replacement:
+            if level is None:
+                pass
+            elif level == 100000.0:
+                # Using the minimum here is arbitrary.
+                regrid_data[np.isnan(regrid_data)] = cmip6_variables[variable_name_in_zarr].min
+            elif np.any(np.isnan(regrid_data)):
+                regrid_data = replace_nan_with_auto_2d_window_average(regrid_data)
         write_crcm_time_slice_of_data(
             path_output=path_output,
             variable_name=variable_name_in_zarr,

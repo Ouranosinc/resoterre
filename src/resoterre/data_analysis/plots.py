@@ -15,16 +15,7 @@ from resoterre.data_analysis.gcm_vs_rcm import SingleVarStats
 from resoterre.data_analysis.utils import first_sample, variable_family, variable_pretty_label
 
 
-# Variable family mapped to the range-and-mean figure it shares.
-# Families not listed, such as psl, each get their own figure.
-RANGE_AND_MEAN_GROUPS: dict[str, str] = {
-    "hus": "hus",
-    "pr": "pr",
-    "ta": "ta",
-    "ua": "ua_va",
-    "va": "ua_va",
-    "zg": "zg",
-}
+logger = logging.getLogger(__name__)
 
 
 def scenario_from_sim(sim: str) -> str:
@@ -76,7 +67,7 @@ def sim_labels(sims: Iterable[str]) -> dict[str, str]:
     }
 
 
-def _save_fig(fig: plt.Figure, path: Path | str, logger: logging.Logger) -> None:
+def _save_fig(fig: plt.Figure, path: Path | str) -> None:
     """
     Save a figure to ``path`` and close it.
 
@@ -86,8 +77,6 @@ def _save_fig(fig: plt.Figure, path: Path | str, logger: logging.Logger) -> None
         Figure to save.
     path : Path | str
         Output file path. Parent directories are created if missing.
-    logger : logging.Logger
-        Logger for logging output.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -99,7 +88,6 @@ def _save_fig(fig: plt.Figure, path: Path | str, logger: logging.Logger) -> None
 def visualize_gcm_vs_coarsened_rcm(
     stats_per_var: dict[tuple[str, str], SingleVarStats],
     output_dir: Path | str,
-    logger: logging.Logger,
 ) -> None:
     """
     Plot GCM fields against coarsened RCM data on the GCM grid.
@@ -115,8 +103,6 @@ def visualize_gcm_vs_coarsened_rcm(
         ``gcm``, ``rcm``, ``diff``, and climatology fields.
     output_dir : Path | str
         Directory where the plots are written.
-    logger : logging.Logger
-        Logger for logging output.
     """
     logger.info("Visualizing GCM vs coarsened RCM")
     output_dir = Path(output_dir)
@@ -181,10 +167,12 @@ def visualize_gcm_vs_coarsened_rcm(
         axes[1, 2].set_title("Difference across pixels")
 
         fig.suptitle(f"{sim}   {gvar} vs coarsened {rcm_var}")
-        _save_fig(fig, output_dir / f"gcm_vs_rcm_{gvar}_{labels[sim]}.png", logger)
+        _save_fig(fig, output_dir / f"gcm_vs_rcm_{gvar}_{labels[sim]}.png")
 
 
-def range_and_mean_group(variable: str) -> str:
+def range_and_mean_group(
+    variable: str, range_and_mean_groups: dict[str, str], surface_variables: dict[str, str]
+) -> str:
     """
     Return the range-and-mean plot group for a variable name.
 
@@ -192,21 +180,24 @@ def range_and_mean_group(variable: str) -> str:
     ----------
     variable : str
         Variable name, such as ``hus850`` or ``tas``.
+    range_and_mean_groups : dict[str, str]
+        Variable family mapped to the figure it shares. Unlisted families use their own name.
+    surface_variables : dict[str, str]
+        Surface variable mapped onto the stem of its pressure-level counterpart.
 
     Returns
     -------
     str
         Group ID used in the output filename.
     """
-    family = variable_family(variable)
-    return RANGE_AND_MEAN_GROUPS.get(family, family)
+    family = variable_family(variable, surface_variables)
+    return range_and_mean_groups.get(family, family)
 
 
 def _plot_range_and_mean_group(
     plot_df: pd.DataFrame,
     group_id: str,
     output_dir: Path,
-    logger: logging.Logger,
 ) -> None:
     """
     Draw one min–max range and mean figure for a variable group.
@@ -219,8 +210,6 @@ def _plot_range_and_mean_group(
         Group ID used in the title and filename.
     output_dir : Path
         Directory where the plot is written.
-    logger : logging.Logger
-        Logger for logging output.
     """
     fig, ax = plt.subplots(figsize=(13, max(4.0, 0.35 * len(plot_df) + 2.0)))
     y = np.arange(len(plot_df))
@@ -229,10 +218,14 @@ def _plot_range_and_mean_group(
     cmap = plt.colormaps["tab10"]
     var_colors = {var: cmap(i % 10)[:3] for i, var in enumerate(variables)}
 
-    hist_mix = 0.5
+    scenarios = list(plot_df["sim_short"].unique())
     base = np.array([var_colors[v] for v in plot_df["variable"]])
-    is_hist = plot_df["sim_short"].eq("historical").to_numpy()[:, None]
-    colors = np.where(is_hist, (1.0 - hist_mix) * base + hist_mix, base)
+
+    # Keep variables same colour, but differentiate scenarios by lighter/darker values.
+    light_mix = np.linspace(0.0, 0.6, len(scenarios))
+    mix_by_scenario = dict(zip(scenarios, light_mix, strict=True))
+    mix = plot_df["sim_short"].map(mix_by_scenario).to_numpy()[:, None]
+    colors = (1.0 - mix) * base + mix
 
     y_labels = plot_df.apply(lambda row: f"{row['model'].upper()} · {row['variable']} · {row['sim_short']}", axis=1)
 
@@ -246,29 +239,30 @@ def _plot_range_and_mean_group(
     ax.grid(axis="x", alpha=0.3)
 
     handles = [ax.plot([], [], color=var_colors[var], linewidth=2.5, label=var)[0] for var in variables]
+    shade_title = "Darkest to lightest:\n" + "\n".join(scenarios) if len(scenarios) > 1 else None
     ax.legend(
         handles=handles,
-        title="Lighter = historical\nDarker = ssp245",
+        title=shade_title,
         frameon=False,
         loc="center left",
         bbox_to_anchor=(1.02, 0.5),
         borderaxespad=0.0,
     )
     fig.tight_layout(rect=[0, 0, 0.80, 1])
-    _save_fig(fig, output_dir / f"range_and_mean_{group_id}.png", logger)
+    _save_fig(fig, output_dir / f"range_and_mean_{group_id}.png")
 
 
 def visualize_range_and_mean(
     stats_df: pd.DataFrame,
     output_dir: Path | str,
-    logger: logging.Logger,
+    range_and_mean_groups: dict[str, str],
+    surface_variables: dict[str, str],
 ) -> None:
     """
     Plot min–max range and mean, one figure per variable family.
 
-    Groups are ``hus``, ``pr``, ``ta`` (includes ``tas``), ``ua``/``va``
-    (includes ``uas``/``vas``), and ``zg``. Any other family, such as ``psl``,
-    is written to its own file.
+    The figure for each family comes from ``range_and_mean_groups``. Any family
+    that is not listed, such as ``psl``, is written to its own file.
 
     Parameters
     ----------
@@ -276,28 +270,29 @@ def visualize_range_and_mean(
         Summary statistics including ``min``, ``max``, and ``mean``.
     output_dir : Path | str
         Directory where the plots are written.
-    logger : logging.Logger
-        Logger for logging output.
+    range_and_mean_groups : dict[str, str]
+        Variable family mapped to the figure it shares.
+    surface_variables : dict[str, str]
+        Surface variable mapped onto the stem of its pressure-level counterpart.
     """
     logger.info("Visualizing range and mean")
     output_dir = Path(output_dir)
 
     plot_df = stats_df.copy()
     plot_df["sim_short"] = plot_df["sim"].map(scenario_from_sim)
-    plot_df["group"] = plot_df["variable"].map(range_and_mean_group)
+    plot_df["group"] = plot_df["variable"].map(
+        lambda variable: range_and_mean_group(variable, range_and_mean_groups, surface_variables)
+    )
     plot_df = plot_df.sort_values(["group", "variable", "sim_short"]).reset_index(drop=True)
 
     for group_id, group_df in plot_df.groupby("group", sort=False):
-        _plot_range_and_mean_group(
-            group_df.reset_index(drop=True), group_id=str(group_id), output_dir=output_dir, logger=logger
-        )
+        _plot_range_and_mean_group(group_df.reset_index(drop=True), group_id=str(group_id), output_dir=output_dir)
 
 
 def visualize_temporal_mean_and_sample(
     data_gcm: dict[str, xr.Dataset],
     data_crcm: dict[str, xr.Dataset],
     output_dir: Path | str,
-    logger: logging.Logger,
 ) -> None:
     """
     Plot temporal mean and first sample for each simulation, model, and variable.
@@ -313,8 +308,6 @@ def visualize_temporal_mean_and_sample(
         CRCM data keyed by simulation name.
     output_dir : Path | str
         Directory where the plots are written.
-    logger : logging.Logger
-        Logger for logging output.
     """
     logger.info("Visualizing temporal mean and sample")
     output_dir = Path(output_dir)
@@ -364,4 +357,4 @@ def visualize_temporal_mean_and_sample(
 
         fig.suptitle(f"Simulation: {sim}   Model: {model}   Var: {var}")
         fig.tight_layout()
-        _save_fig(fig, output_dir / f"{model}_{var}_{labels[sim]}.png", logger)
+        _save_fig(fig, output_dir / f"{model}_{var}_{labels[sim]}.png")

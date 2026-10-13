@@ -1,5 +1,3 @@
-import logging
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -35,6 +33,10 @@ from resoterre.data_analysis.utils import (
     variable_family,
     write_dataframe_to_csv,
 )
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig
+
+
+_CONFIG = CRCMEmulatorConfig()
 
 
 class _FakeEmulatorDataset:
@@ -73,13 +75,14 @@ def test_filter_data_keeps_in_window_days():
 
     data_gcm, data_crcm = filter_data(
         dataset=dataset,
-        logger=logging.getLogger("test"),
-        start_date="2000-01-02",
-        end_date="2000-01-03",
+        time_periods=[[np.datetime64("2000-01-02"), np.datetime64("2000-01-03")]],
     )
 
+    expected_times = pd.date_range("2000-01-02", periods=2, freq="D")
     assert list(data_gcm) == ["sim_a"]
     assert data_gcm["sim_a"].sizes["time"] == 2
+    np.testing.assert_array_equal(data_gcm["sim_a"]["time"].values, expected_times)
+    np.testing.assert_array_equal(data_crcm["sim_a"]["time"].values, expected_times)
     np.testing.assert_array_equal(data_gcm["sim_a"]["ta850"].values, [1.0, 2.0])
     np.testing.assert_array_equal(data_crcm["sim_a"]["tas"].values, [1.0, 2.0])
 
@@ -99,9 +102,7 @@ def test_filter_data_skips_simulations_outside_window():
 
     data_gcm, data_crcm = filter_data(
         dataset=dataset,
-        logger=logging.getLogger("test"),
-        start_date="2000-01-02",
-        end_date="2000-01-03",
+        time_periods=[[np.datetime64("2000-01-02"), np.datetime64("2000-01-03")]],
     )
 
     assert list(data_gcm) == ["in_range"]
@@ -119,10 +120,61 @@ def test_filter_data_without_dates_keeps_all_valid_indices_pairs():
         crcm_variables=["pr"],
     )
 
-    data_gcm, data_crcm = filter_data(dataset, logging.getLogger("test"))
+    data_gcm, data_crcm = filter_data(dataset)
 
     assert data_gcm["sim_a"].sizes["time"] == 3
     assert data_crcm["sim_a"].sizes["time"] == 3
+
+
+def test_filter_data_merges_overlapping_periods_once():
+    gcm = _daily_dataset("ta850", "2000-01-01", 5)
+    crcm = _daily_dataset("tas", "2000-01-01", 5)
+    dataset = _FakeEmulatorDataset(
+        valid_idx=[("sim_a", i, i) for i in range(5)],
+        stores={"gcm": {"sim_a": gcm}, "crcm": {"sim_a": crcm}},
+        gcm_variables=["ta850"],
+        crcm_variables=["tas"],
+    )
+
+    data_gcm, data_crcm = filter_data(
+        dataset=dataset,
+        time_periods=[
+            [np.datetime64("2000-01-01"), np.datetime64("2000-01-03")],
+            [np.datetime64("2000-01-03"), np.datetime64("2000-01-05")],
+        ],
+    )
+
+    # Jan 3 is in both windows and must appear once. Both window endpoints are included.
+    expected_times = pd.date_range("2000-01-01", periods=5, freq="D")
+    np.testing.assert_array_equal(data_gcm["sim_a"]["time"].values, expected_times)
+    np.testing.assert_array_equal(data_crcm["sim_a"]["time"].values, expected_times)
+    np.testing.assert_array_equal(data_gcm["sim_a"]["ta850"].values, [0.0, 1.0, 2.0, 3.0, 4.0])
+    np.testing.assert_array_equal(data_crcm["sim_a"]["tas"].values, [0.0, 1.0, 2.0, 3.0, 4.0])
+
+
+def test_filter_data_keeps_requested_dates_and_drops_the_gap():
+    gcm = _daily_dataset("ta850", "2000-01-01", 5)
+    crcm = _daily_dataset("tas", "2000-01-01", 5)
+    dataset = _FakeEmulatorDataset(
+        valid_idx=[("sim_a", i, i) for i in range(5)],
+        stores={"gcm": {"sim_a": gcm}, "crcm": {"sim_a": crcm}},
+        gcm_variables=["ta850"],
+        crcm_variables=["tas"],
+    )
+
+    data_gcm, data_crcm = filter_data(
+        dataset=dataset,
+        time_periods=[
+            [np.datetime64("2000-01-01"), np.datetime64("2000-01-02")],
+            [np.datetime64("2000-01-04"), np.datetime64("2000-01-05")],
+        ],
+    )
+
+    expected_times = pd.to_datetime(["2000-01-01", "2000-01-02", "2000-01-04", "2000-01-05"])
+    np.testing.assert_array_equal(data_gcm["sim_a"]["time"].values, expected_times)
+    np.testing.assert_array_equal(data_crcm["sim_a"]["time"].values, expected_times)
+    np.testing.assert_array_equal(data_gcm["sim_a"]["ta850"].values, [0.0, 1.0, 3.0, 4.0])
+    np.testing.assert_array_equal(data_crcm["sim_a"]["tas"].values, [0.0, 1.0, 3.0, 4.0])
 
 
 def test_select_data_by_indices_returns_contiguous_indices():
@@ -167,9 +219,7 @@ def test_summarize_data(tmp_path):
     stats_df = summarize_data(
         dataset=dataset,
         output_dir=tmp_path,
-        logger=logging.getLogger("test"),
-        start_date="2000-01-02",
-        end_date="2000-01-03",
+        time_periods=[[np.datetime64("2000-01-02"), np.datetime64("2000-01-03")]],
     )
 
     assert list(stats_df.columns) == [
@@ -214,9 +264,7 @@ def test_summarize_data_raises_when_no_days_in_range(tmp_path):
         summarize_data(
             dataset=dataset,
             output_dir=tmp_path,
-            logger=logging.getLogger("test"),
-            start_date="1999-01-01",
-            end_date="1999-01-31",
+            time_periods=[[np.datetime64("1999-01-01"), np.datetime64("1999-01-31")]],
         )
 
     assert not (tmp_path / "simulation_stats.csv").exists()
@@ -249,7 +297,6 @@ def test_visualize_temporal_mean_and_sample_writes_pngs(tmp_path):
             "ssp245": _spatial_dataset("tas", "2000-01-01", 2, offset=11.0),
         },
         output_dir=tmp_path,
-        logger=logging.getLogger("test"),
     )
 
     pngs = list(tmp_path.glob("*.png"))
@@ -289,27 +336,30 @@ def test_sim_labels_disambiguates_shared_scenario():
 
 
 def test_variable_family_maps_surface_onto_pressure_level_stem():
-    assert variable_family("ta850") == variable_family("tas") == "ta"
-    assert variable_family("ua500") == variable_family("uas") == "ua"
-    assert variable_family("va500") == variable_family("vas") == "va"
+    surface_variables = _CONFIG.surface_variables
+    assert variable_family("ta850", surface_variables) == variable_family("tas", surface_variables) == "ta"
+    assert variable_family("ua500", surface_variables) == variable_family("uas", surface_variables) == "ua"
+    assert variable_family("va500", surface_variables) == variable_family("vas", surface_variables) == "va"
     # hus is already a stem, so hus850 must pair with huss rather than with a "hu" family.
-    assert variable_family("hus850") == variable_family("huss") == "hus"
+    assert variable_family("hus850", surface_variables) == variable_family("huss", surface_variables) == "hus"
     # Variables with no surface counterpart are returned unchanged.
-    assert variable_family("pr") == "pr"
-    assert variable_family("psl") == "psl"
-    assert variable_family("zg500") == "zg"
+    assert variable_family("pr", surface_variables) == "pr"
+    assert variable_family("psl", surface_variables) == "psl"
+    assert variable_family("zg500", surface_variables) == "zg"
 
 
 def test_range_and_mean_group_combines_wind_families():
-    assert range_and_mean_group("hus850") == "hus"
-    assert range_and_mean_group("huss") == "hus"
-    assert range_and_mean_group("pr") == "pr"
-    assert range_and_mean_group("ta850") == "ta"
-    assert range_and_mean_group("tas") == "ta"
-    assert range_and_mean_group("ua850") == "ua_va"
-    assert range_and_mean_group("vas") == "ua_va"
-    assert range_and_mean_group("zg500") == "zg"
-    assert range_and_mean_group("psl") == "psl"
+    groups = _CONFIG.range_and_mean_groups
+    surface_variables = _CONFIG.surface_variables
+    assert range_and_mean_group("hus850", groups, surface_variables) == "hus"
+    assert range_and_mean_group("huss", groups, surface_variables) == "hus"
+    assert range_and_mean_group("pr", groups, surface_variables) == "pr"
+    assert range_and_mean_group("ta850", groups, surface_variables) == "ta"
+    assert range_and_mean_group("tas", groups, surface_variables) == "ta"
+    assert range_and_mean_group("ua850", groups, surface_variables) == "ua_va"
+    assert range_and_mean_group("vas", groups, surface_variables) == "ua_va"
+    assert range_and_mean_group("zg500", groups, surface_variables) == "zg"
+    assert range_and_mean_group("psl", groups, surface_variables) == "psl"
 
 
 def test_visualize_range_and_mean_writes_one_png_per_group(tmp_path):
@@ -390,7 +440,12 @@ def test_visualize_range_and_mean_writes_one_png_per_group(tmp_path):
         ]
     )
 
-    visualize_range_and_mean(stats_df, tmp_path, logging.getLogger("test"))
+    visualize_range_and_mean(
+        stats_df,
+        tmp_path,
+        _CONFIG.range_and_mean_groups,
+        _CONFIG.surface_variables,
+    )
 
     assert {p.name for p in tmp_path.glob("range_and_mean_*.png")} == {
         "range_and_mean_hus.png",
@@ -404,17 +459,18 @@ def test_visualize_range_and_mean_writes_one_png_per_group(tmp_path):
 
 def test_matching_rcm_variable_pairs_by_family():
     rcm_variables = ["tas", "pr", "uas", "vas", "huss"]
-    assert matching_rcm_variable("ta1000", rcm_variables) == "tas"
-    assert matching_rcm_variable("ta850", rcm_variables) == "tas"
-    assert matching_rcm_variable("tas", rcm_variables) == "tas"
-    assert matching_rcm_variable("ua850", rcm_variables) == "uas"
-    assert matching_rcm_variable("uas", rcm_variables) == "uas"
-    assert matching_rcm_variable("va500", rcm_variables) == "vas"
-    assert matching_rcm_variable("zg850", rcm_variables) is None
-    assert matching_rcm_variable("psl", rcm_variables) is None
-    assert matching_rcm_variable("pr", rcm_variables) == "pr"
-    assert matching_rcm_variable("huss", rcm_variables) == "huss"
-    assert matching_rcm_variable("hus850", rcm_variables) == "huss"
+    surface_variables = _CONFIG.surface_variables
+    assert matching_rcm_variable("ta1000", rcm_variables, surface_variables) == "tas"
+    assert matching_rcm_variable("ta850", rcm_variables, surface_variables) == "tas"
+    assert matching_rcm_variable("tas", rcm_variables, surface_variables) == "tas"
+    assert matching_rcm_variable("ua850", rcm_variables, surface_variables) == "uas"
+    assert matching_rcm_variable("uas", rcm_variables, surface_variables) == "uas"
+    assert matching_rcm_variable("va500", rcm_variables, surface_variables) == "vas"
+    assert matching_rcm_variable("zg850", rcm_variables, surface_variables) is None
+    assert matching_rcm_variable("psl", rcm_variables, surface_variables) is None
+    assert matching_rcm_variable("pr", rcm_variables, surface_variables) == "pr"
+    assert matching_rcm_variable("huss", rcm_variables, surface_variables) == "huss"
+    assert matching_rcm_variable("hus850", rcm_variables, surface_variables) == "huss"
 
 
 def test_mean_pool_coarsen_pools_by_factor():
@@ -504,7 +560,7 @@ def test_analyze_gcm_vs_coarsened_crcm(tmp_path):
         rcm_variables=["tas"],
         coarsen_factor=2,
         output_dir=tmp_path,
-        logger=logging.getLogger("test"),
+        surface_variables=_CONFIG.surface_variables,
     )
 
     csv_path = tmp_path / "gcm_vs_coarsened_rcm.csv"
@@ -537,7 +593,6 @@ def test_analyze_gcm_vs_coarsened_crcm(tmp_path):
     visualize_gcm_vs_coarsened_rcm(
         stats_per_var=stats_per_var,
         output_dir=tmp_path,
-        logger=logging.getLogger("test"),
     )
     pngs = list(tmp_path.glob("gcm_vs_rcm_*.png"))
     assert len(pngs) == 1
@@ -561,7 +616,7 @@ def test_compare_gcm_vs_coarsened_rcm_skips_unpaired_variables(tmp_path):
         rcm_variables=["tas", "uas", "pr"],
         coarsen_factor=2,
         output_dir=tmp_path,
-        logger=logging.getLogger("test"),
+        surface_variables=_CONFIG.surface_variables,
     )
 
     assert set(stats_per_var) == {("historical", "ta850"), ("historical", "ua850")}
@@ -581,15 +636,11 @@ def test_filter_data_keeps_gcm_and_crcm_indices_paired():
         crcm_variables=["pr"],
     )
 
-    data_gcm, data_crcm = filter_data(dataset, logging.getLogger("test"))
+    data_gcm, data_crcm = filter_data(dataset)
 
     # Deduplicating each list independently would yield CRCM [0.0, 1.0] and break the pairing.
     np.testing.assert_array_equal(data_gcm["sim_a"]["tas"].values, [0.0, 2.0])
     np.testing.assert_array_equal(data_crcm["sim_a"]["pr"].values, [1.0, 0.0])
-
-    # test only one start_date value raises error
-    with pytest.raises(ValueError):
-        filter_data(dataset, logging.getLogger("test"), start_date="2000-01-01")
 
 
 def test_compare_gcm_rcm_recovers_a_known_offset():
@@ -655,7 +706,7 @@ def test_max_largest_cluster_pct_matches_across_block_sizes():
 def test_write_dataframe_to_csv_preserves_small_magnitudes(tmp_path):
     df = pd.DataFrame({"variable": ["huss", "pr", "tas"], "mean": [0.00832, 1.2e-5, 288.153]})
 
-    write_dataframe_to_csv(df, tmp_path, "small_values", logging.getLogger("test"))
+    write_dataframe_to_csv(df, tmp_path, "small_values")
 
     written = pd.read_csv(tmp_path / "small_values.csv")
     assert written.loc[0, "mean"] == pytest.approx(0.00832)
@@ -667,7 +718,7 @@ def test_compute_stats_summary_matches_numpy():
     ds = _spatial_dataset("tas", "2000-01-01", 4)
     values = ds["tas"].values
 
-    stats_df = compute_stats(ds, ["tas"], "sim_a", "gcm", logging.getLogger("test"))
+    stats_df = compute_stats(ds, ["tas"], "sim_a", "gcm")
 
     assert list(stats_df["variable"]) == ["tas"]
     assert int(stats_df.loc[0, "n_time_steps"]) == 4
@@ -690,7 +741,6 @@ def test_analyze_nan_clusters(tmp_path):
         model_data={"historical": ds},
         variables=["tas"],
         output_dir=tmp_path,
-        logger=logging.getLogger("test"),
         mostly_nan_threshold=0.99,
     )
 

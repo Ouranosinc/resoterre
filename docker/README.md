@@ -151,7 +151,7 @@ path_hrdps_geophysical: /tmp/resoterre/geophysical
 path_rdps: /tmp/resoterre/inputs
 
 # Global settings
-experiment_name: test # output will be generated as zarr file with name "inference_{experiment_name}.zarr"
+experiment_name: test # output will be generated as Zarr file with name "inference_{experiment_name}.zarr"
 
 # HRDPS Preprocessing
 hrdps_preprocessing_skip: false

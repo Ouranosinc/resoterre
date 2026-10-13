@@ -9,9 +9,7 @@ import pandas as pd
 import xarray as xr
 
 
-# Surface variables mapped onto the stem of their pressure-level counterpart, so that
-# a surface RCM field can be paired with a pressure-level GCM field of the same family.
-SURFACE_VARIABLE_STEMS = {"tas": "ta", "uas": "ua", "vas": "va", "huss": "hus", "ps": "ps"}
+logger = logging.getLogger(__name__)
 
 
 class EmulatorDatasetLike(Protocol):
@@ -40,7 +38,7 @@ class EmulatorDatasetLike(Protocol):
         ...
 
 
-def write_dataframe_to_csv(df: pd.DataFrame, path: Path | str, name: str, logger: logging.Logger) -> None:
+def write_dataframe_to_csv(df: pd.DataFrame, path: Path | str, name: str) -> None:
     """
     Write a pandas DataFrame to a CSV file.
 
@@ -52,8 +50,6 @@ def write_dataframe_to_csv(df: pd.DataFrame, path: Path | str, name: str, logger
         Directory where the CSV file is written.
     name : str
         Name of the CSV file, without the ``.csv`` extension.
-    logger : logging.Logger
-        Logger for logging output.
     """
     output_path = Path(path)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -167,7 +163,7 @@ def variable_pretty_label(var: str) -> tuple[str, str]:
     return pretty_names.get(var, (f"{var}", var))
 
 
-def variable_family(name: str) -> str:
+def variable_family(name: str, surface_variables: dict[str, str]) -> str:
     """
     Return the variable family used to pair GCM and RCM fields.
 
@@ -178,6 +174,8 @@ def variable_family(name: str) -> str:
     ----------
     name : str
         Variable name.
+    surface_variables : dict[str, str]
+        Surface variable mapped onto the stem of its pressure-level counterpart.
 
     Returns
     -------
@@ -185,10 +183,10 @@ def variable_family(name: str) -> str:
         Family name used to pair GCM and RCM variables.
     """
     stem = re.sub(r"\d+$", "", str(name))
-    return SURFACE_VARIABLE_STEMS.get(stem, stem)
+    return surface_variables.get(stem, stem)
 
 
-def matching_rcm_variable(gcm_variable: str, rcm_variables: list[str]) -> str | None:
+def matching_rcm_variable(gcm_variable: str, rcm_variables: list[str], surface_variables: dict[str, str]) -> str | None:
     """
     Return the RCM surface variable in the same family as ``gcm_variable``, if any.
 
@@ -198,6 +196,8 @@ def matching_rcm_variable(gcm_variable: str, rcm_variables: list[str]) -> str | 
         GCM variable name.
     rcm_variables : list of str
         Candidate RCM variable names.
+    surface_variables : dict[str, str]
+        Surface variable mapped onto the stem of its pressure-level counterpart.
 
     Returns
     -------
@@ -206,9 +206,9 @@ def matching_rcm_variable(gcm_variable: str, rcm_variables: list[str]) -> str | 
         ``None`` if no RCM variable shares the family.
     """
     # Get the family of the GCM variable
-    family = variable_family(gcm_variable)
+    family = variable_family(gcm_variable, surface_variables)
     # Find all RCM variables in the same family
-    matches = [name for name in rcm_variables if variable_family(name) == family]
+    matches = [name for name in rcm_variables if variable_family(name, surface_variables) == family]
     # If no matches, return None
     if not matches:
         return None
@@ -216,5 +216,5 @@ def matching_rcm_variable(gcm_variable: str, rcm_variables: list[str]) -> str | 
     if gcm_variable in matches:
         return gcm_variable
     # If no exact match, return the first surface variable in the family
-    surface = [name for name in matches if name in SURFACE_VARIABLE_STEMS]
+    surface = [name for name in matches if name in surface_variables]
     return surface[0] if surface else matches[0]

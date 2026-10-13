@@ -12,6 +12,9 @@ import xarray as xr
 from resoterre.data_analysis.utils import matching_rcm_variable, write_dataframe_to_csv
 
 
+logger = logging.getLogger(__name__)
+
+
 class SingleVarStats(TypedDict):
     """Statistics for a single variable comparison between GCM and CRCM."""
 
@@ -168,7 +171,7 @@ def analyze_gcm_vs_coarsened_crcm(
     rcm_variables: list[str],
     coarsen_factor: int,
     output_dir: Path | str,
-    logger: logging.Logger,
+    surface_variables: dict[str, str],
 ) -> dict[tuple[str, str], SingleVarStats]:
     """
     Coarsen RCM data on the GCM grid and compare to GCM data.
@@ -192,8 +195,8 @@ def analyze_gcm_vs_coarsened_crcm(
         Spatial mean-pooling factor applied to the RCM field.
     output_dir : Path | str
         Directory where the comparison CSV is written.
-    logger : logging.Logger
-        Logger for logging output.
+    surface_variables : dict[str, str]
+        Surface variable mapped onto the stem of its pressure-level counterpart.
 
     Returns
     -------
@@ -216,7 +219,7 @@ def analyze_gcm_vs_coarsened_crcm(
 
         # Compare GCM variables to coarsened RCM variables
         for gcm_var in gcm_variables:
-            rcm_var = matching_rcm_variable(gcm_var, rcm_variables)
+            rcm_var = matching_rcm_variable(gcm_var, rcm_variables, surface_variables)
             if rcm_var is None:
                 logger.info("skip %s: no matching RCM variable", gcm_var)
                 continue
@@ -244,7 +247,6 @@ def analyze_gcm_vs_coarsened_crcm(
         pd.DataFrame(rows),
         output_dir,
         "gcm_vs_coarsened_rcm",
-        logger,
     )
 
     return stats_per_var

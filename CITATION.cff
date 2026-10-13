@@ -24,4 +24,4 @@ contact:
 repository-code: "https://github.com/Ouranosinc/resoterre"
 abstract: "Machine learning tools and extensions for climate science."
 license: "Apache-2.0"
-version: "0.1.2"
+version: "0.1.3-dev.10"
