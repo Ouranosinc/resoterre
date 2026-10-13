@@ -9,7 +9,8 @@ import numpy as np
 import xarray
 
 from resoterre.data_management.netcdf_utils import CFVariables
-from resoterre.datasets.cmip6.cmip6_utils import gcm_variable_levels, gcm_vertical_levels, gcm_vertical_variables
+from resoterre.datasets.cmip6.cmip6_utils import gcm_variable_levels, gcm_vertical_variables
+from resoterre.datasets.cmip6.cmip6_variables import gcm_vertical_levels
 from resoterre.datasets.crcm.crcm_utils import (
     crcm_north_america_custom_grid_coordinates,
     crcm_north_america_grid_coordinates,

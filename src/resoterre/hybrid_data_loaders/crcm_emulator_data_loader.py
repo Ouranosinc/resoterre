@@ -39,6 +39,8 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         List of time periods to consider. Each time period is a tuple of start and end times.
     keep_3d_variables : bool
         Whether to keep 3D variables structure in the dataset.
+    normalize : bool
+        Whether to normalize the data using known min, max, and log normalization parameters.
     max_open_datasets : int
         Maximum number of open xarray datasets to cache.
     experiment_name : str
@@ -54,6 +56,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         crcm_variables: list[str],
         time_periods: list[Any],
         keep_3d_variables: bool = False,
+        normalize: bool = True,
         max_open_datasets: int = 2,
         experiment_name: str = "",
     ) -> None:
@@ -68,6 +71,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         self.gcm_open_dataset: dict[str, xarray.Dataset] = {}
         self.crcm_open_dataset: dict[str, xarray.Dataset] = {}
         self.keep_3d_variables = keep_3d_variables
+        self.normalize = normalize
         self.max_open_datasets = max_open_datasets
         # Only using 850 hPa level for the mask
         self.mask_dimensions = 0
@@ -209,13 +213,15 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     dtype=np.float32,
                 )
             gcm_data = xarray_variable.isel(time=gcm_idx).values
-            input_first_block[i, :, :] = normalize(
-                gcm_data,
-                valid_min=cmip6_variables[variable_name].normalize_min,
-                valid_max=cmip6_variables[variable_name].normalize_max,
-                log_normalize=cmip6_variables[variable_name].log_normalize,
-                log_offset=cmip6_variables[variable_name].normalize_log_offset,
-            )
+            if self.normalize:
+                gcm_data = normalize(
+                    gcm_data,
+                    valid_min=cmip6_variables[variable_name].normalize_min,
+                    valid_max=cmip6_variables[variable_name].normalize_max,
+                    log_normalize=cmip6_variables[variable_name].log_normalize,
+                    log_offset=cmip6_variables[variable_name].normalize_log_offset,
+                )
+            input_first_block[i, :, :] = gcm_data
         if self.mask_dimensions == 1:
             mask_data = xarray_dataset_gcm["mask_850"].isel(time=gcm_idx).values.astype(np.float32)
             input_first_block[len(self.gcm_variables), :, :] = mask_data
@@ -271,23 +277,19 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
             gcm_data = xarray_variable.isel(time=gcm_idx).values
             gcm_mask = np.isnan(gcm_data)
             gcm_data[gcm_mask] = 0.0
-            if input_key in input_first_block:
-                input_first_block[input_key][-vertical_level_counts[key], :, :] = normalize(
+            if self.normalize:
+                gcm_data = normalize(
                     gcm_data,
                     valid_min=cmip6_variables[variable_name].normalize_min,
                     valid_max=cmip6_variables[variable_name].normalize_max,
                     log_normalize=cmip6_variables[variable_name].log_normalize,
                     log_offset=cmip6_variables[variable_name].normalize_log_offset,
                 )
+            if input_key in input_first_block:
+                input_first_block[input_key][-vertical_level_counts[key], :, :] = gcm_data
                 vertical_level_counts[key] -= 1
             else:
-                input_first_block["input_first_block_2d"][idx_2d, :, :] = normalize(
-                    gcm_data,
-                    valid_min=cmip6_variables[variable_name].normalize_min,
-                    valid_max=cmip6_variables[variable_name].normalize_max,
-                    log_normalize=cmip6_variables[variable_name].log_normalize,
-                    log_offset=cmip6_variables[variable_name].normalize_log_offset,
-                )
+                input_first_block["input_first_block_2d"][idx_2d, :, :] = gcm_data
                 input_first_block["input_first_block_2d"][idx_2d + 1, :, :] = gcm_mask.astype(np.float32)
                 idx_2d += 1
         if self.mask_dimensions == 1:
@@ -333,13 +335,15 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     (len(self.crcm_variables), xarray_variable.shape[1], xarray_variable.shape[2]), dtype=np.float32
                 )
             crcm_data = xarray_variable.isel(time=crcm_idx).values
-            target[i, :, :] = normalize(
-                crcm_data,
-                valid_min=crcm_variables[variable_name].normalize_min,
-                valid_max=crcm_variables[variable_name].normalize_max,
-                log_normalize=crcm_variables[variable_name].log_normalize,
-                log_offset=crcm_variables[variable_name].normalize_log_offset,
-            )
+            if self.normalize:
+                crcm_data = normalize(
+                    crcm_data,
+                    valid_min=crcm_variables[variable_name].normalize_min,
+                    valid_max=crcm_variables[variable_name].normalize_max,
+                    log_normalize=crcm_variables[variable_name].log_normalize,
+                    log_offset=crcm_variables[variable_name].normalize_log_offset,
+                )
+            target[i, :, :] = crcm_data
 
         current_datetime = xarray_dataset_crcm["time"].values[crcm_idx]
         if isinstance(current_datetime, np.datetime64):
