@@ -1,12 +1,115 @@
 """Module for generating mock CRCM emulator data."""
 
 import logging
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import numpy as np
+import xarray
 from torch.utils import data as td
 
 
 logger = logging.getLogger(__name__)
+
+
+def mock_gcm_data(path_output: Path | str, allow_overwrite: bool = False) -> None:
+    """
+    Generate mock GCM data for the CRCM emulator.
+
+    Parameters
+    ----------
+    path_output : Path | str
+        Path to the output directory where mock data will be stored.
+    allow_overwrite : bool, optional
+        Whether to allow overwriting existing files, by default False.
+    """
+    Path(path_output, "CNRM-ESM2-1").mkdir(parents=True, exist_ok=True)
+    # Currently only generating CNRM-ESM2-1 mock data
+    nc_file = Path(path_output, "CNRM-ESM2-1", "tas_day_CNRM-ESM2-1_historical_r1i1p1f2_gr_18500101-20141231.nc")
+    if allow_overwrite or not nc_file.is_file():
+        # If GCMs with other calendars are required, move time logic to cftime_utils.py
+        start_datetime = datetime(1850, 1, 1, 12)
+        delta_t = timedelta(days=1)
+        times = [start_datetime + i * delta_t for i in range(60625)]
+        ds = xarray.Dataset(
+            {
+                "tas": (("time", "lat", "lon"), np.zeros((60625, 128, 256), dtype="float32")),
+            },
+            coords={
+                "time": times,
+                "lat": np.linspace(-88.927735, 88.927735, 128),
+                "lon": np.linspace(0, 358.59375, 256),
+            },
+        )
+        ds.to_netcdf(
+            nc_file,
+            engine="netcdf4",
+            encoding={
+                "tas": {
+                    "zlib": True,
+                    "complevel": 1,
+                    "shuffle": False,
+                    "dtype": "float32",
+                    "chunksizes": (16, 128, 256),
+                }
+            },
+        )
+    nc_file = Path(path_output, "CNRM-ESM2-1", "tas_day_CNRM-ESM2-1_ssp245_r1i1p1f2_gr_20150101-21001231.nc")
+    if allow_overwrite or not nc_file.is_file():
+        start_datetime = datetime(2015, 1, 1, 12)
+        delta_t = timedelta(days=1)
+        times = [start_datetime + i * delta_t for i in range(31411)]
+        ds = xarray.Dataset(
+            {
+                "tas": (("time", "lat", "lon"), np.zeros((31411, 128, 256), dtype="float32")),
+            },
+            coords={
+                "time": times,
+                "lat": np.linspace(-88.927735, 88.927735, 128),
+                "lon": np.linspace(0, 358.59375, 256),
+            },
+        )
+        ds.to_netcdf(
+            nc_file,
+            engine="netcdf4",
+            encoding={
+                "tas": {
+                    "zlib": True,
+                    "complevel": 1,
+                    "shuffle": False,
+                    "dtype": "float32",
+                    "chunksizes": (16, 128, 256),
+                }
+            },
+        )
+
+
+def mock_emissions(path_output: Path | str, allow_overwrite: bool = False) -> None:
+    """
+    Generate mock emissions data for the CRCM emulator.
+
+    Parameters
+    ----------
+    path_output : Path | str
+        Path to the output directory where mock emissions data will be stored.
+    allow_overwrite : bool, optional
+        Whether to allow overwriting existing files, by default False.
+    """
+    Path(path_output).mkdir(parents=True, exist_ok=True)
+    path_ghg = Path(path_output, "greenhouse_gases_hist3.dat")
+    if allow_overwrite or not path_ghg.is_file():
+        historical_ghg = "A\nB\nC\nD\nE\nF\n"
+        for year in range(1750, 2026):
+            historical_ghg += f"{year} 0.0 0.0 0.0 0.0 0.0 0.0\n"
+        path_ghg.write_text(historical_ghg)
+    for ssp in ["126", "245", "370", "585"]:
+        path_ssp = Path(path_output, f"GHG_SSP{ssp}.dat")
+        if not allow_overwrite and path_ssp.is_file():
+            continue
+        ssp_ghg = "A\nB\nC\nD\nE\nF\n"
+        for year in range(2015, 2501):
+            ssp_ghg += f"{year} 0.0 0.0 0.0 0.0 0.0 0.0\n"
+        path_ssp.write_text(ssp_ghg)
 
 
 class CRCMEmulatorMockDataset(td.Dataset):  # type: ignore[misc]

@@ -397,7 +397,29 @@ class GCMToZarrFromConfig:
             calendar=gcm_calendars[gcm_simulation[0]],
         )
         zarr_datetimes = zarr_datetimes[chunk_idx_start : chunk_idx_end + 1]
-        # Manually finding intersection from juest year, month, day
+        num_datetimes = chunk_idx_end - chunk_idx_start + 1
+        # Filter out dates outside historical or ssp periods
+        if gcm_simulation[1] == "historical":
+            zarr_datetimes = [dt for dt in zarr_datetimes if dt.year <= 2014]
+            chunk_idx_end = chunk_idx_end - (num_datetimes - len(zarr_datetimes))
+        else:
+            zarr_datetimes = [dt for dt in zarr_datetimes if dt.year >= 2015]
+            chunk_idx_start = chunk_idx_start + (num_datetimes - len(zarr_datetimes))
+        if not zarr_datetimes:
+            logger.warning(
+                "No Zarr datetimes found for %s %s",
+                gcm_simulation,
+                variable_name,
+            )
+            return
+        logger.debug(
+            "Chunk idx/date mapping: %s:%s, %s:%s",
+            chunk_idx_start,
+            chunk_idx_end,
+            zarr_datetimes[0],
+            zarr_datetimes[-1],
+        )
+        # Manually finding intersection from just year, month, day
         common_idx_in_netcdf = []
         for dt_zarr in zarr_datetimes:
             for i, dt_netcdf in enumerate(list_of_datetimes):
@@ -413,6 +435,9 @@ class GCMToZarrFromConfig:
             )
             return
         my_slice = slice(common_idx_in_netcdf[0], common_idx_in_netcdf[-1] + 1)
+        if len(zarr_datetimes) != (my_slice.stop - my_slice.start):
+            raise NotImplementedError("Mismatch between Zarr datetimes and NetCDF slice length.")
+        logger.debug("NetCDF slice: %s", my_slice)
         path_output = self.zarr_path(gcm_simulation)
 
         # ToDo: this section is too repetitive
