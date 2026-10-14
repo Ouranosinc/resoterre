@@ -4,16 +4,13 @@ To run this workflow, use the command:
 snakemake -s 03_rdps_to_hrdps_training.smk -j1 --config config_yaml=config.yaml --directory=/workflow_directory
 """
 
-from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
 from resoterre.config_utils import config_from_yaml
-from resoterre.experiments.rdps_to_hrdps_downscaling.rdps_to_hrdps_workflow import (
-    RDPSToHRDPSConfig,
-    rdps_to_hrdps_config_replace_for_inference
-)
+from resoterre.config import RDPSToHRDPSConfig
+from resoterre.pipelines.rdps_to_hrdps_downscaling.rdps_to_hrdps_workflow import rdps_to_hrdps_config_replace_for_inference
 from resoterre.snakemake_utils import shell_script_args_from_config
 
 snakefile_dir = Path(str(workflow.snakefile)).parent

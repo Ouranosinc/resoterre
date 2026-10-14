@@ -7,9 +7,9 @@ from pathlib import Path
 import numcodecs  # noqa: F401  # Imported to register logger for disabling
 import torch.multiprocessing as mp
 
-from resoterre.experiments.crcm_emulator.crcm_emulator_training import CRCMEmulatorTrainingFromConfig
-from resoterre.experiments.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 from resoterre.logging_utils import start_root_logger
+from resoterre.pipelines.crcm_emulator.crcm_emulator_training import CRCMEmulatorTrainingFromConfig
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 
 
 logger = logging.getLogger(__name__)

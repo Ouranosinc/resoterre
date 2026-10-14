@@ -8,7 +8,7 @@ from pathlib import Path
 
 from resoterre.config_utils import config_from_yaml
 
-from resoterre.experiments.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig
+from resoterre.config import CRCMEmulatorConfig
 
 snakefile_dir = Path(str(workflow.snakefile)).parent
 workflow_dir = Path.cwd()
