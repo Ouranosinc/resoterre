@@ -1,15 +1,49 @@
 """Comet ML experiment logging utilities."""
 
+import json
 import logging
 from pathlib import Path
 from typing import Any
 
 import comet_ml
 
-from resoterre.config import ExperimentLoggerConfig
+from resoterre.config import BaseConfig, ExperimentLoggerConfig
 
 
 logger = logging.getLogger(__name__)
+
+
+def config_to_experiment_parameters(config: BaseConfig, exclude: set[str] | None = None) -> dict[str, Any]:
+    """
+    Convert a configuration into experiment tracker parameters.
+
+    Nested configurations stay nested so that each setting is logged as its own parameter,
+    while dictionary-valued fields are serialized to JSON strings so they are logged as a
+    single parameter instead of being flattened into one parameter per key.
+
+    Parameters
+    ----------
+    config : BaseConfig
+        Configuration to convert.
+    exclude : set[str], optional
+        Top-level field names to exclude.
+
+    Returns
+    -------
+    dict[str, Any]
+        JSON-compatible parameters.
+    """
+    dumped = config.model_dump(mode="json", exclude=exclude)
+    parameters: dict[str, Any] = {}
+    for name, value in dumped.items():
+        field_value = getattr(config, name)
+        if isinstance(field_value, BaseConfig):
+            parameters[name] = config_to_experiment_parameters(field_value)
+        elif isinstance(value, dict):
+            parameters[name] = json.dumps(value)
+        else:
+            parameters[name] = value
+    return parameters
 
 
 class CometMLLogger:

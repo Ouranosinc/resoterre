@@ -7,7 +7,14 @@ from typing import Any
 from pydantic import Field
 
 from resoterre.config.base import BaseConfig
-from resoterre.config.ml import OptimizerConfig
+from resoterre.config.ml import (
+    DataLoaderConfig,
+    LossPlotConfig,
+    MachineLearningDataPlotConfig,
+    NeuralNetworkLoopConfig,
+    NeuralNetworksManagerConfig,
+    OptimizerConfig,
+)
 
 
 class HRDPSToZarrConfig(BaseConfig):
@@ -335,6 +342,106 @@ class RDPSToHRDPSDatasetConfig(BaseConfig):
     restricted_channels: dict[str, list[int]] | None = None
     skip_load: bool = False
     dataset_manager: str = "RDPSToHRDPS"
+
+
+# TODO: not used, consider removing
+class UNetReconstructionRunnerConfig(BaseConfig):
+    """
+    Configuration for training or continuing the training of a U-Net model for reconstruction tasks.
+
+    Attributes
+    ----------
+    experiment_name : str
+        Name of the experiment, used for logging and saving models.
+    train_dataset : RDPSToHRDPSDatasetConfig
+        Configuration for the training dataset.
+    validation_dataset : RDPSToHRDPSDatasetConfig
+        Configuration for the validation dataset.
+    test_dataset : RDPSToHRDPSDatasetConfig
+        Configuration for the test dataset.
+    nb_of_new_epochs : int
+        Number of new epochs to train the model.
+    path_logs : Path, optional
+        Path to save training logs.
+    path_models : Path, optional
+        Path to save or load model checkpoints.
+    pth_file : Path, optional
+        Path to a .pth file to load a pre-trained model.
+        If None, training starts from scratch or continues from the last checkpoint.
+    path_figures : Path, optional
+        Path to save training figures.
+    data_loader : DataLoaderConfig
+        Configuration for the data loader. Default is DataLoaderConfig().
+    input_channel_sub_selection : list[int]
+        List of input channels to select from the dataset. Default is an empty list (all channels).
+    target_channel_sub_selection : list[int]
+        List of target channels to select from the dataset. Default is an empty list (all channels).
+    networks_manager : NeuralNetworksManagerConfig
+        Configuration for the neural networks manager.
+    networks : dict
+        Dictionary of network configurations. Default is an empty dictionary.
+    loss_components : dict
+        Dictionary of loss component configurations.
+    optimizers : dict[str, OptimizerConfig]
+        Dictionary of optimizer configurations. Default is an empty dictionary.
+    lr_schedulers : dict
+        Dictionary of learning rate scheduler configurations. Default is an empty dictionary.
+    loops : NeuralNetworkLoopConfig
+        Configuration for training loops.
+    loss_plot : LossPlotConfig
+        Configuration for loss plotting.
+    sample_plot : MachineLearningDataPlotConfig
+        Configuration for sample plotting.
+    matching_input_output_channels : bool
+        Whether the input and output channels of the network match.
+    restart : bool
+        Whether to restart training from scratch.
+        If False and pth_file or path_models is provided, continue training from the loaded model. Default is True.
+    device : str
+        Device to use for training (e.g., 'cpu', 'cuda'). Default is 'cpu'.
+    num_threads : int
+        Number of threads to use for data loading. Default is 1.
+    emissions_tracker_kwargs : dict
+        Configuration for emissions tracking (e.g., CodeCarbon). Default is an empty dictionary.
+    """
+
+    experiment_name: str
+    train_dataset: RDPSToHRDPSDatasetConfig
+    validation_dataset: RDPSToHRDPSDatasetConfig
+    test_dataset: RDPSToHRDPSDatasetConfig
+    nb_of_new_epochs: int
+    path_logs: Path | None = None
+    path_models: Path | None = None
+    pth_file: Path | None = None
+    path_figures: Path | None = None
+    data_loader: DataLoaderConfig = DataLoaderConfig()
+    input_channel_sub_selection: list[int] = Field(default_factory=list)
+    target_channel_sub_selection: list[int] = Field(default_factory=list)
+    networks_manager: NeuralNetworksManagerConfig = NeuralNetworksManagerConfig()
+    networks: dict[str, Any] = Field(default_factory=dict)
+    loss_components: dict[str, Any] = Field(default_factory=dict)
+    optimizers: dict[str, OptimizerConfig] = Field(default_factory=dict)
+    lr_schedulers: dict[str, Any] = Field(default_factory=dict)
+    loops: NeuralNetworkLoopConfig = NeuralNetworkLoopConfig(
+        weight_norms_scheduler_kwargs={"steps": [0, 1, 10, 100, 1000]},
+        figure_train_output_scheduler_kwargs={"steps": [1, 5, 10, 25, 50, 100, 500, 1000, 10000]},
+        gradient_norms_scheduler_kwargs={"steps": [0, 1, 10, 100, 1000]},
+    )
+    loss_plot: LossPlotConfig | None = LossPlotConfig(
+        panels=[["Loss", "ValidationLoss"]],
+        tail_fractions=[0.5, 0.1],
+        alpha_for_compressed_timeseries=0.3,
+        plot_components_kwargs={
+            "Loss": {"color": "blue"},
+            "ValidationLoss": {"label": "Validation Loss", "color": "red", "marker": "o", "linestyle": ""},
+        },
+    )
+    sample_plot: MachineLearningDataPlotConfig = MachineLearningDataPlotConfig()
+    matching_input_output_channels: bool = True
+    restart: bool = True
+    device: str = "cpu"
+    num_threads: int = 1
+    emissions_tracker_kwargs: dict[str, Any] = Field(default_factory=dict)
 
 
 class RDPSToHRDPSPathsConfig(BaseConfig):

@@ -38,8 +38,9 @@ def main(config_path: Path) -> None:
             ("preprocessing.gcm.path", gcm_directory, "crcm_emulator_input"),
             ("preprocessing.crcm.path", crcm_directory, "crcm_emulator_output"),
         ):
-            if next((directory / f"{prefix}_{name}").glob(f"{prefix}_{name}_*.zarr"), None) is None:
-                raise ValueError(f"No Zarr data for {simulation} under {label}: {directory}")
+            zarr_path = directory / f"{prefix}_{name}.zarr"
+            if not zarr_path.is_dir():
+                raise ValueError(f"No Zarr data for {simulation} under {label}: {zarr_path} not found")
 
     config.paths.output.mkdir(parents=True, exist_ok=True)
     trainer = CRCMEmulatorTrainingFromConfig(config)

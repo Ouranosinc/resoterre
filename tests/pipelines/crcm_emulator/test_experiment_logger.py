@@ -1,8 +1,9 @@
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from resoterre.config import ExperimentLoggerConfig
-from resoterre.pipelines.crcm_emulator.experiment_logger import CometMLLogger
+from resoterre.config import CRCMEmulatorConfig, ExperimentLoggerConfig
+from resoterre.pipelines.crcm_emulator.experiment_logger import CometMLLogger, config_to_experiment_parameters
 
 
 def test_experiment_logger_config_defaults():
@@ -121,3 +122,17 @@ def test_experiment_logger_end():
         comet_logger = CometMLLogger(ExperimentLoggerConfig())
         comet_logger.end()
         experiment_mock.end.assert_called_once()
+
+
+def test_config_to_experiment_parameters_serializes_dict_fields():
+    config = CRCMEmulatorConfig(logger=ExperimentLoggerConfig(disabled=True))
+    parameters = config_to_experiment_parameters(config, exclude={"logger"})
+    assert "logger" not in parameters
+    # Nested configurations stay nested, scalar and list fields are unchanged.
+    assert parameters["optimizer"]["lr"] == 0.01
+    assert parameters["preprocessing"]["gcm"]["variables"] == config.preprocessing.gcm.variables
+    # Dictionary-valued fields are logged as a single JSON string.
+    surface_variables = parameters["analysis"]["surface_variables"]
+    assert isinstance(surface_variables, str)
+    assert json.loads(surface_variables) == config.analysis.surface_variables
+    assert json.loads(parameters["analysis"]["range_and_mean_groups"]) == config.analysis.range_and_mean_groups

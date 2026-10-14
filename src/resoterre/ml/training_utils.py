@@ -162,7 +162,7 @@ class NNTraining(ABC):
 
         torch.set_num_threads(num_threads)
 
-        self.experiment_logger.log_parameters(self.config_dict())
+        self.experiment_logger.log_parameters(self.experiment_parameters())
 
     def config_dict(self) -> dict[str, Any]:
         """
@@ -175,6 +175,18 @@ class NNTraining(ABC):
             should override this method to expose their own configuration (e.g. from a pydantic model).
         """
         return {}
+
+    def experiment_parameters(self) -> dict[str, Any]:
+        """
+        Get the parameters to log to the experiment tracker at the start of training.
+
+        Returns
+        -------
+        dict
+            Parameters for the experiment tracker. Defaults to ``config_dict()``; subclasses can
+            override this method to adapt the configuration to the tracker's format.
+        """
+        return self.config_dict()
 
     def setup_lr_schedulers(
         self,

@@ -17,6 +17,7 @@ from resoterre.ml.network_manager import NeuralNetworksManager
 from resoterre.ml.neural_networks_unet import UNet
 from resoterre.ml.training_utils import NNTraining
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
+from resoterre.pipelines.crcm_emulator.experiment_logger import config_to_experiment_parameters
 from resoterre.plots.ml_sample_plot import balanced_ml_sample_figures
 
 
@@ -270,6 +271,18 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         """
         config: dict[str, Any] = self.config.model_dump(mode="json", exclude={"logger"})
         return config
+
+    def experiment_parameters(self) -> dict[str, Any]:
+        """
+        Get the training configuration to log to Comet ML.
+
+        Returns
+        -------
+        dict
+            The configuration excluding ``logger``, with dictionary-valued fields (e.g.
+            ``analysis.surface_variables``) serialized to JSON strings so each is logged as a single parameter.
+        """
+        return config_to_experiment_parameters(self.config, exclude={"logger"})
 
     def results_dict(self) -> dict[str, Any]:
         """

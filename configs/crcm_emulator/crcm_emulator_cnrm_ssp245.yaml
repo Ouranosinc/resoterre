@@ -135,3 +135,12 @@ analysis:
       - "2015-01-01"
       - "2100-12-31"
       - "ssp245"
+
+# Comet ML experiment logger, locally export COMET_API_KEY=YOUR_KEY
+logger:
+  disabled: true
+  project_name: ""
+  workspace: ""
+  tags: [ "first_experiment" ]
+  offline: false # set to true, when we have no api key
+  offline_directory: null # set when offline is true

@@ -36,6 +36,7 @@ from resoterre.config.downscaling import (
     RDPSToHRDPSPathsConfig,
     RDPSToHRDPSPreprocessingConfig,
     RDPSToHRDPSTrainingConfig,
+    UNetReconstructionRunnerConfig,
 )
 from resoterre.config.ml import (
     DataLoaderConfig,
@@ -47,11 +48,8 @@ from resoterre.config.ml import (
     OptimizerConfig,
     PurgeModelFilesConfig,
     UNetConfig,
-    UNetReconstructionRunnerConfig,
 )
 
-
-UNetReconstructionRunnerConfig.model_rebuild(_types_namespace={"RDPSToHRDPSDatasetConfig": RDPSToHRDPSDatasetConfig})
 
 __all__ = [
     "BaseConfig",
