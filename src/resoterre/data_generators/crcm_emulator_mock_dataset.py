@@ -45,7 +45,7 @@ def mock_gcm_data(path_output: Path | str, allow_overwrite: bool = False) -> Non
         )
         ds.to_netcdf(
             nc_file,
-            engine="netcdf4",
+            engine="h5netcdf",
             encoding={
                 "tas": {
                     "zlib": True,
