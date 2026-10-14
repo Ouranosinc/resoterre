@@ -4,7 +4,7 @@ import numpy as np
 from scipy.ndimage import uniform_filter
 
 
-def replace_nan_with_2d_window_average(
+def _replace_nan_with_2d_window_average(
     image: np.ndarray, window_size: int = 3, allow_nan_output: bool = True
 ) -> np.ndarray:
     """
@@ -64,7 +64,7 @@ def replace_nan_with_auto_2d_window_average(image: np.ndarray) -> np.ndarray:
     Supports images with any number of leading dimensions before the last two spatial dimensions.
     """
     for window_size in range(3, min(image.shape[-2:]) + 1, 2):
-        filled_data = replace_nan_with_2d_window_average(image, window_size=window_size, allow_nan_output=True)
+        filled_data = _replace_nan_with_2d_window_average(image, window_size=window_size, allow_nan_output=True)
         if not np.any(np.isnan(filled_data)):
             return filled_data
 
