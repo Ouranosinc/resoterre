@@ -19,7 +19,6 @@ from resoterre.datasets.cmip6.cmip6_utils import (
     gcm_vertical_variables,
     validate_cmip6_data,
 )
-from resoterre.datasets.cmip6.cmip6_variables import cmip6_variables
 from resoterre.datasets.crcm.crcm_utils import crcm_north_america_grid_coordinates
 from resoterre.io_utils import path_with_uuid
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig, crcm_emulator_parse_config
@@ -334,17 +333,11 @@ class GCMToZarrFromConfig:
         else:
             regrid_data = data
         validate_cmip6_data(regrid_data, variable_name_in_zarr)
-        mask = None
-        if write_mask:
-            mask = np.isnan(regrid_data)
-        if nan_replacement:
-            if level is None:
-                pass
-            elif level == 100000.0:
-                # Using the minimum here is arbitrary.
-                regrid_data[np.isnan(regrid_data)] = cmip6_variables[variable_name_in_zarr].min
-            elif np.any(np.isnan(regrid_data)):
-                regrid_data = replace_nan_with_auto_2d_window_average(regrid_data)
+        mask = np.isnan(regrid_data) if write_mask else None
+        if level == 1000000.0:
+            raise NotImplementedError("Using 1000 hPa not supported, it it often mostly NaN.")
+        if nan_replacement and np.any(np.isnan(regrid_data)):
+            regrid_data = replace_nan_with_auto_2d_window_average(regrid_data)
         write_crcm_time_slice_of_data(
             path_output=path_output,
             variable_name=variable_name_in_zarr,

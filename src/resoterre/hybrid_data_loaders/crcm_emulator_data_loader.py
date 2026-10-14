@@ -288,7 +288,6 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     log_normalize=cmip6_variables[variable_name].log_normalize,
                     log_offset=cmip6_variables[variable_name].normalize_log_offset,
                 )
-                input_first_block["input_first_block_2d"][idx_2d + 1, :, :] = gcm_mask.astype(np.float32)
                 idx_2d += 1
         if self.mask_dimensions == 1:
             mask_data = xarray_dataset_gcm["mask_850"].isel(time=gcm_idx).values.astype(np.float32)
