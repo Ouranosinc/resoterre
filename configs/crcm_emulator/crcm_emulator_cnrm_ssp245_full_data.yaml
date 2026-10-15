@@ -2,7 +2,7 @@ experiment_name: cnrm-ssp245
 executing_institution: Ouranos
 
 paths:
-  output: experiments/test_new_configs
+  output: experiments/full_dataset_first_experiment
   regridding_weights: /Path/to/regridding_weights
   gcm_data: /Path/to/GCMs
   emission_data: /Path/to/GHGs
@@ -90,8 +90,8 @@ data:
       - "2000-01-01"
       - "2014-12-31"
     -
-      - "2070-01-01"
-      - "2084-12-31"
+      - "2085-01-01"
+      - "2100-12-31"
 
   batch_size: 64
   num_workers: 2

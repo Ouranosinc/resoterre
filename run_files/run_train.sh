@@ -43,3 +43,5 @@ if [[ "$NEEDS_COMET_KEY" == "true" && -z "${COMET_API_KEY:-}" ]]; then
 fi
 
 srun python scripts/crcm_emulator/02_train.py --config "$CONFIG_FILE"
+
+srun python scripts/crcm_emulator/03_inference.py --config "$CONFIG_FILE" --checkpoint best

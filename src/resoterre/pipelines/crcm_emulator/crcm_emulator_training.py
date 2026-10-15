@@ -2,9 +2,9 @@
 
 import logging
 import math
-from pathlib import Path
 from typing import Any
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
@@ -18,7 +18,7 @@ from resoterre.ml.neural_networks_unet import UNet
 from resoterre.ml.training_utils import NNTraining
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 from resoterre.pipelines.crcm_emulator.experiment_logger import config_to_experiment_parameters
-from resoterre.plots.ml_sample_plot import balanced_ml_sample_figures
+from resoterre.plots.ml_sample_plot import balanced_ml_sample_figure
 
 
 logger = logging.getLogger(__name__)
@@ -101,6 +101,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
 
         if self.config.data.coarsen_factor is None:
             raise ValueError("Coarsen factor must be specified in the configuration.")
+        self.validation_figure_data: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
         self.init_unet()
         self.loss_functions = {
             "MSELoss": nn.MSELoss(),
@@ -166,7 +167,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             weights.append(self.config.loss.mse_weight)
             metrics["mse_loss"] = loss_terms["mse_loss"].item()
         if self.config.loss.ssim_weight is not None and self.config.loss.ssim_weight > 0:
-            loss_terms["ssim_loss"] = self.loss_functions["SSIMLoss"](output, target_data)
+            loss_terms["ssim_loss"] = 1 - self.loss_functions["SSIMLoss"](output, target_data)
             weights.append(self.config.loss.ssim_weight)
             metrics["ssim_loss"] = loss_terms["ssim_loss"].item()
         if not loss_terms:
@@ -244,6 +245,13 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         loss, metrics = self.training_loss_computation(target_data, output)
         metrics["loss"] = loss.item()
         metrics.update(extra_metrics)
+        if self.experiment_logger.experiment is not None and "loss" not in self.validation_metrics:
+            # first item of the first validation batch, the same sample every epoch
+            self.validation_figure_data = (
+                input_data[0].detach().cpu().numpy(),
+                target_data[0].detach().cpu().numpy(),
+                output[0].detach().cpu().numpy(),
+            )
         self.validation_metrics.add_concurrent_values(None, metrics)
 
     def validation_consolidate(self) -> None:
@@ -257,6 +265,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         """
         validation_loss = np.mean(self.validation_metrics["mse_loss"].values).item()
         self.metrics.add_concurrent_values(self.metrics.last_time(), {"(ValidationLoss)": validation_loss})
+        self.output_validation_figures()
 
     def config_dict(self) -> dict[str, Any]:
         """
@@ -300,8 +309,15 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         return results
 
     def training_loop(self) -> None:
-        """Execute the main training loop for the model."""
-        for _ in range(self.config.training.nb_of_epochs):
+        """
+        Execute the main training loop for the model.
+
+        Notes
+        -----
+        Trains until ``training.nb_of_epochs`` epochs are completed in total, so a trainer whose state was
+        restored with ``load_state`` only trains the remaining epochs.
+        """
+        for _ in range(self.epoch_counter, self.config.training.nb_of_epochs):
             self(epoch=self.epoch_counter + 1, device=self.config.training.device)
         self.close()
 
@@ -320,17 +336,52 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         output_data : torch.Tensor
             The model output data.
         """
-        if self.config.paths.output is None:
+        if self.experiment_logger.experiment is None:
             return
         # ToDo: make figure output frequency customizable in config
-        count_list = [0, 1, 2, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90]
-        if self.total_iterations in count_list or self.total_iterations % 100 == 0:
-            figure_path = Path(self.config.paths.output, f"training_visualization_{self.total_iterations:06d}.png")
-            # plotting first batch item
-            balanced_ml_sample_figures(
-                figure_path,
+        if self.total_iterations % 10 == 0:
+            # plotting first batch item, logged under a single name so Comet ML shows a step slider
+            figure = balanced_ml_sample_figure(
                 input_data=input_data[0, :, :, :].detach().cpu().numpy(),
                 target_data=target_data[0, :, :, :].detach().cpu().numpy(),
                 output_data=output_data[0, :, :, :].detach().cpu().numpy(),
+                **self.figure_channel_names(),
             )
-            self.experiment_logger.log_image(figure_path, name=figure_path.name, step=self.total_iterations)
+            self.experiment_logger.log_figure(figure, name="training_visualization", step=self.total_iterations)
+            plt.close(figure)
+
+    def figure_channel_names(self) -> dict[str, list[str]]:
+        """
+        Get the channel names to label the subplots of the visualization figures.
+
+        Returns
+        -------
+        dict[str, list[str]]
+            Names of the input, target and output channels. Each GCM variable takes two consecutive input
+            channels, its normalized field followed by its missing-value mask.
+        """
+        crcm_variables = list(self.config.data.crcm_variables)
+        return {
+            "input_names": [
+                name for variable in self.config.data.gcm_variables for name in (variable, f"{variable} mask")
+            ],
+            "target_names": crcm_variables,
+            "output_names": crcm_variables,
+        }
+
+    def output_validation_figures(self) -> None:
+        """
+        Log the figure of the fixed validation sample to the experiment logger.
+
+        Notes
+        -----
+        The figure is logged under a single name, at the current training iteration, so that Comet ML shows
+        the same sample evolving across epochs with its step slider. Nothing is saved to disk.
+        """
+        if self.validation_figure_data is None:
+            return
+        input_data, target_data, output_data = self.validation_figure_data
+        self.validation_figure_data = None
+        figure = balanced_ml_sample_figure(input_data, target_data, output_data, **self.figure_channel_names())
+        self.experiment_logger.log_figure(figure, name="validation_visualization", step=self.total_iterations)
+        plt.close(figure)

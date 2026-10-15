@@ -18,7 +18,7 @@ from resoterre.pipelines.crcm_emulator.crcm_emulator_training import CRCMEmulato
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 
 
-def main(config_path: Path, epoch: int | None = None) -> None:
+def main(config_path: Path, checkpoint: str = "latest") -> None:
     """
     Evaluate a trained CRCM emulator on the test periods of preprocessed GCM and CRCM Zarr data.
 
@@ -26,8 +26,8 @@ def main(config_path: Path, epoch: int | None = None) -> None:
     ----------
     config_path : Path
         Path to the CRCM emulator YAML configuration used for training.
-    epoch : int, optional
-        Checkpoint epoch to evaluate. If None, the latest checkpoint is used.
+    checkpoint : str
+        Checkpoint to evaluate, "latest" or "best".
     """
     config = crcm_emulator_parse_config(config_path)
     if config.paths.output is None:
@@ -38,6 +38,7 @@ def main(config_path: Path, epoch: int | None = None) -> None:
         raise ValueError("Set data.test_periods in the configuration.")
     # Disable Comet ML logging, nothing is being trained.
     config = config.model_copy(update={"logger": None})
+    output_directory = config.paths.output
 
     runner = CRCMEmulatorTrainingFromConfig(config)
     test_dataset = CRCMEmulatorDataset(
@@ -61,7 +62,7 @@ def main(config_path: Path, epoch: int | None = None) -> None:
         pin_memory=True,
     )
 
-    runner.load_state(config.paths.output, epoch=epoch)
+    runner.load_state(output_directory, tag=checkpoint)
     runner.to_device(config.training.device)
     runner.set_eval_mode()
     runner.validation_metrics = MultiTimeseries()
@@ -70,7 +71,7 @@ def main(config_path: Path, epoch: int | None = None) -> None:
             runner.validation_step(item)
 
     results = {name: float(np.mean(series.values)) for name, series in runner.validation_metrics.items()}
-    output_path = Path(config.paths.output, f"{config.experiment_name}_test_results.json")
+    output_path = Path(output_directory, f"{config.experiment_name}_test_results.json")
     with output_path.open("w") as f:
         json.dump({"epoch": runner.epoch_counter, "nb_of_samples": len(test_dataset), "metrics": results}, f, indent=4)
     print(json.dumps(results, indent=4))
@@ -80,6 +81,6 @@ def main(config_path: Path, epoch: int | None = None) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True, help="CRCM emulator YAML configuration")
-    parser.add_argument("--epoch", type=int, default=None, help="Checkpoint epoch to evaluate (default: latest)")
+    parser.add_argument("--checkpoint", choices=["latest", "best"], default="best", help="Checkpoint to evaluate")
     args = parser.parse_args()
-    main(args.config, args.epoch)
+    main(args.config, args.checkpoint)
