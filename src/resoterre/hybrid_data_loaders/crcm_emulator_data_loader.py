@@ -209,6 +209,12 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     dtype=np.float32,
                 )
             gcm_data = xarray_variable.isel(time=gcm_idx).values
+            gcm_mask = np.isnan(gcm_data)
+            if np.any(gcm_mask):
+                logger.warning(
+                    "NaN values found in GCM variable %s at time index %s. Replacing with 0.", variable_name, gcm_idx
+                )
+                gcm_data[gcm_mask] = 0.0
             input_first_block[i, :, :] = normalize(
                 gcm_data,
                 valid_min=cmip6_variables[variable_name].normalize_min,
