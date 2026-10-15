@@ -2,6 +2,7 @@
 
 import json
 import logging
+import shutil
 import time
 from abc import ABC, abstractmethod
 from collections import namedtuple
@@ -74,7 +75,7 @@ def gradient_norms(model: torch.nn.Module) -> dict[str, dict[str, float] | float
 
 def extract_pth_epoch(p: Path) -> int:
     """
-    Extract epoch from a saved pth file.
+    Extract epoch from a saved pth file named ``<experiment_name>_epoch_<epoch>_<latest|best>.pth``.
 
     Parameters
     ----------
@@ -86,7 +87,7 @@ def extract_pth_epoch(p: Path) -> int:
     int
         The epoch number extracted from the file name.
     """
-    return int(p.name[:-4].split("_")[-1])
+    return int(p.stem.split("_")[-2])
 
 
 class NNTraining(ABC):
@@ -153,9 +154,6 @@ class NNTraining(ABC):
         self.patience: int | None = None
         self.early_stopping_counter: int = 0
         self.early_stopping_triggered: bool = False
-
-        self.purge_old_models = True
-        self.number_of_latest_models_to_keep = 2
 
         self.logging_frequency_sequence = logging_delay_sequence()
         self.validation_logging_frequency_sequence = logging_delay_sequence()
@@ -239,29 +237,29 @@ class NNTraining(ABC):
                 scheduler = cosine_scheduler
             self.lr_schedulers[model_name] = scheduler
 
-    def purge_models(self, path_output: Path | str) -> None:
+    def purge_models(self, path_output: Path | str, tag: str, keep_epoch: int) -> None:
         """
-        Purge old model checkpoints, keeping only the latest specified number of models.
+        Delete the checkpoints of a given tag, except the one of the specified epoch.
 
         Parameters
         ----------
         path_output : Path | str
             Path where the model checkpoints are saved.
+        tag : str
+            Checkpoint tag, "latest" or "best".
+        keep_epoch : int
+            Epoch of the checkpoint to keep.
         """
-        pth_files = sorted(
-            Path(path_output).glob(f"{self.experiment_name}_epoch_*.pth"), key=extract_pth_epoch, reverse=True
-        )
-        for file in pth_files[self.number_of_latest_models_to_keep :]:
-            if str(file) == str(self.minimum_validation_loss_model):
-                continue
-            file.unlink()
-            safetensor_file = Path(file).with_suffix(".safetensors")
-            if safetensor_file.is_file():
-                safetensor_file.unlink()
+        for file in Path(path_output).glob(f"{self.experiment_name}_epoch_*_{tag}.*"):
+            if file.suffix in (".pth", ".safetensors") and extract_pth_epoch(file) != keep_epoch:
+                file.unlink()
 
     def save_state(self, path_output: Path | str, include_safetensors: bool = False) -> None:
         """
         Save the current state of the models, optimizers, and training progress.
+
+        The state is saved to ``<experiment_name>_epoch_<epoch>_latest.pth`` and, when the monitored validation
+        metric improved, also to ``<experiment_name>_epoch_<epoch>_best.pth``. Only the most recent of each is kept.
 
         Parameters
         ----------
@@ -270,9 +268,12 @@ class NNTraining(ABC):
         include_safetensors : bool
             Whether to save the model state in safetensors format.
         """
-        pth_file = Path(path_output, f"{self.experiment_name}_epoch_{self.epoch_counter:03d}.pth")
-        if self.is_validation_improvement():
-            self.minimum_validation_loss_model = pth_file
+        stem = f"{self.experiment_name}_epoch_{self.epoch_counter:03d}"
+        latest_file = Path(path_output, f"{stem}_latest.pth")
+        best_file = Path(path_output, f"{stem}_best.pth")
+        is_best = self.is_validation_improvement()
+        if is_best:
+            self.minimum_validation_loss_model = best_file
         Path(path_output).mkdir(parents=True, exist_ok=True)
         torch.save(
             {
@@ -289,21 +290,26 @@ class NNTraining(ABC):
                 "cuda_rng_state_all": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
                 "numpy_rng_state": np.random.get_state(),
             },
-            pth_file,
+            latest_file,
         )
         if include_safetensors:
             # ToDo: consider adding minimal metadata to safetensors
             metadata: dict[str, str] = {}
-            safetensors_file = Path(path_output, f"{self.experiment_name}_epoch_{self.epoch_counter:03d}.safetensors")
             state_dict = {}
             for model_name, model in self.models.items():
                 for parameter_name, tensor in model.state_dict().items():
                     state_dict[f"{model_name}.{parameter_name}"] = tensor
-            save_as_safetensors(state_dict, safetensors_file, metadata=metadata)
-        if self.purge_old_models:
-            self.purge_models(path_output=path_output)
+            save_as_safetensors(state_dict, latest_file.with_suffix(".safetensors"), metadata=metadata)
+        tags = ["latest"]
+        if is_best:
+            for suffix in (".pth", ".safetensors"):
+                if latest_file.with_suffix(suffix).is_file():
+                    shutil.copyfile(latest_file.with_suffix(suffix), best_file.with_suffix(suffix))
+            tags.append("best")
+        for tag in tags:
+            self.purge_models(path_output=path_output, tag=tag, keep_epoch=self.epoch_counter)
 
-    def load_state(self, path_models: Path | str, epoch: int | None = None) -> None:
+    def load_state(self, path_models: Path | str, epoch: int | None = None, tag: str = "latest") -> None:
         """
         Load the state of the model, optimizer, and training progress from a checkpoint.
 
@@ -312,16 +318,21 @@ class NNTraining(ABC):
         path_models : Path | str
             Path to the directory containing the model checkpoints.
         epoch : int | None
-            Epoch number to load. If None, the latest checkpoint will be loaded.
+            Epoch number of the checkpoint to load. If None, the checkpoint of the given tag is loaded.
+        tag : str
+            Checkpoint tag, "latest" or "best".
         """
         if epoch is None:
-            pth_files = list(Path(path_models).glob(f"{self.experiment_name}_epoch_*.pth"))
-            pth_files = sorted(pth_files, key=extract_pth_epoch, reverse=True)
+            pth_files = sorted(
+                Path(path_models).glob(f"{self.experiment_name}_epoch_*_{tag}.pth"), key=extract_pth_epoch, reverse=True
+            )
             if not pth_files:
-                raise FileNotFoundError(f"No pth files found in {path_models} for experiment {self.experiment_name}.")
+                raise FileNotFoundError(
+                    f"No {tag} pth files found in {path_models} for experiment {self.experiment_name}."
+                )
             input_path = pth_files[0]
         else:
-            input_path = Path(path_models, f"{self.experiment_name}_epoch_{epoch:03d}.pth")
+            input_path = Path(path_models, f"{self.experiment_name}_epoch_{epoch:03d}_{tag}.pth")
             if not input_path.is_file():
                 raise FileNotFoundError(f"Pth file {input_path} does not exist.")
         checkpoint = torch.load(input_path, weights_only=False, map_location="cpu")
@@ -348,6 +359,7 @@ class NNTraining(ABC):
             torch.cuda.set_rng_state_all(checkpoint.get("cuda_rng_state_all"))
         if "numpy_rng_state" in checkpoint:
             np.random.set_state(checkpoint["numpy_rng_state"])
+        self.model_states_up_to_date = True
 
     def to_device(self, device: str) -> None:
         """
