@@ -17,7 +17,7 @@ Changes
 
 Fixes
 ^^^^^
-* No change.
+* Fix transition from historical to ssp periods in GCM and CRCM preprocessing. (:issue:`153`, :pull:`134`).
 
 .. _changes_0.1.3-dev.10:
 
