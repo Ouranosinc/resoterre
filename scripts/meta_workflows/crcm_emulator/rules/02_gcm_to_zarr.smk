@@ -15,27 +15,27 @@ from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import CRCMEmulato
 snakefile_dir = Path(str(workflow.snakefile)).parent
 workflow_dir = Path.cwd()
 config_obj = config_from_yaml(CRCMEmulatorConfig, config["config_yaml"])
-init_variable = config_obj.gcm_preprocessing_variables[0]
-init_gcm, init_pathway, init_realization = config_obj.preprocessing_simulations[0]
+init_variable = config_obj.preprocessing.gcm.variables[0]
+init_gcm, init_pathway, init_realization = config_obj.preprocessing.simulations[0]
 init_gcm_str = f"{init_gcm}_{init_pathway}_{init_realization}"
-chunk_size = config_obj.preprocessing_chunk_size
-chunks_per_task = config_obj.preprocessing_chunks_per_task
+chunk_size = config_obj.preprocessing.chunk_size
+chunks_per_task = config_obj.preprocessing.chunks_per_task
 
 def expected_manifests(wildcards):
     list_of_expected_manifests = []
-    for simulation in config_obj.preprocessing_simulations:
+    for simulation in config_obj.preprocessing.simulations:
         simulation_str = f"{simulation[0]}_{simulation[1]}_{simulation[2]}"
         chunk_indices = get_chunk_indices(
             gcm=simulation[0],
-            start_datetime=config_obj.gcm_preprocessing_start_datetime,
-            end_datetime=config_obj.gcm_preprocessing_end_datetime,
+            start_datetime=config_obj.preprocessing.gcm.start_datetime,
+            end_datetime=config_obj.preprocessing.gcm.end_datetime,
             chunk_size=chunk_size,
             chunks_per_task=chunks_per_task
         )
         for chunk_index_tuple in chunk_indices:
             chunk_str = f"{chunk_index_tuple[0]}_{chunk_index_tuple[1]}"
             levels_processed = False
-            for variable_name in config_obj.gcm_preprocessing_variables:
+            for variable_name in config_obj.preprocessing.gcm.variables:
                 write_mask = "_False"
                 if not levels_processed and variable_name in gcm_vertical_variables:
                     write_mask = "_True"

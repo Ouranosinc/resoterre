@@ -6,18 +6,21 @@ Changelog
 `Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
 ----------------------------------------------------------------
 
-Contributors: Contributors: Blaise Gauvin St-Denis (:user:`bstdenis`), Hager Radi (:user:`hager.radi`), Christina Isaicu (:user:`cisaic`)
+Contributors: Contributors: Francis Charette-Migneault (:user:`fmigneault`), Blaise Gauvin St-Denis (:user:`bstdenis`), Hager Radi (:user:`hager.radi`), Christina Isaicu (:user:`cisaic`)
 
 Changes
 ^^^^^^^
+* Restructure all configuration classes as frozen ``pydantic`` models defined in the new ``resoterre.config`` package (``base``, ``ml``, ``downscaling``, ``crcm_emulator``), replacing ``dacite`` and the ``register_config`` registry; ``AdamConfig``/``AdamWConfig`` are merged into a single ``OptimizerConfig`` selected via ``optimizer_name``, and the ``type`` YAML key is no longer needed; ``CRCMEmulatorConfig`` is reorganized into nested groups (``paths``, ``preprocessing``, ``data``, ``model``, ``optimizer``, ``loss``, ``training``, ``inference``, ``debug``, ``analysis``, ``logger``) and its ``is_hyperparameter``/``is_setting`` field flags are dropped in favour of saving the full configuration (excluding ``logger``) under ``config`` in the training results JSON (dictionary-valued fields are logged to Comet ML as single JSON-string parameters); ``RDPSToHRDPSConfig`` is likewise nested (``paths``, ``preprocessing.hrdps``/``preprocessing.rdps``, ``data``, ``model``, ``loss``, ``training`` with ``training.optimizer``, ``inference``, ``diagnostics``, ``debug``); all configurations, including RDPS to HRDPS downscaling, now reject unknown YAML keys (descriptive keys such as ``workflow_command``, ``framework`` and grid extents move under a ``metadata`` block), and the ``runner_unet`` and ``ml_training_plot`` modules are removed. (:issue:`108`, :pull:`155`).
 * Add option to fill NaN values with a windowed mean. (:issue:`130`, :pull:`134`).
 * Add ``data_analysis`` package for the CRCM emulator: summary statistics, NaN cluster analysis, GCM versus coarsened RCM comparison, and range, mean, and sample plots. ``scripts/meta_workflows/crcm_emulator/01_data_analysis.py`` provides a workflow to run the data analysis from a CRCM emulator config (:issue:`91`, :pull:`133`).
 * Refactor CRCM emulator preprocessing to produce a single zarr archive. (:issue:`132`), (:pull:`126`).
 * Add ``CometMLLogger`` and ``ExperimentLoggerConfig`` classes to ``resoterre.pipelines.crcm_emulator.experiment_logger`` and integrate Comet ML experiment tracking (parameters, metrics, images/figures) into the CRCM emulator training pipeline. (:issue:`119`, :pull:`127`).
+* Improve CWL metadata corresponding to deployable processes from resoterre source code version, authors and additional references (:pull:`148`).
 
 Fixes
 ^^^^^
 * Fix transition from historical to ssp periods in GCM and CRCM preprocessing. (:issue:`153`, :pull:`134`).
+* Fix ``vcs:tag`` reference in the notebook and corresponding STAC Item produced from it to refer to the actual Git tags for the repository.
 
 .. _changes_0.1.3-dev.10:
 

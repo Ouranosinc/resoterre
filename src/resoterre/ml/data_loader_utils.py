@@ -4,7 +4,6 @@ import logging
 import math
 import random
 from collections.abc import Sequence
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeAlias, cast
 
@@ -21,36 +20,6 @@ from resoterre.utils import unique_hex_digest
 logger = CustomLogging(caller=logging.getLogger(__name__))
 
 Nested: TypeAlias = torch.Tensor | dict[Any, "Nested"] | list["Nested"] | tuple["Nested", ...]
-
-
-@dataclass(frozen=True, slots=True)
-class DatasetConfig:
-    """Configuration specific to a dataset. Used as parent class for type hinting."""
-
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class DataLoaderConfig:
-    """
-    Configuration for a PyTorch DataLoader.
-
-    Attributes
-    ----------
-    batch_size : int
-        Number of samples per batch to load. Default is 1.
-    shuffle : bool
-        Whether to shuffle the data at every epoch. Default is False.
-    num_workers : int
-        Number of subprocesses to use for data loading. Default is 0 (data will be loaded in the main process).
-    multiprocessing_context : str, optional
-        The multiprocessing context to use. If None, the default context is used. Default is None.
-    """
-
-    batch_size: int = field(default=1, metadata={"is_hyperparameter": True})
-    shuffle: bool = False
-    num_workers: int = 0
-    multiprocessing_context: str | None = None
 
 
 def index_train_validation_test_split(

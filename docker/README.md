@@ -25,16 +25,16 @@ This directory contains Docker configurations for running **Resoterre inference*
 
 Your config YAML file must specify these key paths:
 
-* `path_inference_model`: Path to the trained model file (use `/app/model/model.safetensors` in container)
-* `path_rdps`: Path to input RDPS data (e.g., `/app/inputs` - must be mounted at runtime)
-* `use_flat_rdps_directory_structure`: Set to `true` when RDPS input files are stored directly in `path_rdps`, for example `/app/inputs/2024050100_007.nc`. Set to `false` when files are organized in month subdirectories, for example `/app/inputs/202405/2024050100_007.nc`.
-* `path_hrdps_geophysical`: Path to geophysical files like `orog.nc` and `sftlf.nc` (use `/app/geophysical` - already baked into the image)
-* `path_regridding_weights`: Path to regridding weight matrices (use `/app/matrix` - already baked into the image)
-* `path_output`: Output directory for inference results (e.g., `/app/outputs` - must be mounted at runtime)
-* `path_logs`: Directory for log files (e.g., `/app/logs` - must be mounted at runtime)
-* `inference_start_datetime` / `inference_end_datetime`: Time range for inference (can also be overridden per-run via `start_datetime=...`/`end_datetime=...` `docker run` arguments, see below)
-* `inference_device`: Set to `cpu` or `cuda` depending on availability
-* `inference_variables`: List of variables to generate (e.g., `HRDPS_P_TT_10000`, `HRDPS_P_PR_SFC`, etc.)
+* `inference.model_path`: Path to the trained model file (use `/app/model/model.safetensors` in container)
+* `paths.rdps`: Path to input RDPS data (e.g., `/app/inputs` - must be mounted at runtime)
+* `preprocessing.rdps.use_flat_directory_structure`: Set to `true` when RDPS input files are stored directly in `paths.rdps`, for example `/app/inputs/2024050100_007.nc`. Set to `false` when files are organized in month subdirectories, for example `/app/inputs/202405/2024050100_007.nc`.
+* `paths.hrdps_geophysical`: Path to geophysical files like `orog.nc` and `sftlf.nc` (use `/app/geophysical` - already baked into the image)
+* `paths.regridding_weights`: Path to regridding weight matrices (use `/app/matrix` - already baked into the image)
+* `paths.output`: Output directory for inference results (e.g., `/app/outputs` - must be mounted at runtime)
+* `paths.logs`: Directory for log files (e.g., `/app/logs` - must be mounted at runtime)
+* `inference.start_datetime` / `inference.end_datetime`: Time range for inference (can also be overridden per-run via `start_datetime=...`/`end_datetime=...` `docker run` arguments, see below)
+* `inference.device`: Set to `cpu` or `cuda` depending on availability
+* `inference.variables`: List of variables to generate (e.g., `HRDPS_P_TT_10000`, `HRDPS_P_PR_SFC`, etc.)
 
 The image uses `configs/downscaling/downscaling_rdps_to_hrdps_cwl.yaml` by default. It is ready for direct Docker execution from `/app`, and its relative paths resolve to the mounted `/app/inputs`, `/app/outputs`, and `/app/logs` directories. A custom config can be mounted and passed explicitly when needed.
 
@@ -136,43 +136,44 @@ Following is a sample configuration with common configuration overrides.
 
 > [!WARNING]
 > Make sure your data structure is aligned as expected by the script.
-> For example, `path_rdps` should contain a `202405/` directory with nested `20240501HH_hhh.nc` NetCDF files,
+> For example, `paths.rdps` should contain a `202405/` directory with nested `20240501HH_hhh.nc` NetCDF files,
 > for a preprocessing source on `2024-05-01`, where the `HH` represents `{00, 06, 12, 18}` ranges and `hhh` represents
 > the hour offset from `000` to `012`. They should align with provided source RDPS to downscale the corresponding HRDPS
 > spatio-temporal extents.
 
 ```yaml
-path_logs: /tmp/resoterre/logs
-path_output: /tmp/resoterre/outputs
-path_preprocessed_zarr: /tmp/resoterre/outputs
-path_regridding_weights: /tmp/resoterre/matrix
-path_hrdps: null  # Not required for inference need to be null
-path_hrdps_geophysical: /tmp/resoterre/geophysical
-path_rdps: /tmp/resoterre/inputs
-
-# Global settings
 experiment_name: test # output will be generated as Zarr file with name "inference_{experiment_name}.zarr"
 
-# HRDPS Preprocessing
-hrdps_preprocessing_skip: false
-hrdps_variables:
-    - "orog"  # Providing orog here will generate the default geophysical fields in zarr format in inference mode
+paths:
+  logs: /tmp/resoterre/logs
+  output: /tmp/resoterre/outputs
+  preprocessed_zarr: /tmp/resoterre/outputs
+  regridding_weights: /tmp/resoterre/matrix
+  hrdps: null  # Not required for inference need to be null
+  hrdps_geophysical: /tmp/resoterre/geophysical
+  rdps: /tmp/resoterre/inputs
 
-# Start at hour 1 considering 7-12 forecast extraction (i.e., HH=06 + 1 for "07:00:00")
-rdps_preprocessing_start_datetime: "2024-05-01 07:00:00"
-rdps_preprocessing_end_datetime: "2024-05-01 08:00:00"  # Match your available data
+preprocessing:
+  hrdps:
+    skip: false
+    variables:
+        - "orog"  # Providing orog here will generate the default geophysical fields in zarr format in inference mode
+  rdps:
+    # Start at hour 1 considering 7-12 forecast extraction (i.e., HH=06 + 1 for "07:00:00")
+    start_datetime: "2024-05-01 07:00:00"
+    end_datetime: "2024-05-01 08:00:00"  # Match your available data
 
-# Inference
-inference_variables:
-  - "HRDPS_P_TT_10000"
-  - "HRDPS_P_PR_SFC"
-  - "HRDPS_P_UUC_10000"
-  - "HRDPS_P_VVC_10000"
-inference_start_datetime: "2024-05-01 07:00:00"   # align with preprocessed ranges
-inference_end_datetime: "2024-05-01 08:00:00"
-# https://huggingface.co/bstdenis/unet-rdps-to-hrdps-downscaling/tree/main
-path_inference_model: /tmp/resoterre/model/unet_epoch_mebojo_018.safetensors
-inference_device: cpu  # cpu or cuda
+inference:
+  variables:
+    - "HRDPS_P_TT_10000"
+    - "HRDPS_P_PR_SFC"
+    - "HRDPS_P_UUC_10000"
+    - "HRDPS_P_VVC_10000"
+  start_datetime: "2024-05-01 07:00:00"   # align with preprocessed ranges
+  end_datetime: "2024-05-01 08:00:00"
+  # https://huggingface.co/bstdenis/unet-rdps-to-hrdps-downscaling/tree/main
+  model_path: /tmp/resoterre/model/unet_epoch_mebojo_018.safetensors
+  device: cpu  # cpu or cuda
 ```
 
 ---
@@ -182,19 +183,20 @@ inference_device: cpu  # cpu or cuda
 **Required mounts**: inputs, outputs, and logs. The default config, matrix, and geophysical files are already baked into the image, so the default Docker command does not require a config mount.
 
 **Important**: Your config YAML must use container paths:
-- `path_inference_model: /app/model/model.safetensors`
-- `path_rdps: /app/inputs`
-- `path_hrdps_geophysical: /app/geophysical`
-- `path_regridding_weights: /app/matrix`
-- `path_output: /app/outputs`
-- `path_logs: /app/logs`
+- `inference.model_path: /app/model/model.safetensors`
+- `paths.rdps: /app/inputs`
+- `paths.hrdps_geophysical: /app/geophysical`
+- `paths.regridding_weights: /app/matrix`
+- `paths.output: /app/outputs`
+- `paths.logs: /app/logs`
 
 #### CPU (no GPU available)
 
 If you are running on a machine **without a GPU**, make sure your YAML sets:
 
 ```yaml
-inference_device: cpu
+inference:
+  device: cpu
 ```
 
 Then run:
@@ -225,7 +227,7 @@ docker run --rm \
   -j1 --config config_yaml=/app/configs/downscaling/your_config.yaml --directory=/app
 ```
 
-To override the config's `inference_start_datetime` / `inference_end_datetime` for a single run without editing the config file, append `start_datetime=...` and/or `end_datetime=...` (ISO 8601 format) right after the `--config` values:
+To override the config's `inference.start_datetime` / `inference.end_datetime` for a single run without editing the config file, append `start_datetime=...` and/or `end_datetime=...` (ISO 8601 format) right after the `--config` values:
 
 ```bash
 docker run --rm \
@@ -245,7 +247,8 @@ docker run --rm \
 If you are running on a machine **with an NVIDIA GPU**, make sure your YAML sets:
 
 ```yaml
-inference_device: cuda
+inference:
+  device: cuda
 ```
 
 Then run (requires NVIDIA Container Toolkit):
