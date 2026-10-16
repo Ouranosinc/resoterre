@@ -5,7 +5,7 @@ from typing import Any
 
 import numpy as np
 
-from resoterre.datasets.cmip6.cmip6_variables import cmip6_variables
+from resoterre.datasets.cmip6.cmip6_variables import cmip6_variables, gcm_vertical_levels
 
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,6 @@ gcm_calendars = {
 }
 
 gcm_vertical_variables: list[str] = ["hus", "ta", "ua", "va", "zg"]
-gcm_vertical_levels: list[float] = [100000.0, 85000.0, 70000.0, 50000.0, 25000.0, 10000.0, 5000.0, 1000.0]
 
 
 def _build_gcm_variable_levels() -> dict[str, dict[str, Any]]:
