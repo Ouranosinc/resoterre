@@ -281,6 +281,7 @@ warn_no_return = true
 warn_return_any = true
 warn_unreachable = true
 warn_unused_configs = true
+mypy_path = "$MYPY_CONFIG_FILE_DIR/src"
 
 [[tool.mypy.overrides]]
 module = [
