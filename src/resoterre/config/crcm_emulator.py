@@ -153,10 +153,6 @@ class CRCMEmulatorDataConfig(BaseConfig):
         Number of workers for data loading during training.
     max_open_datasets : int
         Maximum number of open zarr datasets allowed simultaneously.
-    normalization_start_date : datetime | None
-        Start date for normalization of the data.
-    normalization_end_date : datetime | None
-        End date for normalization of the data.
     """
 
     tile_size: int = 608
@@ -165,15 +161,10 @@ class CRCMEmulatorDataConfig(BaseConfig):
     crcm_variables: list[str] = Field(default_factory=list)
     training_periods: list[list[datetime]] = Field(default_factory=list)
     validation_periods: list[list[datetime]] = Field(default_factory=list)
-    # TODO: not used, consider removing
     test_periods: list[list[datetime]] = Field(default_factory=list)
     batch_size: int = 32
     num_workers: int = 2
     max_open_datasets: int = 2
-    # TODO: not used, consider removing
-    normalization_start_date: datetime | None = None
-    # TODO: not used, consider removing
-    normalization_end_date: datetime | None = None
 
 
 class CRCMEmulatorAnalysisConfig(BaseConfig):
