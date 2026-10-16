@@ -446,7 +446,7 @@ class GCMToZarrFromConfig:
                     chunk_idx_start=chunk_idx_start,
                     time_slice=my_slice,
                     level=level,
-                    nan_replacement=self.config.nan_replacement,
+                    nan_replacement=self.config.preprocessing.gcm.nan_replacement,
                     write_mask=write_mask,
                 )
                 self.debug_figures(
@@ -469,7 +469,7 @@ class GCMToZarrFromConfig:
                 chunk_idx_start=chunk_idx_start,
                 time_slice=my_slice,
                 level=int(gcm_variable_levels[variable_name]["level"]),
-                nan_replacement=self.config.nan_replacement,
+                nan_replacement=self.config.preprocessing.gcm.nan_replacement,
                 write_mask=write_mask,
             )
             self.debug_figures(
@@ -491,7 +491,7 @@ class GCMToZarrFromConfig:
                 variable_name_in_netcdf=variable_name,
                 chunk_idx_start=chunk_idx_start,
                 time_slice=my_slice,
-                nan_replacement=self.config.nan_replacement,
+                nan_replacement=self.config.preprocessing.gcm.nan_replacement,
             )
             self.debug_figures(
                 xarray_dataset_gcm,

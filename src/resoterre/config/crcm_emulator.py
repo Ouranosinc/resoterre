@@ -90,6 +90,8 @@ class CRCMEmulatorSourcePreprocessingConfig(BaseConfig):
         End datetime for preprocessing.
     variables : list[str]
         List of variables to preprocess.
+    nan_replacement : bool
+        Whether to replace NaN values during preprocessing.
     allow_overwrite : bool
         Whether to allow overwriting existing preprocessed data.
     """
@@ -98,6 +100,7 @@ class CRCMEmulatorSourcePreprocessingConfig(BaseConfig):
     start_datetime: datetime | None = None
     end_datetime: datetime | None = None
     variables: list[str] = Field(default_factory=list)
+    nan_replacement: bool = False
     allow_overwrite: bool = False
 
 
