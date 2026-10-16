@@ -72,6 +72,10 @@
     ],
     "version": "0.1.3-dev.10",
     "experimental": true,
+    "vcs:type": "git",
+    "vcs:branch": "main",
+    "vcs:revision": "f08a79b9a1906a8752c5774b050e90f81f2d1bcb",
+    "vcs:tag": "v0.1.3-dev.10",
     "sci:citation": "Gauvin St-Denis, B., and Smith, T. J. resoterre (version 0.1.3-dev.10). Ouranos.",
     "mlm:framework": "pytorch",
     "mlm:framework_version": "2.14.0+cu130",
@@ -460,10 +464,6 @@
         "description": "Geographic longitude auxiliary coordinate for the rotated grid."
       }
     },
-    "vcs:type": "git",
-    "vcs:branch": "main",
-    "vcs:revision": "f08a79b9a1906a8752c5774b050e90f81f2d1bcb",
-    "vcs:tag": "0.1.3-dev.10",
     "datetime": null
   },
   "links": [
@@ -535,7 +535,7 @@
       "vcs:type": "git",
       "vcs:branch": "main",
       "vcs:revision": "f08a79b9a1906a8752c5774b050e90f81f2d1bcb",
-      "vcs:tag": "0.1.3-dev.10"
+      "vcs:tag": "v0.1.3-dev.10"
     },
     {
       "rel": "application",
@@ -551,7 +551,7 @@
       "vcs:type": "git",
       "vcs:branch": "main",
       "vcs:revision": "f08a79b9a1906a8752c5774b050e90f81f2d1bcb",
-      "vcs:tag": "0.1.3-dev.10"
+      "vcs:tag": "v0.1.3-dev.10"
     },
     {
       "rel": "application",
@@ -567,7 +567,7 @@
       "vcs:type": "git",
       "vcs:branch": "main",
       "vcs:revision": "f08a79b9a1906a8752c5774b050e90f81f2d1bcb",
-      "vcs:tag": "0.1.3-dev.10"
+      "vcs:tag": "v0.1.3-dev.10"
     },
     {
       "rel": "application",
@@ -583,7 +583,7 @@
       "vcs:type": "git",
       "vcs:branch": "main",
       "vcs:revision": "f08a79b9a1906a8752c5774b050e90f81f2d1bcb",
-      "vcs:tag": "0.1.3-dev.10"
+      "vcs:tag": "v0.1.3-dev.10"
     },
     {
       "rel": "vcs",
@@ -592,7 +592,7 @@
       "vcs:type": "git",
       "vcs:branch": "main",
       "vcs:revision": "f08a79b9a1906a8752c5774b050e90f81f2d1bcb",
-      "vcs:tag": "0.1.3-dev.10"
+      "vcs:tag": "v0.1.3-dev.10"
     },
     {
       "rel": "self",
