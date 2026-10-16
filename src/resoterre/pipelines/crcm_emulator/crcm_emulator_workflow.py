@@ -209,15 +209,23 @@ class CRCMToZarrFromConfig:
             calendar=xarray_dataset_crcm["time"].attrs["calendar"],
             only_use_cftime_datetimes=True,
         )
-        if self.config.preprocessing.gcm.end_datetime is None:
+        if self.config.preprocessing.crcm.end_datetime is None:
             raise ValueError("GCM preprocessing end datetime must be specified.")
         zarr_datetimes = xarray.cftime_range(
-            start=self.config.preprocessing.gcm.start_datetime,
-            end=self.config.preprocessing.gcm.end_datetime + timedelta(seconds=1),  # Fixing precision issues
+            start=self.config.preprocessing.crcm.start_datetime,
+            end=self.config.preprocessing.crcm.end_datetime + timedelta(seconds=1),  # Fixing precision issues
             freq="D",
             calendar=gcm_calendars[gcm_simulation[0]],
         )
         zarr_datetimes = zarr_datetimes[chunk_idx_start : chunk_idx_end + 1]
+        num_datetimes = chunk_idx_end - chunk_idx_start + 1
+        # Filter out dates outside historical or ssp periods
+        if gcm_simulation[1] == "historical":
+            zarr_datetimes = [dt for dt in zarr_datetimes if dt.year <= 2014]
+            chunk_idx_end = chunk_idx_end - (num_datetimes - len(zarr_datetimes))
+        else:
+            zarr_datetimes = [dt for dt in zarr_datetimes if dt.year >= 2015]
+            chunk_idx_start = chunk_idx_start + (num_datetimes - len(zarr_datetimes))
         # Manually finding intersection from just year, month, day
         netcdf_indices_by_date = {(dt.year, dt.month, dt.day): i for i, dt in enumerate(list_of_datetimes)}
         common_idx_in_netcdf = [
@@ -225,9 +233,9 @@ class CRCMToZarrFromConfig:
             for dt_zarr in zarr_datetimes
             if (dt_zarr.year, dt_zarr.month, dt_zarr.day) in netcdf_indices_by_date
         ]
-        if len(common_idx_in_netcdf) != len(zarr_datetimes):
+        if not common_idx_in_netcdf:
             logger.warning(
-                "Did not find all common time indices for %s %s %s %s",
+                "Did not find common time indices for %s %s %s %s",
                 gcm_simulation,
                 variable_name,
                 chunk_idx_start,

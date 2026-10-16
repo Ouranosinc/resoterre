@@ -32,6 +32,7 @@ preprocessing:
       - vas
       - va
       - zg
+    nan_replacement: true
     allow_overwrite: false
   crcm:
     path: /Path/to/preprocessed/crcm_preprocessing
@@ -43,11 +44,13 @@ preprocessing:
       - uas
       - vas
     allow_overwrite: false
+  chunk_size: 8
+  chunks_per_task: 32
 
 # DataLoader parameters
 data:
   # Global parameters
-  tile_size: 608
+  tile_size: 576
   coarsen_factor: 8
   gcm_variables:
     - zg850
@@ -92,6 +95,7 @@ data:
       - "2070-01-01"
       - "2084-12-31"
   batch_size: 2
+  max_open_datasets: 4
   num_workers: 2
 
 # U-Net parameters

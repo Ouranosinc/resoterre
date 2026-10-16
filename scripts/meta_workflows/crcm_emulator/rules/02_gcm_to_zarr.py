@@ -6,6 +6,7 @@ from pathlib import Path
 
 from resoterre.logging_utils import start_root_logger
 from resoterre.pipelines.crcm_emulator.cmip6_to_zarr_workflow import GCMToZarrFromConfig
+from resoterre.snakemake_utils import parse_bool
 
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,10 @@ if __name__ == "__main__":
     parser.add_argument("--variable_name", type=str, required=True, help="GCM variable to process")
     parser.add_argument("--chunk_idx_start", type=int, required=True, help="Initial chunk index")
     parser.add_argument("--chunk_idx_end", type=int, required=True, help="Final chunk index")
+    # write_mask will be a snakemake wildcard, need the option to explicitly pass True/False values
+    parser.add_argument(
+        "--write_mask", type=parse_bool, required=True, help="Whether to write the mask for the variable"
+    )
     parser.add_argument("--initialize", action="store_true", help="Whether to initialize the zarr store")
     parser.set_defaults(initialize=False)
     args = parser.parse_args()
@@ -41,6 +46,7 @@ if __name__ == "__main__":
             variable_name=args.variable_name,
             chunk_idx_start=args.chunk_idx_start,
             chunk_idx_end=args.chunk_idx_end,
+            write_mask=args.write_mask,
         )
     except Exception:
         logger.exception("Error calling GCMToZarrFromConfig")
