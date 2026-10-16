@@ -5,9 +5,15 @@ from pathlib import Path
 import numpy as np
 import xarray
 
+from resoterre.config import (
+    CRCMEmulatorConfig,
+    CRCMEmulatorDataConfig,
+    CRCMEmulatorPathsConfig,
+    CRCMEmulatorPreprocessingConfig,
+    CRCMEmulatorSourcePreprocessingConfig,
+)
 from resoterre.data_generators.crcm_emulator_mock_dataset import mock_emissions, mock_gcm_data
 from resoterre.pipelines.crcm_emulator import cmip6_to_zarr_workflow
-from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig
 
 
 def test_get_chunk_indices():
@@ -44,8 +50,12 @@ def test_get_chunk_indices_no_leap():
 
 def test_gcm_to_zarr_from_config_init():
     config = CRCMEmulatorConfig(
-        gcm_preprocessing_start_datetime=datetime(1951, 1, 1),
-        gcm_preprocessing_end_datetime=datetime(2100, 12, 31),
+        preprocessing=CRCMEmulatorPreprocessingConfig(
+            gcm=CRCMEmulatorSourcePreprocessingConfig(
+                start_datetime=datetime(1951, 1, 1),
+                end_datetime=datetime(2100, 12, 31),
+            )
+        ),
     )
     gcm_to_zarr = cmip6_to_zarr_workflow.GCMToZarrFromConfig(config=config, initialize_zarr=False)
     assert gcm_to_zarr.config == config
@@ -55,14 +65,22 @@ def test_gcm_to_zarr_from_config_initialize_zarr():
     with tempfile.TemporaryDirectory() as tmp_dir:
         mock_emissions(tmp_dir)
         config = CRCMEmulatorConfig(
-            path_emission_data=Path(tmp_dir),
-            tile_size=576,
-            coarsen_factor=8,
-            path_gcm_preprocessing=Path(tmp_dir),
-            preprocessing_simulations=[["CNRM-ESM2-1", "ssp245", "r1i1p1f2"]],
-            gcm_preprocessing_start_datetime=datetime(1951, 1, 1),
-            gcm_preprocessing_end_datetime=datetime(2100, 12, 31),
-            gcm_preprocessing_variables=["tas"],
+            paths=CRCMEmulatorPathsConfig(
+                emission_data=Path(tmp_dir),
+            ),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                simulations=[["CNRM-ESM2-1", "ssp245", "r1i1p1f2"]],
+                gcm=CRCMEmulatorSourcePreprocessingConfig(
+                    path=Path(tmp_dir),
+                    start_datetime=datetime(1951, 1, 1),
+                    end_datetime=datetime(2100, 12, 31),
+                    variables=["tas"],
+                ),
+            ),
+            data=CRCMEmulatorDataConfig(
+                tile_size=576,
+                coarsen_factor=8,
+            ),
         )
         _ = cmip6_to_zarr_workflow.GCMToZarrFromConfig(config=config, initialize_zarr=True)
         zarr_archive = Path(tmp_dir, "crcm_emulator_input_CNRM-ESM2-1_ssp245_r1i1p1f2.zarr")
@@ -79,16 +97,24 @@ def test_gcm_to_zarr_from_config_call():
         mock_gcm_data(tmp_dir)
         mock_emissions(tmp_dir)
         config = CRCMEmulatorConfig(
-            path_gcm_data=Path(tmp_dir),
-            path_emission_data=Path(tmp_dir),
-            tile_size=576,
-            coarsen_factor=8,
-            preprocessing_chunk_size=8,
-            path_gcm_preprocessing=Path(tmp_dir),
-            preprocessing_simulations=[["CNRM-ESM2-1", "historical", "r1i1p1f2"]],
-            gcm_preprocessing_start_datetime=datetime(1951, 1, 1),
-            gcm_preprocessing_end_datetime=datetime(2100, 12, 31),
-            gcm_preprocessing_variables=["tas"],
+            paths=CRCMEmulatorPathsConfig(
+                gcm_data=Path(tmp_dir),
+                emission_data=Path(tmp_dir),
+            ),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                simulations=[["CNRM-ESM2-1", "historical", "r1i1p1f2"]],
+                chunk_size=8,
+                gcm=CRCMEmulatorSourcePreprocessingConfig(
+                    path=Path(tmp_dir),
+                    start_datetime=datetime(1951, 1, 1),
+                    end_datetime=datetime(2100, 12, 31),
+                    variables=["tas"],
+                ),
+            ),
+            data=CRCMEmulatorDataConfig(
+                tile_size=576,
+                coarsen_factor=8,
+            ),
         )
         cmip6_to_zarr = cmip6_to_zarr_workflow.GCMToZarrFromConfig(config=config, initialize_zarr=True)
         cmip6_to_zarr(
@@ -109,16 +135,24 @@ def test_gcm_to_zarr_from_config_call_end_of_historical_period():
         mock_gcm_data(tmp_dir)
         mock_emissions(tmp_dir)
         config = CRCMEmulatorConfig(
-            path_gcm_data=Path(tmp_dir),
-            path_emission_data=Path(tmp_dir),
-            tile_size=576,
-            coarsen_factor=8,
-            preprocessing_chunk_size=8,
-            path_gcm_preprocessing=Path(tmp_dir),
-            preprocessing_simulations=[["CNRM-ESM2-1", "historical", "r1i1p1f2"]],
-            gcm_preprocessing_start_datetime=datetime(1951, 1, 1),
-            gcm_preprocessing_end_datetime=datetime(2100, 12, 31),
-            gcm_preprocessing_variables=["tas"],
+            paths=CRCMEmulatorPathsConfig(
+                gcm_data=Path(tmp_dir),
+                emission_data=Path(tmp_dir),
+            ),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                simulations=[["CNRM-ESM2-1", "historical", "r1i1p1f2"]],
+                chunk_size=8,
+                gcm=CRCMEmulatorSourcePreprocessingConfig(
+                    path=Path(tmp_dir),
+                    start_datetime=datetime(1951, 1, 1),
+                    end_datetime=datetime(2100, 12, 31),
+                    variables=["tas"],
+                ),
+            ),
+            data=CRCMEmulatorDataConfig(
+                tile_size=576,
+                coarsen_factor=8,
+            ),
         )
         cmip6_to_zarr = cmip6_to_zarr_workflow.GCMToZarrFromConfig(config=config, initialize_zarr=True)
         cmip6_to_zarr(
@@ -140,16 +174,24 @@ def test_gcm_to_zarr_from_config_call_end_of_ssp_period():
         mock_gcm_data(tmp_dir)
         mock_emissions(tmp_dir)
         config = CRCMEmulatorConfig(
-            path_gcm_data=Path(tmp_dir),
-            path_emission_data=Path(tmp_dir),
-            tile_size=576,
-            coarsen_factor=8,
-            preprocessing_chunk_size=8,
-            path_gcm_preprocessing=Path(tmp_dir),
-            preprocessing_simulations=[["CNRM-ESM2-1", "ssp245", "r1i1p1f2"]],
-            gcm_preprocessing_start_datetime=datetime(1951, 1, 1),
-            gcm_preprocessing_end_datetime=datetime(2100, 12, 31),
-            gcm_preprocessing_variables=["tas"],
+            paths=CRCMEmulatorPathsConfig(
+                gcm_data=Path(tmp_dir),
+                emission_data=Path(tmp_dir),
+            ),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                simulations=[["CNRM-ESM2-1", "ssp245", "r1i1p1f2"]],
+                chunk_size=8,
+                gcm=CRCMEmulatorSourcePreprocessingConfig(
+                    path=Path(tmp_dir),
+                    start_datetime=datetime(1951, 1, 1),
+                    end_datetime=datetime(2100, 12, 31),
+                    variables=["tas"],
+                ),
+            ),
+            data=CRCMEmulatorDataConfig(
+                tile_size=576,
+                coarsen_factor=8,
+            ),
         )
         cmip6_to_zarr = cmip6_to_zarr_workflow.GCMToZarrFromConfig(config=config, initialize_zarr=True)
         cmip6_to_zarr(

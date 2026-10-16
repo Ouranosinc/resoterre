@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+from resoterre.config import CRCMEmulatorAnalysisConfig
 from resoterre.data_analysis.gcm_vs_rcm import (
     analyze_gcm_vs_coarsened_crcm,
     map_rcm_to_gcm_grid,
@@ -33,10 +34,9 @@ from resoterre.data_analysis.utils import (
     variable_family,
     write_dataframe_to_csv,
 )
-from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig
 
 
-_CONFIG = CRCMEmulatorConfig()
+_ANALYSIS_CONFIG = CRCMEmulatorAnalysisConfig()
 
 
 class _FakeEmulatorDataset:
@@ -336,7 +336,7 @@ def test_sim_labels_disambiguates_shared_scenario():
 
 
 def test_variable_family_maps_surface_onto_pressure_level_stem():
-    surface_variables = _CONFIG.surface_variables
+    surface_variables = _ANALYSIS_CONFIG.surface_variables
     assert variable_family("ta850", surface_variables) == variable_family("tas", surface_variables) == "ta"
     assert variable_family("ua500", surface_variables) == variable_family("uas", surface_variables) == "ua"
     assert variable_family("va500", surface_variables) == variable_family("vas", surface_variables) == "va"
@@ -349,8 +349,8 @@ def test_variable_family_maps_surface_onto_pressure_level_stem():
 
 
 def test_range_and_mean_group_combines_wind_families():
-    groups = _CONFIG.range_and_mean_groups
-    surface_variables = _CONFIG.surface_variables
+    groups = _ANALYSIS_CONFIG.range_and_mean_groups
+    surface_variables = _ANALYSIS_CONFIG.surface_variables
     assert range_and_mean_group("hus850", groups, surface_variables) == "hus"
     assert range_and_mean_group("huss", groups, surface_variables) == "hus"
     assert range_and_mean_group("pr", groups, surface_variables) == "pr"
@@ -443,8 +443,8 @@ def test_visualize_range_and_mean_writes_one_png_per_group(tmp_path):
     visualize_range_and_mean(
         stats_df,
         tmp_path,
-        _CONFIG.range_and_mean_groups,
-        _CONFIG.surface_variables,
+        _ANALYSIS_CONFIG.range_and_mean_groups,
+        _ANALYSIS_CONFIG.surface_variables,
     )
 
     assert {p.name for p in tmp_path.glob("range_and_mean_*.png")} == {
@@ -459,7 +459,7 @@ def test_visualize_range_and_mean_writes_one_png_per_group(tmp_path):
 
 def test_matching_rcm_variable_pairs_by_family():
     rcm_variables = ["tas", "pr", "uas", "vas", "huss"]
-    surface_variables = _CONFIG.surface_variables
+    surface_variables = _ANALYSIS_CONFIG.surface_variables
     assert matching_rcm_variable("ta1000", rcm_variables, surface_variables) == "tas"
     assert matching_rcm_variable("ta850", rcm_variables, surface_variables) == "tas"
     assert matching_rcm_variable("tas", rcm_variables, surface_variables) == "tas"
@@ -560,7 +560,7 @@ def test_analyze_gcm_vs_coarsened_crcm(tmp_path):
         rcm_variables=["tas"],
         coarsen_factor=2,
         output_dir=tmp_path,
-        surface_variables=_CONFIG.surface_variables,
+        surface_variables=_ANALYSIS_CONFIG.surface_variables,
     )
 
     csv_path = tmp_path / "gcm_vs_coarsened_rcm.csv"
@@ -616,7 +616,7 @@ def test_compare_gcm_vs_coarsened_rcm_skips_unpaired_variables(tmp_path):
         rcm_variables=["tas", "uas", "pr"],
         coarsen_factor=2,
         output_dir=tmp_path,
-        surface_variables=_CONFIG.surface_variables,
+        surface_variables=_ANALYSIS_CONFIG.surface_variables,
     )
 
     assert set(stats_per_var) == {("historical", "ta850"), ("historical", "ua850")}

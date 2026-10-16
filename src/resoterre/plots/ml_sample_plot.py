@@ -1,38 +1,13 @@
 """Module for machine learning data sample plotting."""
 
 import math
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 from resoterre.plots.nd_plots import nd_ax_plot
 from resoterre.utils import ActionScheduler
-
-
-@dataclass(frozen=True, slots=True)
-class MachineLearningDataPlotConfig:
-    """
-    Configuration for machine learning data plotting.
-
-    Attributes
-    ----------
-    dimensions_selected_index : dict[str, int | str]
-        Dictionary specifying the selected index for each dimension.
-    zoom_collection : dict[str, Any]
-        Dictionary representation of a zoom collection.
-    local_variance_max_sample_kwargs : dict[str, Any]
-        Keyword arguments for local variance maximum sample calculation.
-    figure_size_scale_factor : int
-        Scale factor for the figure size.
-    """
-
-    dimensions_selected_index: dict[str, int | str] = field(default_factory=dict)
-    zoom_collection: dict[str, Any] = field(default_factory=dict)
-    local_variance_max_sample_kwargs: dict[str, Any] = field(default_factory=dict)
-    figure_size_scale_factor: int = 1
 
 
 def num_free_dimensions(
