@@ -69,6 +69,7 @@ def main(config_path: Path, checkpoint: str = "latest") -> None:
     with torch.no_grad():
         for item in test_data_loader:
             runner.validation_step(item)
+    runner.flush_validation_metrics()
 
     results = {name: float(np.mean(series.values)) for name, series in runner.validation_metrics.items()}
     output_path = Path(output_directory, f"{config.experiment_name}_test_results.json")

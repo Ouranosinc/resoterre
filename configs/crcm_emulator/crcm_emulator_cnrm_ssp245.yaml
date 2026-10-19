@@ -94,9 +94,10 @@ data:
     -
       - "2085-01-01"
       - "2100-12-31"
-  batch_size: 64
+  batch_size: 128
   max_open_datasets: 4
-  num_workers: 2
+  num_workers: 8
+  prefetch_factor: 4
 
 # U-Net parameters
 model:
@@ -106,8 +107,8 @@ model:
   reduction_ratio: null
 
 optimizer:
-  optimizer_name: Adam # Adam or AdamW
-  lr: 0.01
+  optimizer_name: AdamW # Adam or AdamW
+  lr: 0.001
   weight_decay: 0.001
 
 loss:

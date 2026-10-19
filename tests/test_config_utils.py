@@ -119,12 +119,13 @@ def test_crcm_emulator_nested_config_from_yaml():
     assert config.paths.output == Path("/Path/to/output")
     assert config.preprocessing.gcm.path == Path("/Path/to/preprocessed/gcm_preprocessing")
     assert config.preprocessing.crcm.variables == ["tas", "pr", "uas", "vas"]
-    assert config.data.batch_size == 2
+    assert config.data.batch_size == 128
     assert config.data.tile_size == 576
     assert config.data.coarsen_factor == 8
     assert config.model.depth == 3
-    assert config.optimizer.optimizer_name == "Adam"
-    assert config.optimizer.lr == 0.01
+    assert config.optimizer.optimizer_name == "AdamW"
+    assert config.optimizer.lr == 0.001
+    assert config.data.prefetch_factor == 4
     assert config.training.device == "cuda"
     assert config.analysis.windows[1] == ["2015-01-01", "2100-12-31", "ssp245"]
     assert config.analysis.surface_variables["tas"] == "ta"
@@ -136,7 +137,7 @@ def test_crcm_emulator_nested_config_from_yaml():
     config_dict = CRCMEmulatorTrainingFromConfig.config_dict(SimpleNamespace(config=config))  # type: ignore[arg-type]
     assert "logger" not in config_dict
     assert config_dict["model"]["depth"] == 3
-    assert config_dict["optimizer"]["lr"] == 0.01
+    assert config_dict["optimizer"]["lr"] == 0.001
     assert config_dict["paths"]["output"] == "/Path/to/output"
     json.dumps(config_dict)
 

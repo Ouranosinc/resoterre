@@ -154,6 +154,8 @@ class CRCMEmulatorDataConfig(BaseConfig):
         Batch size for training the emulator.
     num_workers : int
         Number of workers for data loading during training.
+    prefetch_factor : int
+        Number of batches each data loading worker prepares in advance. Ignored when ``num_workers`` is 0.
     max_open_datasets : int
         Maximum number of open zarr datasets allowed simultaneously.
     """
@@ -167,6 +169,7 @@ class CRCMEmulatorDataConfig(BaseConfig):
     test_periods: list[list[datetime]] = Field(default_factory=list)
     batch_size: int = 32
     num_workers: int = 2
+    prefetch_factor: int = 4
     max_open_datasets: int = 2
 
 

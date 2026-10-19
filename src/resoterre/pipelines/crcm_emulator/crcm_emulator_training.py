@@ -13,6 +13,7 @@ from torchmetrics.image import MultiScaleStructuralSimilarityIndexMeasure
 
 from resoterre.config import CRCMEmulatorConfig
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
+from resoterre.logging_utils import CustomLogging
 from resoterre.ml.network_manager import NeuralNetworksManager
 from resoterre.ml.neural_networks_unet import UNet
 from resoterre.ml.training_utils import NNTraining
@@ -22,6 +23,7 @@ from resoterre.plots.ml_sample_plot import balanced_ml_sample_figure
 
 
 logger = logging.getLogger(__name__)
+progress_logger = CustomLogging(caller=logger)
 
 
 class CRCMEmulatorTrainingFromConfig(NNTraining):
@@ -65,6 +67,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
                 batch_size=self.config.data.batch_size,
                 shuffle=True,
                 num_workers=self.config.data.num_workers,
+                prefetch_factor=self.config.data.prefetch_factor if self.config.data.num_workers > 0 else None,
                 persistent_workers=True if self.config.data.num_workers > 0 else False,
                 multiprocessing_context="spawn",
                 pin_memory=True,
@@ -89,6 +92,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
                 batch_size=self.config.data.batch_size,
                 shuffle=False,
                 num_workers=self.config.data.num_workers,
+                prefetch_factor=self.config.data.prefetch_factor if self.config.data.num_workers > 0 else None,
                 persistent_workers=True if self.config.data.num_workers > 0 else False,
                 multiprocessing_context="spawn",
                 pin_memory=True,
@@ -102,6 +106,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         if self.config.data.coarsen_factor is None:
             raise ValueError("Coarsen factor must be specified in the configuration.")
         self.validation_figure_data: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
+        self.pending_validation_metrics: dict[str, list[torch.Tensor]] = {}
         self.init_unet()
         self.loss_functions = {
             "MSELoss": nn.MSELoss(),
@@ -143,7 +148,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
 
     def training_loss_computation(
         self, target_data: torch.Tensor, output: torch.Tensor
-    ) -> tuple[torch.Tensor, dict[str, float]]:
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """
         Compute training metrics for the CRCM emulator.
 
@@ -156,8 +161,9 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
 
         Returns
         -------
-        (torch.Tensor, dict[str, float])
-            A tuple containing the computed loss and a dictionary of metrics.
+        (torch.Tensor, dict[str, torch.Tensor])
+            A tuple containing the computed loss and a dictionary of detached scalar metric tensors, left on the
+            device to avoid a GPU synchronization per metric (see ``metrics_to_floats``).
         """
         loss_terms = {}
         metrics = {}
@@ -165,34 +171,52 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         if self.config.loss.mse_weight is not None and self.config.loss.mse_weight > 0:
             loss_terms["mse_loss"] = self.loss_functions["MSELoss"](output, target_data)
             weights.append(self.config.loss.mse_weight)
-            metrics["mse_loss"] = loss_terms["mse_loss"].item()
+            metrics["mse_loss"] = loss_terms["mse_loss"].detach()
         if self.config.loss.ssim_weight is not None and self.config.loss.ssim_weight > 0:
             loss_terms["ssim_loss"] = 1 - self.loss_functions["SSIMLoss"](output, target_data)
             weights.append(self.config.loss.ssim_weight)
-            metrics["ssim_loss"] = loss_terms["ssim_loss"].item()
+            metrics["ssim_loss"] = loss_terms["ssim_loss"].detach()
         if not loss_terms:
             raise ValueError("At least one loss term must be specified in the configuration.")
         loss = sum(loss_terms[term] * weight for term, weight in zip(loss_terms.keys(), weights, strict=True))
         return loss, metrics
 
-    def custom_metrics(self, target_data: np.ndarray, output: np.ndarray) -> dict[str, float]:
+    @staticmethod
+    def metrics_to_floats(metrics: dict[str, torch.Tensor]) -> dict[str, float]:
+        """
+        Convert scalar metric tensors to Python floats with a single device transfer.
+
+        Parameters
+        ----------
+        metrics : dict[str, torch.Tensor]
+            Scalar tensors, possibly on the GPU.
+
+        Returns
+        -------
+        dict[str, float]
+            The same metrics as Python floats.
+        """
+        values = torch.stack([value.reshape(()).float() for value in metrics.values()]).cpu().tolist()
+        return dict(zip(metrics.keys(), values, strict=True))
+
+    def custom_metrics(self, target_data: torch.Tensor, output: torch.Tensor) -> dict[str, torch.Tensor]:
         """
         Compute custom metrics for the CRCM emulator.
 
         Parameters
         ----------
-        target_data : np.ndarray
+        target_data : torch.Tensor
             The ground truth data.
-        output : np.ndarray
+        output : torch.Tensor
             The model output data.
 
         Returns
         -------
-        dict[str, float]
-            A dictionary containing the computed metrics.
+        dict[str, torch.Tensor]
+            A dictionary containing the computed scalar metrics, computed on the tensors' device.
         """
         # ToDo: these depend on which variable is in which channel, and requires unnormalizing to be meaningful.
-        return {"max_value_absolute_error": np.max(target_data) - np.max(output)}
+        return {"max_value_absolute_error": torch.max(target_data) - torch.max(output)}
 
     def training_step(self, item: dict[str, torch.Tensor], epoch: int) -> None:
         """
@@ -221,8 +245,8 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         loss, metrics = self.training_loss_computation(target_data, output)
         loss.backward()
         self.optimizers["UNet"].step()
-        metrics["loss"] = loss.item()
-        self.metrics.add_concurrent_values(None, metrics)
+        metrics["loss"] = loss.detach()
+        self.metrics.add_concurrent_values(None, self.metrics_to_floats(metrics))
 
     def validation_step(self, item: dict[str, torch.Tensor]) -> None:
         """
@@ -241,18 +265,73 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         ).T
         linear_data = linear_data.to(self.config.training.device)
         output = self.models["UNet"](input_data, x_linear=linear_data)
-        extra_metrics = self.custom_metrics(target_data.detach().cpu().numpy(), output.detach().cpu().numpy())
         loss, metrics = self.training_loss_computation(target_data, output)
-        metrics["loss"] = loss.item()
-        metrics.update(extra_metrics)
-        if self.experiment_logger.experiment is not None and "loss" not in self.validation_metrics:
+        metrics["loss"] = loss.detach()
+        metrics.update(self.custom_metrics(target_data, output))
+        if self.experiment_logger.experiment is not None and not self.pending_validation_metrics:
             # first item of the first validation batch, the same sample every epoch
             self.validation_figure_data = (
                 input_data[0].detach().cpu().numpy(),
                 target_data[0].detach().cpu().numpy(),
                 output[0].detach().cpu().numpy(),
             )
-        self.validation_metrics.add_concurrent_values(None, metrics)
+        for name, value in metrics.items():
+            self.pending_validation_metrics.setdefault(name, []).append(value.reshape(()).float())
+
+    def flush_validation_metrics(self) -> None:
+        """
+        Move the validation metrics accumulated during the validation loop to ``self.validation_metrics``.
+
+        Notes
+        -----
+        ``validation_step`` keeps its per-batch metrics on the device. They are transferred to the CPU here, in a
+        single synchronization, and added to ``self.validation_metrics`` as one value per batch.
+        """
+        if not self.pending_validation_metrics:
+            return
+        names = list(self.pending_validation_metrics)
+        values = torch.stack([torch.stack(self.pending_validation_metrics[name]) for name in names]).cpu().tolist()
+        self.pending_validation_metrics = {}
+        for batch_values in zip(*values, strict=True):
+            self.validation_metrics.add_concurrent_values(None, dict(zip(names, batch_values, strict=True)))
+
+    def validation_loop(self, epoch: int) -> None:
+        """
+        Perform the validation loop over the entire validation dataset.
+
+        Parameters
+        ----------
+        epoch : int
+            The current epoch number.
+        """
+        self.pending_validation_metrics = {}
+        super().validation_loop(epoch)
+
+    def _log_validation_step(self, i: int, identifier: str, inline: bool = True) -> None:
+        """
+        Log the progress of the validation loop, without metric values, which stay on the device until the end.
+
+        Parameters
+        ----------
+        i : int
+            The current iteration index.
+        identifier : str
+            The identifier for the logger.
+        inline : bool
+            Unused, kept for compatibility with the base class.
+        """
+        if self.validation_data_loader is None:
+            raise ValueError("Validation data loader is not specified.")
+        progress_logger.info(
+            "Iteration: #%s/%s (Epoch %s)",
+            i,
+            len(self.validation_data_loader),
+            self.epoch_counter + 1,
+            block_short_repetition_delay=next(self.validation_logging_frequency_sequence),
+            identifier=identifier,
+            expected_nb_of_calls=len(self.validation_data_loader),
+            add_eta=True,
+        )
 
     def validation_consolidate(self) -> None:
         """
@@ -263,6 +342,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         This function should update self.metrics with consolidated validation metrics
         e.g. self.metrics.add_concurrent_values(self.metrics.last_time(), dict_of_aggregates)
         """
+        self.flush_validation_metrics()
         validation_loss = np.mean(self.validation_metrics["mse_loss"].values).item()
         self.metrics.add_concurrent_values(self.metrics.last_time(), {"(ValidationLoss)": validation_loss})
         self.output_validation_figures()

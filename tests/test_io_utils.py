@@ -1,3 +1,4 @@
+import os
 import tempfile
 import time
 from pathlib import Path
@@ -59,15 +60,20 @@ def test_file_purge_more_than():
         assert purge_files[4][-10:] == "file_0.txt"
 
 
+def create_files_with_ages(directory: str) -> None:
+    """Create ten files where file_0 to file_3 are older than a minute, and the others are recent."""
+    now = time.time()
+    for i in range(10):
+        file_path = Path(f"{directory}/file_{i}.txt")
+        file_path.write_text(f"Content of file {i}")
+        age = 3600 - i if i < 4 else 10 - i
+        os.utime(file_path, (now - age, now - age))
+
+
 def test_file_purge_older_than_and_more_than():
     with tempfile.TemporaryDirectory() as tmp_dir:
-        for i in range(10):
-            with Path(f"{tmp_dir}/file_{i}.txt").open("w") as f:
-                f.write(f"Content of file {i}")
-            time.sleep(0.01)
-        purge_files = io_utils.purge_files(
-            tmp_dir, pattern="*.txt", older_than=0.07, more_than=5, must_both_be_true=True
-        )
+        create_files_with_ages(tmp_dir)
+        purge_files = io_utils.purge_files(tmp_dir, pattern="*.txt", older_than=60, more_than=5, must_both_be_true=True)
         expected_purge_files = [f"file_{i}.txt" for i in range(4)]
         assert len(set(purge_files)) == 4
         for purge_file in purge_files:
@@ -76,12 +82,9 @@ def test_file_purge_older_than_and_more_than():
 
 def test_file_purge_older_than_or_more_than():
     with tempfile.TemporaryDirectory() as tmp_dir:
-        for i in range(10):
-            with Path(f"{tmp_dir}/file_{i}.txt").open("w") as f:
-                f.write(f"Content of file {i}")
-            time.sleep(0.01)
+        create_files_with_ages(tmp_dir)
         purge_files = io_utils.purge_files(
-            tmp_dir, pattern="*.txt", older_than=0.07, more_than=5, must_both_be_true=False
+            tmp_dir, pattern="*.txt", older_than=60, more_than=5, must_both_be_true=False
         )
         assert len(purge_files) == 5
 
