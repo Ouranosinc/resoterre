@@ -87,13 +87,6 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
             variables_in_gcm_zarr = xarray_dataset_gcm["variable_names"].values.tolist()
             xarray_dataset_gcm.close()
             xarray_dataset_gcm = self.get_open_dataset("gcm", gcm_str)
-            if self.mask_dimensions == 1 and "mask_850" not in xarray_dataset_gcm.data_vars:
-                logger.warning(
-                    "No 'mask_850' variable in %s (preprocessed without write_mask); the mask channel is disabled.",
-                    self.gcm_zarr[gcm_str],
-                )
-                self.mask_dimensions = 0
-                self.num_input_channels = len(gcm_variables)
             gcm_time_values = xarray_dataset_gcm["time"].values
 
             zarr_directory = Path(path_crcm_preprocessing, f"crcm_emulator_output_{gcm_str}.zarr")
