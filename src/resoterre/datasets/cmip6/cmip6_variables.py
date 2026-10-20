@@ -10,7 +10,7 @@ from resoterre.data_management.variables import VariableHandler, VariableHandler
 
 gcm_vertical_levels: list[float] = [100000.0, 85000.0, 70000.0, 50000.0, 25000.0, 10000.0, 5000.0, 1000.0]
 
-resources = files("resoterre").joinpath("data", "simulation_stats.csv")
+resources = files("resoterre").joinpath("data", "data_normalization_stats.csv")
 with resources.open("r", encoding="utf-8") as f:
     csv_data = list(csv.DictReader(line for line in f if not line.startswith("#")))
 
