@@ -4,7 +4,6 @@ To run this workflow, use the command:
 snakemake -s 02_hrdps_to_zarr.smk -j1 --config config_yaml=config.yaml --directory=/workflow_directory
 """
 
-from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,10 +11,8 @@ from types import SimpleNamespace
 from resoterre.config_utils import config_from_yaml
 
 from resoterre.calendar_utils import iter_year_month
-from resoterre.experiments.rdps_to_hrdps_downscaling.rdps_to_hrdps_workflow import (
-    RDPSToHRDPSConfig,
-    rdps_to_hrdps_config_replace_for_inference
-)
+from resoterre.config import RDPSToHRDPSConfig
+from resoterre.pipelines.rdps_to_hrdps_downscaling.rdps_to_hrdps_workflow import rdps_to_hrdps_config_replace_for_inference
 from resoterre.snakemake_utils import shell_script_args_from_config
 
 snakefile_dir = Path(str(workflow.snakefile)).parent
@@ -25,8 +22,8 @@ config_obj = rdps_to_hrdps_config_replace_for_inference(config_obj, SimpleNamesp
 additional_script_args = shell_script_args_from_config(config, ["start_datetime", "end_datetime"])
 upstream_manifest = config.get("upstream_manifest")
 upstream_input = [upstream_manifest] if upstream_manifest else []
-start_datetime = config_obj.hrdps_preprocessing_start_datetime
-end_datetime = config_obj.hrdps_preprocessing_end_datetime
+start_datetime = config_obj.preprocessing.hrdps.start_datetime
+end_datetime = config_obj.preprocessing.hrdps.end_datetime
 start_year = start_datetime.year
 start_month = start_datetime.month
 
@@ -37,13 +34,13 @@ wildcard_constraints:
 
 def expected_manifests(wildcards):
     list_of_expected_manifests = []
-    for hrdps_variable in config_obj.hrdps_variables:
+    for hrdps_variable in config_obj.preprocessing.hrdps.variables:
         for year, month in iter_year_month(start_datetime=start_datetime, end_datetime=end_datetime):
-            if hrdps_variable == config_obj.hrdps_variables[0] and year == start_year and month == start_month:
+            if hrdps_variable == config_obj.preprocessing.hrdps.variables[0] and year == start_year and month == start_month:
                 continue
             list_of_expected_manifests.append(
                 f"manifests/hrdps_to_zarr_{hrdps_variable}_{year}{month:02d}.done")
-    if not list_of_expected_manifests and config_obj.hrdps_variables[0] in ["orog", "sftlf"]:
+    if not list_of_expected_manifests and config_obj.preprocessing.hrdps.variables[0] in ["orog", "sftlf"]:
         list_of_expected_manifests.append(
             f"manifests/hrdps_to_zarr_init.done")
     return list_of_expected_manifests
@@ -60,12 +57,12 @@ rule hrdps_to_zarr_init:
         upstream_input
     output:
         touch("manifests/hrdps_to_zarr_init.done"),
-        touch(f"manifests/hrdps_to_zarr_{config_obj.hrdps_variables[0]}_{start_year}{start_month:02d}.done")
+        touch(f"manifests/hrdps_to_zarr_{config_obj.preprocessing.hrdps.variables[0]}_{start_year}{start_month:02d}.done")
     params:
         path_script=Path(snakefile_dir, "02_hrdps_to_zarr.py"),
         workflow_dir=workflow_dir,
         config_yaml=config["config_yaml"],
-        init_variable_name=config_obj.hrdps_variables[0],
+        init_variable_name=config_obj.preprocessing.hrdps.variables[0],
         init_year=start_year,
         init_month=start_month,
         additional_script_args=additional_script_args,

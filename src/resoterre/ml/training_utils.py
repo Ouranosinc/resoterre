@@ -13,11 +13,12 @@ import torch
 from safetensors.torch import save_file as save_as_safetensors
 from torch.utils import data as td
 
+from resoterre.config import ExperimentLoggerConfig
 from resoterre.data_management.timeseries import MultiTimeseries
 from resoterre.logging_utils import CustomLogging, logging_delay_sequence, readable_delta_t
 from resoterre.ml.ml_loops import MinimaTracker
 from resoterre.ml.ml_utils import log_device_info
-from resoterre.pipelines.crcm_emulator.experiment_logger import CometMLLogger, ExperimentLoggerConfig
+from resoterre.pipelines.crcm_emulator.experiment_logger import CometMLLogger
 
 
 logger = CustomLogging(caller=logging.getLogger(__name__))
@@ -161,7 +162,7 @@ class NNTraining(ABC):
 
         torch.set_num_threads(num_threads)
 
-        self.experiment_logger.log_parameters(self.config_dict())
+        self.experiment_logger.log_parameters(self.experiment_parameters())
 
     def config_dict(self) -> dict[str, Any]:
         """
@@ -171,9 +172,21 @@ class NNTraining(ABC):
         -------
         dict
             A dictionary representation of the training configuration. Empty by default; subclasses
-            should override this method to expose their own configuration (e.g. from a dataclass).
+            should override this method to expose their own configuration (e.g. from a pydantic model).
         """
         return {}
+
+    def experiment_parameters(self) -> dict[str, Any]:
+        """
+        Get the parameters to log to the experiment tracker at the start of training.
+
+        Returns
+        -------
+        dict
+            Parameters for the experiment tracker. Defaults to ``config_dict()``; subclasses can
+            override this method to adapt the configuration to the tracker's format.
+        """
+        return self.config_dict()
 
     def setup_lr_schedulers(
         self,

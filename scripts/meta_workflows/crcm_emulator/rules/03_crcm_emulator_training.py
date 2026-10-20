@@ -50,7 +50,7 @@ if __name__ == "__main__":
     try:
         config_obj = crcm_emulator_parse_config(args.config)
         crcm_emulator_training_from_config = CRCMEmulatorTrainingFromConfig(config_obj)
-        crcm_emulator_training_from_config(epoch=args.epoch, device=config_obj.training_device)
+        crcm_emulator_training_from_config(epoch=args.epoch, device=config_obj.training.device)
     except Exception:
         logger.exception("Error calling CRCMEmulatorTrainingFromConfig")
         raise

@@ -2,21 +2,22 @@
 
 import logging
 import math
-from dataclasses import asdict, fields
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from torch.utils import data as td
 from torchmetrics.image import MultiScaleStructuralSimilarityIndexMeasure
 
+from resoterre.config import CRCMEmulatorConfig
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
+from resoterre.ml.network_manager import NeuralNetworksManager
 from resoterre.ml.neural_networks_unet import UNet
 from resoterre.ml.training_utils import NNTraining
-from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig, crcm_emulator_parse_config
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
+from resoterre.pipelines.crcm_emulator.experiment_logger import config_to_experiment_parameters
 from resoterre.plots.ml_sample_plot import balanced_ml_sample_figures
 
 
@@ -35,70 +36,70 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
 
     def __init__(self, config: CRCMEmulatorConfig) -> None:
         self.config = crcm_emulator_parse_config(config)
-        # ToDo: choose between self.config.path_output and self.config.path_models
+        # ToDo: choose between self.config.paths.output and self.config.paths.models
         if self.config.experiment_name is None:
             raise ValueError("Experiment name must be specified in the configuration.")
         super().__init__(
             experiment_name=self.config.experiment_name,
-            path_models=self.config.path_output,
+            path_models=self.config.paths.output,
             training_metrics_monitor=["loss"],
             validation_metrics_monitor=["(ValidationLoss)"],
-            logger_config=self.config.logger_config,
+            logger_config=self.config.logger,
         )
-        if self.config.path_gcm_preprocessing is None:
+        if self.config.preprocessing.gcm.path is None:
             raise ValueError("Path to GCM preprocessing must be specified in the configuration.")
-        if self.config.path_crcm_preprocessing is None:
+        if self.config.preprocessing.crcm.path is None:
             raise ValueError("Path to CRCM preprocessing must be specified in the configuration.")
         self.dataset = CRCMEmulatorDataset(
-            path_gcm_preprocessing=self.config.path_gcm_preprocessing,
-            path_crcm_preprocessing=self.config.path_crcm_preprocessing,
-            simulations=self.config.preprocessing_simulations,
-            gcm_variables=self.config.gcm_training_variables,
-            crcm_variables=self.config.crcm_training_variables,
-            time_periods=self.config.training_periods,
-            max_open_datasets=self.config.max_open_datasets,
+            path_gcm_preprocessing=self.config.preprocessing.gcm.path,
+            path_crcm_preprocessing=self.config.preprocessing.crcm.path,
+            simulations=self.config.preprocessing.simulations,
+            gcm_variables=self.config.data.gcm_variables,
+            crcm_variables=self.config.data.crcm_variables,
+            time_periods=self.config.data.training_periods,
+            max_open_datasets=self.config.data.max_open_datasets,
         )
         if len(self.dataset) > 0:
             self.train_data_loader = td.DataLoader(
                 self.dataset,
-                batch_size=self.config.training_batch_size,
+                batch_size=self.config.data.batch_size,
                 shuffle=True,
-                num_workers=self.config.num_workers,
-                persistent_workers=True if config.num_workers > 0 else False,
+                num_workers=self.config.data.num_workers,
+                persistent_workers=True if self.config.data.num_workers > 0 else False,
                 multiprocessing_context="spawn",
                 pin_memory=True,
             )
             logger.info(
                 "Initialized training DataLoader with %d samples, batch size %d",
                 len(self.dataset),
-                self.config.training_batch_size,
+                self.config.data.batch_size,
             )
         self.validation_dataset = CRCMEmulatorDataset(
-            path_gcm_preprocessing=self.config.path_gcm_preprocessing,
-            path_crcm_preprocessing=self.config.path_crcm_preprocessing,
-            simulations=self.config.preprocessing_simulations,
-            gcm_variables=self.config.gcm_training_variables,
-            crcm_variables=self.config.crcm_training_variables,
-            time_periods=self.config.validation_periods,
-            max_open_datasets=self.config.max_open_datasets,
+            path_gcm_preprocessing=self.config.preprocessing.gcm.path,
+            path_crcm_preprocessing=self.config.preprocessing.crcm.path,
+            simulations=self.config.preprocessing.simulations,
+            gcm_variables=self.config.data.gcm_variables,
+            crcm_variables=self.config.data.crcm_variables,
+            time_periods=self.config.data.validation_periods,
+            max_open_datasets=self.config.data.max_open_datasets,
         )
         if len(self.validation_dataset) > 0:
             self.validation_data_loader = td.DataLoader(
                 self.validation_dataset,
-                batch_size=self.config.training_batch_size,
+                batch_size=self.config.data.batch_size,
                 shuffle=False,
-                num_workers=self.config.num_workers,
-                persistent_workers=True if config.num_workers > 0 else False,
+                num_workers=self.config.data.num_workers,
+                persistent_workers=True if self.config.data.num_workers > 0 else False,
                 multiprocessing_context="spawn",
                 pin_memory=True,
             )
             logger.info(
                 "Initialized validation DataLoader with %d samples, batch size %d",
                 len(self.validation_dataset),
-                self.config.training_batch_size,
+                self.config.data.batch_size,
             )
 
-        if self.config.coarsen_factor is None:
+        if self.config.data.coarsen_factor is None:
             raise ValueError("Coarsen factor must be specified in the configuration.")
         self.init_unet()
         self.loss_functions = {
@@ -114,29 +115,29 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         -----
         This function is responsible for initializing the UNet model and its optimizer.
         """
-        if self.config.unet_kernel_size is None:
+        if self.config.model.kernel_size is None:
             raise ValueError("Kernel size must be specified in the configuration.")
-        if self.config.unet_initial_num_of_hidden_channels is None:
+        if self.config.model.initial_num_of_hidden_channels is None:
             raise ValueError("Initial number of hidden channels must be specified in the configuration.")
-        if self.config.unet_depth is None:
+        if self.config.model.depth is None:
             raise ValueError("Depth must be specified in the configuration.")
-        if self.config.coarsen_factor is None:
+        if self.config.data.coarsen_factor is None:
             raise ValueError("Coarsen factor must be specified in the configuration.")
         self.models["UNet"] = UNet(
             in_channels=self.dataset.num_input_channels,
             out_channels=self.dataset.num_output_channels,
-            kernel_size=self.config.unet_kernel_size,
-            initial_nb_of_hidden_channels=self.config.unet_initial_num_of_hidden_channels,
-            depth=self.config.unet_depth,
-            resolution_increase_layers=int(math.log2(self.config.coarsen_factor)),
+            kernel_size=self.config.model.kernel_size,
+            initial_nb_of_hidden_channels=self.config.model.initial_num_of_hidden_channels,
+            depth=self.config.model.depth,
+            resolution_increase_layers=int(math.log2(self.config.data.coarsen_factor)),
             go_to_1x1=True,
-            h_in=self.config.tile_size // self.config.coarsen_factor,
-            w_in=self.config.tile_size // self.config.coarsen_factor,
+            h_in=self.config.data.tile_size // self.config.data.coarsen_factor,
+            w_in=self.config.data.tile_size // self.config.data.coarsen_factor,
             linear_size=7,
-            reduction_ratio=self.config.unet_reduction_ratio,
+            reduction_ratio=self.config.model.reduction_ratio,
         )
-        self.optimizers["UNet"] = optim.Adam(
-            self.models["UNet"].parameters(), lr=self.config.learning_rate, weight_decay=self.config.weight_decay
+        self.optimizers["UNet"] = NeuralNetworksManager.optimizer_setup(
+            self.models["UNet"].parameters(), self.config.optimizer
         )
 
     def training_loss_computation(
@@ -160,13 +161,13 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         loss_terms = {}
         metrics = {}
         weights = []
-        if self.config.mse_loss_weight is not None and self.config.mse_loss_weight > 0:
+        if self.config.loss.mse_weight is not None and self.config.loss.mse_weight > 0:
             loss_terms["mse_loss"] = self.loss_functions["MSELoss"](output, target_data)
-            weights.append(self.config.mse_loss_weight)
+            weights.append(self.config.loss.mse_weight)
             metrics["mse_loss"] = loss_terms["mse_loss"].item()
-        if self.config.ssim_loss_weight is not None and self.config.ssim_loss_weight > 0:
+        if self.config.loss.ssim_weight is not None and self.config.loss.ssim_weight > 0:
             loss_terms["ssim_loss"] = self.loss_functions["SSIMLoss"](output, target_data)
-            weights.append(self.config.ssim_loss_weight)
+            weights.append(self.config.loss.ssim_weight)
             metrics["ssim_loss"] = loss_terms["ssim_loss"].item()
         if not loss_terms:
             raise ValueError("At least one loss term must be specified in the configuration.")
@@ -207,13 +208,13 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         -----
         This function is responsible for calling all relevant loss.backward() and optimizer.step().
         """
-        input_data = item["input_first_block"].to(self.config.training_device)
-        target_data = item["target"].to(self.config.training_device)
+        input_data = item["input_first_block"].to(self.config.training.device)
+        target_data = item["target"].to(self.config.training.device)
         # ToDo: convert month and day to time embeddings, normalize?
         linear_data = torch.vstack(
             [item["month"], item["day"], item["CO2"], item["CH4"], item["N2O"], item["CFC12"], item["CFC11_eq"]]
         ).T
-        linear_data = linear_data.to(self.config.training_device)
+        linear_data = linear_data.to(self.config.training.device)
         output = self.models["UNet"](input_data, x_linear=linear_data)
         self.output_training_figures(input_data=input_data, target_data=target_data, output_data=output)
         loss, metrics = self.training_loss_computation(target_data, output)
@@ -231,13 +232,13 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         item : dict[str, torch.Tensor]
             A batch of validation data.
         """
-        input_data = item["input_first_block"].to(self.config.training_device)
-        target_data = item["target"].to(self.config.training_device)
+        input_data = item["input_first_block"].to(self.config.training.device)
+        target_data = item["target"].to(self.config.training.device)
         # ToDo: convert month and day to time embeddings, normalize?
         linear_data = torch.vstack(
             [item["month"], item["day"], item["CO2"], item["CH4"], item["N2O"], item["CFC12"], item["CFC11_eq"]]
         ).T
-        linear_data = linear_data.to(self.config.training_device)
+        linear_data = linear_data.to(self.config.training.device)
         output = self.models["UNet"](input_data, x_linear=linear_data)
         extra_metrics = self.custom_metrics(target_data.detach().cpu().numpy(), output.detach().cpu().numpy())
         loss, metrics = self.training_loss_computation(target_data, output)
@@ -257,22 +258,6 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         validation_loss = np.mean(self.validation_metrics["mse_loss"].values).item()
         self.metrics.add_concurrent_values(self.metrics.last_time(), {"(ValidationLoss)": validation_loss})
 
-    def _hyperparameters_dict(self) -> dict[str, Any]:
-        """
-        Get the hyperparameters and settings from the configuration.
-
-        Returns
-        -------
-        dict
-            A dictionary containing the configuration fields marked as hyperparameters or settings.
-        """
-        hyperparameters = {}
-        for f in fields(self.config):
-            if f.metadata.get("is_hyperparameter", False) or f.metadata.get("is_setting", False):
-                key = f.metadata.get("display_name", f.name)
-                hyperparameters[key] = getattr(self.config, f.name)
-        return hyperparameters
-
     def config_dict(self) -> dict[str, Any]:
         """
         Get the full training configuration to log to the experiment tracker.
@@ -281,10 +266,23 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         -------
         dict
             A dictionary representation of the CRCM emulator configuration, excluding the
-            ``logger_config`` field (which may contain sensitive credentials such as the Comet ML
+            ``logger`` field (which may contain sensitive credentials such as the Comet ML
             API key).
         """
-        return {k: v for k, v in asdict(self.config).items() if k != "logger_config"}
+        config: dict[str, Any] = self.config.model_dump(mode="json", exclude={"logger"})
+        return config
+
+    def experiment_parameters(self) -> dict[str, Any]:
+        """
+        Get the training configuration to log to Comet ML.
+
+        Returns
+        -------
+        dict
+            The configuration excluding ``logger``, with dictionary-valued fields (e.g.
+            ``analysis.surface_variables``) serialized to JSON strings so each is logged as a single parameter.
+        """
+        return config_to_experiment_parameters(self.config, exclude={"logger"})
 
     def results_dict(self) -> dict[str, Any]:
         """
@@ -294,16 +292,17 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         -------
         dict
             A dictionary containing training results such as start and end dates, elapsed time,
-            number of parameters, number of epochs, number of iterations, and best validation metrics.
+            number of parameters, number of epochs, number of iterations, best validation metrics, and the
+            full configuration under ``config`` (excluding ``logger``).
         """
         results = super().results_dict()
-        results.update(self._hyperparameters_dict())
+        results["config"] = self.config_dict()
         return results
 
     def training_loop(self) -> None:
         """Execute the main training loop for the model."""
-        for _ in range(self.config.nb_of_epochs):
-            self(epoch=self.epoch_counter + 1, device=self.config.training_device)
+        for _ in range(self.config.training.nb_of_epochs):
+            self(epoch=self.epoch_counter + 1, device=self.config.training.device)
         self.close()
 
     def output_training_figures(
@@ -321,12 +320,12 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         output_data : torch.Tensor
             The model output data.
         """
-        if self.config.path_output is None:
+        if self.config.paths.output is None:
             return
         # ToDo: make figure output frequency customizable in config
         count_list = [0, 1, 2, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90]
         if self.total_iterations in count_list or self.total_iterations % 100 == 0:
-            figure_path = Path(self.config.path_output, f"training_visualization_{self.total_iterations:06d}.png")
+            figure_path = Path(self.config.paths.output, f"training_visualization_{self.total_iterations:06d}.png")
             # plotting first batch item
             balanced_ml_sample_figures(
                 figure_path,
