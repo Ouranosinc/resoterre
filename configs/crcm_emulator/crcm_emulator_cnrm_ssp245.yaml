@@ -119,6 +119,7 @@ training:
   nb_of_epochs: 10
   num_threads: 2
   device: cuda
+  figure_every_n_steps: 10 # Comet ML training figure frequency, 0 to disable
 
 debug:
   crcm_figures:

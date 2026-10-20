@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from torch.utils import data as td
+from tqdm import tqdm
 
 from resoterre.data_management.timeseries import MultiTimeseries
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
@@ -67,7 +68,7 @@ def main(config_path: Path, checkpoint: str = "latest") -> None:
     runner.set_eval_mode()
     runner.validation_metrics = MultiTimeseries()
     with torch.no_grad():
-        for item in test_data_loader:
+        for item in tqdm(test_data_loader, desc="Test"):
             runner.validation_step(item)
     runner.flush_validation_metrics()
 

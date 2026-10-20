@@ -140,6 +140,34 @@ def test_crcm_emulator_training_figures_logged_to_comet_only():
         assert not list(Path(tmp_dir).glob("*.png"))
 
 
+def test_crcm_emulator_training_figure_frequency_is_configurable():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4),
+            model=CRCMEmulatorModelConfig(
+                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+            ),
+        )
+        data = torch.zeros(1, 2, 8, 8)
+        for figure_every_n_steps, expected_steps in ((5, [5, 10]), (0, [])):
+            training_config = CRCMEmulatorTrainingConfig(figure_every_n_steps=figure_every_n_steps)
+            runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(
+                config=config.model_copy(update={"training": training_config})
+            )
+            runner.experiment_logger.experiment = MagicMock()
+            for iteration in range(1, 11):
+                runner.total_iterations = iteration
+                runner.output_training_figures(data, data, data)
+            log_figure = runner.experiment_logger.experiment.log_figure
+            assert [call.kwargs["step"] for call in log_figure.call_args_list] == expected_steps
+
+
 def test_crcm_emulator_validation_figure_logged_to_comet_only():
     with tempfile.TemporaryDirectory() as tmp_dir:
         config = CRCMEmulatorConfig(

@@ -252,10 +252,13 @@ class CRCMEmulatorTrainingConfig(BaseConfig):
         Device to use for training the emulator (e.g., "cpu", "cuda").
     num_threads : int
         Number of threads to use during training.
+    figure_every_n_steps : int
+        Log a training figure to Comet ML every this many training steps, 0 disables the training figures.
     """
 
     nb_of_epochs: int = 10
     device: str = "cpu"
+    figure_every_n_steps: int = Field(default=10, ge=0)
     # TODO: not used, consider removing
     num_threads: int = 2
 

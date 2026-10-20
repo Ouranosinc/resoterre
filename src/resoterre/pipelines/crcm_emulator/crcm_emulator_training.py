@@ -418,8 +418,8 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         """
         if self.experiment_logger.experiment is None:
             return
-        # ToDo: make figure output frequency customizable in config
-        if self.total_iterations % 10 == 0:
+        figure_every_n_steps = self.config.training.figure_every_n_steps
+        if figure_every_n_steps > 0 and self.total_iterations % figure_every_n_steps == 0:
             # plotting first batch item, logged under a single name so Comet ML shows a step slider
             figure = balanced_ml_sample_figure(
                 input_data=input_data[0, : len(self.config.data.gcm_variables)].detach().cpu().numpy(),
