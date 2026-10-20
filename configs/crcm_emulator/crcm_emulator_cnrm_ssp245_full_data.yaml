@@ -1,4 +1,4 @@
-experiment_name: cnrm-ssp245
+experiment_name: cnrm-ssp245-full-dataset
 executing_institution: Ouranos
 
 paths:
@@ -114,7 +114,7 @@ loss:
   ssim_weight: 0.0
 
 training:
-  nb_of_epochs: 10
+  nb_of_epochs: 2
   num_threads: 2
   device: "cuda"
 

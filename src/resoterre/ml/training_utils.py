@@ -13,6 +13,7 @@ import numpy as np
 import torch
 from safetensors.torch import save_file as save_as_safetensors
 from torch.utils import data as td
+from tqdm import tqdm
 
 from resoterre.config import ExperimentLoggerConfig
 from resoterre.data_management.timeseries import MultiTimeseries
@@ -422,7 +423,7 @@ class NNTraining(ABC):
         self.epoch_iterations = 0
         if self.train_data_loader is None:
             raise ValueError("Train data loader is not set.")
-        for item in self.train_data_loader:
+        for item in tqdm(self.train_data_loader, desc=f"Train epoch {epoch}", leave=False):
             for optimizer in self.optimizers.values():
                 optimizer.zero_grad()
             self.training_step(item, epoch=epoch)
@@ -514,7 +515,7 @@ class NNTraining(ABC):
         self.validation_metrics = MultiTimeseries()
         if self.validation_data_loader is None:
             raise ValueError("Validation data loader is not set.")
-        for i, item in enumerate(self.validation_data_loader):
+        for i, item in enumerate(tqdm(self.validation_data_loader, desc=f"Validation epoch {epoch}", leave=False)):
             _ = self.validation_step(item)
             self._log_validation_step(i=i + 1, identifier=f"end_of_validation_step_epoch_{epoch}", inline=False)
         self.validation_consolidate()

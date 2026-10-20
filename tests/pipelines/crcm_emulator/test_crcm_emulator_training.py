@@ -1,5 +1,6 @@
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import torch
@@ -172,3 +173,13 @@ def test_crcm_emulator_validation_figure_logged_to_comet_only():
         assert log_figure.call_args.kwargs["figure_name"] == "validation_visualization"
         assert log_figure.call_args.kwargs["step"] == 7
         assert not list(Path(tmp_dir).glob("*.png"))
+
+
+def test_crcm_emulator_figure_channel_names_exclude_mask():
+    runner = SimpleNamespace(
+        config=SimpleNamespace(data=SimpleNamespace(gcm_variables=["zg850", "psl"], crcm_variables=["tas"])),
+        dataset=SimpleNamespace(num_input_channels=3),
+    )
+    names = crcm_emulator_training.CRCMEmulatorTrainingFromConfig.figure_channel_names(runner)  # type: ignore[arg-type]
+    assert names["input_names"] == ["zg850", "psl"]
+    assert names["target_names"] == ["tas"]

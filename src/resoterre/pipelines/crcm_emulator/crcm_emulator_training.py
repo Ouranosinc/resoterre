@@ -271,7 +271,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         if self.experiment_logger.experiment is not None and not self.pending_validation_metrics:
             # first item of the first validation batch, the same sample every epoch
             self.validation_figure_data = (
-                input_data[0].detach().cpu().numpy(),
+                input_data[0, : len(self.config.data.gcm_variables)].detach().cpu().numpy(),
                 target_data[0].detach().cpu().numpy(),
                 output[0].detach().cpu().numpy(),
             )
@@ -422,7 +422,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         if self.total_iterations % 10 == 0:
             # plotting first batch item, logged under a single name so Comet ML shows a step slider
             figure = balanced_ml_sample_figure(
-                input_data=input_data[0, :, :, :].detach().cpu().numpy(),
+                input_data=input_data[0, : len(self.config.data.gcm_variables)].detach().cpu().numpy(),
                 target_data=target_data[0, :, :, :].detach().cpu().numpy(),
                 output_data=output_data[0, :, :, :].detach().cpu().numpy(),
                 **self.figure_channel_names(),
@@ -437,16 +437,13 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         Returns
         -------
         dict[str, list[str]]
-            Names of the input, target and output channels. Each GCM variable takes two consecutive input
-            channels, its normalized field followed by its missing-value mask.
+            Names of the input, target and output channels. Mask channels are not visualized, only the normalized
+            GCM variables are.
         """
-        crcm_variables = list(self.config.data.crcm_variables)
         return {
-            "input_names": [
-                name for variable in self.config.data.gcm_variables for name in (variable, f"{variable} mask")
-            ],
-            "target_names": crcm_variables,
-            "output_names": crcm_variables,
+            "input_names": list(self.config.data.gcm_variables),
+            "target_names": list(self.config.data.crcm_variables),
+            "output_names": list(self.config.data.crcm_variables),
         }
 
     def output_validation_figures(self) -> None:
