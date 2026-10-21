@@ -1,6 +1,7 @@
 """CMIP6 Interpolation Baseline."""
 
-from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig, crcm_emulator_parse_config
+from resoterre.config import CRCMEmulatorConfig
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 
 
 class CMIP6InterpolationBaselineFromConfig:
