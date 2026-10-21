@@ -8,7 +8,6 @@ import argparse
 import json
 from pathlib import Path
 
-import numpy as np
 import torch
 from torch.utils import data as td
 from tqdm import tqdm
@@ -70,9 +69,9 @@ def main(config_path: Path, checkpoint: str = "latest") -> None:
     with torch.no_grad():
         for item in tqdm(test_data_loader, desc="Test"):
             runner.validation_step(item)
-    runner.flush_validation_metrics()
+    runner.consolidation()
 
-    results = {name: float(np.mean(series.values)) for name, series in runner.validation_metrics.items()}
+    results = {name: float(series.values[-1]) for name, series in runner.validation_metrics.items()}
     output_path = Path(output_directory, f"{config.experiment_name}_test_results.json")
     with output_path.open("w") as f:
         json.dump({"epoch": runner.epoch_counter, "nb_of_samples": len(test_dataset), "metrics": results}, f, indent=4)

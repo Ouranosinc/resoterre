@@ -25,6 +25,9 @@ from resoterre.plots.ml_sample_plot import balanced_ml_sample_figure
 logger = logging.getLogger(__name__)
 progress_logger = CustomLogging(caller=logger)
 
+# Mean-reduced losses are averaged over samples, so batches are weighted by their size (the last one can be partial).
+SAMPLE_WEIGHTED_METRICS = ("loss", "mse_loss", "ssim_loss")
+
 
 class CRCMEmulatorTrainingFromConfig(NNTraining):
     """
@@ -106,7 +109,8 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         if self.config.data.coarsen_factor is None:
             raise ValueError("Coarsen factor must be specified in the configuration.")
         self.validation_figure_data: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
-        self.pending_validation_metrics: dict[str, list[torch.Tensor]] = {}
+        # per metric: (weighted sum, total weight), kept as tensors on the device until consolidation()
+        self.running_validation_metrics: dict[str, tuple[torch.Tensor, float]] = {}
         self.init_unet()
         self.loss_functions = {
             "MSELoss": nn.MSELoss(),
@@ -268,32 +272,80 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         loss, metrics = self.training_loss_computation(target_data, output)
         metrics["loss"] = loss.detach()
         metrics.update(self.custom_metrics(target_data, output))
-        if self.experiment_logger.experiment is not None and not self.pending_validation_metrics:
+        if self.experiment_logger.experiment is not None and not self.running_validation_metrics:
             # first item of the first validation batch, the same sample every epoch
             self.validation_figure_data = (
                 input_data[0, : len(self.config.data.gcm_variables)].detach().cpu().numpy(),
                 target_data[0].detach().cpu().numpy(),
                 output[0].detach().cpu().numpy(),
             )
-        for name, value in metrics.items():
-            self.pending_validation_metrics.setdefault(name, []).append(value.reshape(()).float())
+        self.running_consolidation(metrics, batch_size=input_data.shape[0])
 
-    def flush_validation_metrics(self) -> None:
+    @staticmethod
+    def metric_weight(name: str, batch_size: int) -> float:
         """
-        Move the validation metrics accumulated during the validation loop to ``self.validation_metrics``.
+        Get the weight of a batch value of a metric when consolidating it over the validation dataset.
+
+        Parameters
+        ----------
+        name : str
+            Name of the metric.
+        batch_size : int
+            Number of samples in the batch.
+
+        Returns
+        -------
+        float
+            The batch size for the sample-averaged losses, 1 (a plain mean over batches) for the other metrics.
+        """
+        return float(batch_size) if name in SAMPLE_WEIGHTED_METRICS else 1.0
+
+    def running_consolidation(self, metrics: dict[str, torch.Tensor], batch_size: int) -> None:
+        """
+        Fold the metrics of one validation batch into the running statistics.
+
+        Parameters
+        ----------
+        metrics : dict[str, torch.Tensor]
+            Scalar metric tensors of the batch, possibly on the GPU.
+        batch_size : int
+            Number of samples in the batch.
 
         Notes
         -----
-        ``validation_step`` keeps its per-batch metrics on the device. They are transferred to the CPU here, in a
-        single synchronization, and added to ``self.validation_metrics`` as one value per batch.
+        Called after every validation step, while the batch is still in memory. The statistics stay on the device,
+        so there is no GPU synchronization until ``consolidation``.
         """
-        if not self.pending_validation_metrics:
+        for name, value in metrics.items():
+            weight = self.metric_weight(name, batch_size)
+            weighted_value = value.reshape(()).float() * weight
+            if name in self.running_validation_metrics:
+                weighted_sum, total_weight = self.running_validation_metrics[name]
+                weighted_value = weighted_sum + weighted_value
+                weight = total_weight + weight
+            self.running_validation_metrics[name] = (weighted_value, weight)
+
+    def consolidation(self) -> None:
+        """
+        Consolidate the running statistics into one value per metric in ``self.validation_metrics``.
+
+        Notes
+        -----
+        Called at the end of the validation (or test) loop. All metrics are transferred to the CPU in a single
+        synchronization.
+        """
+        if not self.running_validation_metrics:
             return
-        names = list(self.pending_validation_metrics)
-        values = torch.stack([torch.stack(self.pending_validation_metrics[name]) for name in names]).cpu().tolist()
-        self.pending_validation_metrics = {}
-        for batch_values in zip(*values, strict=True):
-            self.validation_metrics.add_concurrent_values(None, dict(zip(names, batch_values, strict=True)))
+        names = list(self.running_validation_metrics)
+        values = (
+            torch.stack(
+                [self.running_validation_metrics[name][0] / self.running_validation_metrics[name][1] for name in names]
+            )
+            .cpu()
+            .tolist()
+        )
+        self.running_validation_metrics = {}
+        self.validation_metrics.add_concurrent_values(None, dict(zip(names, values, strict=True)))
 
     def validation_loop(self, epoch: int) -> None:
         """
@@ -304,7 +356,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         epoch : int
             The current epoch number.
         """
-        self.pending_validation_metrics = {}
+        self.running_validation_metrics = {}
         super().validation_loop(epoch)
 
     def _log_validation_step(self, i: int, identifier: str, inline: bool = True) -> None:
@@ -342,7 +394,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         This function should update self.metrics with consolidated validation metrics
         e.g. self.metrics.add_concurrent_values(self.metrics.last_time(), dict_of_aggregates)
         """
-        self.flush_validation_metrics()
+        self.consolidation()
         validation_loss = np.mean(self.validation_metrics["mse_loss"].values).item()
         self.metrics.add_concurrent_values(self.metrics.last_time(), {"(ValidationLoss)": validation_loss})
         self.output_validation_figures()

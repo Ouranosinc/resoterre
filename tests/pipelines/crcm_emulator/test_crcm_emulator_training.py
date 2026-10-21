@@ -3,6 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
 import torch
 from torch.utils import data as td
 
@@ -18,6 +19,7 @@ from resoterre.config import (
     OptimizerConfig,
 )
 from resoterre.data_generators.crcm_emulator_mock_dataset import CRCMEmulatorMockDataset
+from resoterre.data_management.timeseries import MultiTimeseries
 from resoterre.logging_utils import start_root_logger
 from resoterre.pipelines.crcm_emulator import crcm_emulator_training
 
@@ -211,3 +213,21 @@ def test_crcm_emulator_figure_channel_names_exclude_mask():
     names = crcm_emulator_training.CRCMEmulatorTrainingFromConfig.figure_channel_names(runner)  # type: ignore[arg-type]
     assert names["input_names"] == ["zg850", "psl"]
     assert names["target_names"] == ["tas"]
+
+
+def test_crcm_emulator_consolidation_weights_losses_by_batch_size():
+    runner = SimpleNamespace(
+        running_validation_metrics={},
+        validation_metrics=MultiTimeseries(),
+        metric_weight=crcm_emulator_training.CRCMEmulatorTrainingFromConfig.metric_weight,
+    )
+    consolidator = crcm_emulator_training.CRCMEmulatorTrainingFromConfig
+    # 128 samples with zero error, then a partial batch of 1 sample with a squared error of 100
+    for batch_size, value in ((128, 0.0), (1, 100.0)):
+        metrics = {"mse_loss": torch.tensor(value), "max_value_absolute_error": torch.tensor(value)}
+        consolidator.running_consolidation(runner, metrics, batch_size)  # type: ignore[arg-type]
+    consolidator.consolidation(runner)  # type: ignore[arg-type]
+    assert runner.running_validation_metrics == {}
+    assert runner.validation_metrics["mse_loss"].values == [pytest.approx(100 / 129)]
+    # metrics that are not sample-averaged losses are a plain mean over batches
+    assert runner.validation_metrics["max_value_absolute_error"].values == [pytest.approx(50.0)]
