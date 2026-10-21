@@ -54,3 +54,61 @@ def test_cftime_period_bounds_idx_in_list_of_datetimes_with_precision():
     )
     assert initial_idx == 1
     assert final_idx == 3
+
+
+def test_overlap_periods_from_dates_and_periods_empty():
+    overlap_periods = cftime_utils.overlap_periods_from_dates_and_periods(
+        list_of_datetimes=[
+            datetime(1951, 1, 1),
+            datetime(1951, 1, 2),
+            datetime(1951, 1, 3),
+        ],
+        periods=[
+            [datetime(1985, 1, 1), datetime(1999, 12, 31)],
+        ],
+    )
+    assert overlap_periods == []
+
+
+def test_overlap_periods_from_dates_and_periods_partial_from_start():
+    overlap_periods = cftime_utils.overlap_periods_from_dates_and_periods(
+        list_of_datetimes=[
+            datetime(1985, 1, 1),
+            datetime(1985, 1, 2),
+            datetime(1985, 1, 3),
+        ],
+        periods=[
+            [datetime(1985, 1, 1), datetime(1999, 12, 31)],
+        ],
+    )
+    assert overlap_periods == [[datetime(1985, 1, 1), datetime(1985, 1, 3)]]
+
+
+def test_overlap_periods_from_dates_and_periods_partial():
+    overlap_periods = cftime_utils.overlap_periods_from_dates_and_periods(
+        list_of_datetimes=[
+            datetime(1984, 12, 31),
+            datetime(1985, 1, 1),
+            datetime(1985, 1, 2),
+            datetime(1985, 1, 3),
+        ],
+        periods=[
+            [datetime(1985, 1, 1), datetime(1999, 12, 31)],
+        ],
+    )
+    assert overlap_periods == [[datetime(1985, 1, 1), datetime(1985, 1, 3)]]
+
+
+def test_overlap_periods_from_dates_and_periods_partial_ending():
+    overlap_periods = cftime_utils.overlap_periods_from_dates_and_periods(
+        list_of_datetimes=[
+            datetime(1999, 12, 29),
+            datetime(1999, 12, 30),
+            datetime(1999, 12, 31),
+            datetime(2000, 1, 1),
+        ],
+        periods=[
+            [datetime(1985, 1, 1), datetime(1999, 12, 31)],
+        ],
+    )
+    assert overlap_periods == [[datetime(1999, 12, 29), datetime(1999, 12, 31)]]
