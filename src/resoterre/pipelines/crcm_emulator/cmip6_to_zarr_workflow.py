@@ -16,10 +16,10 @@ from resoterre.data_management.ndimage_utils import replace_nan_with_auto_2d_win
 from resoterre.datasets.cmip6.cmip6_utils import (
     gcm_calendars,
     gcm_variable_levels,
-    gcm_vertical_levels,
     gcm_vertical_variables,
     validate_cmip6_data,
 )
+from resoterre.datasets.cmip6.cmip6_variables import gcm_vertical_levels
 from resoterre.datasets.crcm.crcm_utils import crcm_north_america_grid_coordinates
 from resoterre.io_utils import path_with_uuid
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
