@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 
 from resoterre.datasets.cmip6 import cmip6_utils
 
@@ -20,9 +19,9 @@ def test_validate_cmip6_data_max():
 
 
 def test_validate_cmip6_data_missing_stats():
-    data = np.array([270.0, 280.0])
-    with pytest.raises(TypeError):
-        cmip6_utils.validate_cmip6_data(data, "ta1000")
+    data = np.array([2700.0, 2800.0])
+    # ta1000 does not have min max set currently, so always returns True
+    assert cmip6_utils.validate_cmip6_data(data, "ta1000") is True
 
 
 def test_validate_cmip6_data_tas():

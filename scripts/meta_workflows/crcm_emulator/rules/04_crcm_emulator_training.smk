@@ -37,7 +37,7 @@ rule first_epoch:
     output:
         touch("manifests/crcm_emulator_training_epoch_1.done")
     params:
-        path_script=Path(snakefile_dir, "03_crcm_emulator_training.py"),
+        path_script=Path(snakefile_dir, "04_crcm_emulator_training.py"),
         workflow_dir=workflow_dir,
         config_yaml=config["config_yaml"],
     shell:
@@ -55,7 +55,7 @@ rule train_epoch:
     output:
         touch("manifests/crcm_emulator_training_epoch_{epoch}.done")
     params:
-        path_script=Path(snakefile_dir, "03_crcm_emulator_training.py"),
+        path_script=Path(snakefile_dir, "04_crcm_emulator_training.py"),
         workflow_dir=workflow_dir,
         config_yaml=config["config_yaml"],
     shell:

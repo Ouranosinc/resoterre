@@ -66,6 +66,8 @@ class CRCMEmulatorPathsConfig(BaseConfig):
         Path to the directory containing emission data.
     crcm_data : Path | None
         Path to the directory containing CRCM data.
+    baselines : Path | None
+        Path to the directory containing baseline data.
     """
 
     output: Path | None = None
@@ -74,6 +76,7 @@ class CRCMEmulatorPathsConfig(BaseConfig):
     gcm_data: Path | None = None
     emission_data: Path | None = None
     crcm_data: Path | None = None
+    baselines: Path | None = None
 
 
 class CRCMEmulatorSourcePreprocessingConfig(BaseConfig):
