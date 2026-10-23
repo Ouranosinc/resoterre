@@ -503,7 +503,7 @@ def test_nn_training_call_gpu():
         assert nn_training.best_validation_metrics["(ValidationLoss)"].epoch == 1
         assert nn_training.best_validation_metrics["(ValidationLoss)"].value == 108.5
         assert Path(tmp_dir, "unspecified_experiment_training_results.json").is_file()
-        assert len(list(Path(tmp_dir).glob("*.pth"))) == 1
+        assert len(list(Path(tmp_dir).glob("*.pth"))) == 2
         nn_training(epoch=2, device="cuda")
         assert nn_training.epoch_iterations == 8
         nn_training(epoch=3, device="cuda")
