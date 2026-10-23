@@ -127,6 +127,8 @@ def test_crcm_emulator_nested_config_from_yaml():
     assert config.optimizer.lr == 0.001
     assert config.data.prefetch_factor == 4
     assert config.training.figure_every_n_steps == 10
+    assert config.training.validation_metrics == ["max_value_absolute_error", "rmse", "ccc", "wasserstein_distance"]
+    assert config.inference.test_metrics == ["max_value_absolute_error", "rmse", "ccc", "wasserstein_distance"]
     assert config.training.device == "cuda"
     assert config.analysis.windows[1] == ["2015-01-01", "2100-12-31", "ssp245"]
     assert config.analysis.surface_variables["tas"] == "ta"
