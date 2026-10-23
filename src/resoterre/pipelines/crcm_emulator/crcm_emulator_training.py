@@ -2,9 +2,9 @@
 
 import logging
 import math
-from pathlib import Path
 from typing import Any
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
@@ -13,15 +13,20 @@ from torchmetrics.image import MultiScaleStructuralSimilarityIndexMeasure
 
 from resoterre.config import CRCMEmulatorConfig
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
+from resoterre.logging_utils import CustomLogging
 from resoterre.ml.network_manager import NeuralNetworksManager
 from resoterre.ml.neural_networks_unet import UNet
 from resoterre.ml.training_utils import NNTraining
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 from resoterre.pipelines.crcm_emulator.experiment_logger import config_to_experiment_parameters
-from resoterre.plots.ml_sample_plot import balanced_ml_sample_figures
+from resoterre.plots.ml_sample_plot import balanced_ml_sample_figure
 
 
 logger = logging.getLogger(__name__)
+progress_logger = CustomLogging(caller=logger)
+
+# Mean-reduced losses are averaged over samples, so batches are weighted by their size (the last one can be partial).
+SAMPLE_WEIGHTED_METRICS = ("loss", "mse_loss", "ssim_loss")
 
 
 class CRCMEmulatorTrainingFromConfig(NNTraining):
@@ -65,6 +70,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
                 batch_size=self.config.data.batch_size,
                 shuffle=True,
                 num_workers=self.config.data.num_workers,
+                prefetch_factor=self.config.data.prefetch_factor if self.config.data.num_workers > 0 else None,
                 persistent_workers=True if self.config.data.num_workers > 0 else False,
                 multiprocessing_context="spawn",
                 pin_memory=True,
@@ -89,6 +95,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
                 batch_size=self.config.data.batch_size,
                 shuffle=False,
                 num_workers=self.config.data.num_workers,
+                prefetch_factor=self.config.data.prefetch_factor if self.config.data.num_workers > 0 else None,
                 persistent_workers=True if self.config.data.num_workers > 0 else False,
                 multiprocessing_context="spawn",
                 pin_memory=True,
@@ -101,6 +108,9 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
 
         if self.config.data.coarsen_factor is None:
             raise ValueError("Coarsen factor must be specified in the configuration.")
+        self.validation_figure_data: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
+        # per metric: (weighted sum, total weight), kept as tensors on the device until consolidation()
+        self.running_validation_metrics: dict[str, tuple[torch.Tensor, float]] = {}
         self.init_unet()
         self.loss_functions = {
             "MSELoss": nn.MSELoss(),
@@ -142,7 +152,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
 
     def training_loss_computation(
         self, target_data: torch.Tensor, output: torch.Tensor
-    ) -> tuple[torch.Tensor, dict[str, float]]:
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """
         Compute training metrics for the CRCM emulator.
 
@@ -155,8 +165,9 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
 
         Returns
         -------
-        (torch.Tensor, dict[str, float])
-            A tuple containing the computed loss and a dictionary of metrics.
+        (torch.Tensor, dict[str, torch.Tensor])
+            A tuple containing the computed loss and a dictionary of detached scalar metric tensors, left on the
+            device to avoid a GPU synchronization per metric (see ``metrics_to_floats``).
         """
         loss_terms = {}
         metrics = {}
@@ -164,34 +175,52 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         if self.config.loss.mse_weight is not None and self.config.loss.mse_weight > 0:
             loss_terms["mse_loss"] = self.loss_functions["MSELoss"](output, target_data)
             weights.append(self.config.loss.mse_weight)
-            metrics["mse_loss"] = loss_terms["mse_loss"].item()
+            metrics["mse_loss"] = loss_terms["mse_loss"].detach()
         if self.config.loss.ssim_weight is not None and self.config.loss.ssim_weight > 0:
-            loss_terms["ssim_loss"] = self.loss_functions["SSIMLoss"](output, target_data)
+            loss_terms["ssim_loss"] = 1 - self.loss_functions["SSIMLoss"](output, target_data)
             weights.append(self.config.loss.ssim_weight)
-            metrics["ssim_loss"] = loss_terms["ssim_loss"].item()
+            metrics["ssim_loss"] = loss_terms["ssim_loss"].detach()
         if not loss_terms:
             raise ValueError("At least one loss term must be specified in the configuration.")
         loss = sum(loss_terms[term] * weight for term, weight in zip(loss_terms.keys(), weights, strict=True))
         return loss, metrics
 
-    def custom_metrics(self, target_data: np.ndarray, output: np.ndarray) -> dict[str, float]:
+    @staticmethod
+    def metrics_to_floats(metrics: dict[str, torch.Tensor]) -> dict[str, float]:
+        """
+        Convert scalar metric tensors to Python floats with a single device transfer.
+
+        Parameters
+        ----------
+        metrics : dict[str, torch.Tensor]
+            Scalar tensors, possibly on the GPU.
+
+        Returns
+        -------
+        dict[str, float]
+            The same metrics as Python floats.
+        """
+        values = torch.stack([value.reshape(()).float() for value in metrics.values()]).cpu().tolist()
+        return dict(zip(metrics.keys(), values, strict=True))
+
+    def custom_metrics(self, target_data: torch.Tensor, output: torch.Tensor) -> dict[str, torch.Tensor]:
         """
         Compute custom metrics for the CRCM emulator.
 
         Parameters
         ----------
-        target_data : np.ndarray
+        target_data : torch.Tensor
             The ground truth data.
-        output : np.ndarray
+        output : torch.Tensor
             The model output data.
 
         Returns
         -------
-        dict[str, float]
-            A dictionary containing the computed metrics.
+        dict[str, torch.Tensor]
+            A dictionary containing the computed scalar metrics, computed on the tensors' device.
         """
         # ToDo: these depend on which variable is in which channel, and requires unnormalizing to be meaningful.
-        return {"max_value_absolute_error": np.max(target_data) - np.max(output)}
+        return {"max_value_absolute_error": torch.max(target_data) - torch.max(output)}
 
     def training_step(self, item: dict[str, torch.Tensor], epoch: int) -> None:
         """
@@ -220,8 +249,8 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         loss, metrics = self.training_loss_computation(target_data, output)
         loss.backward()
         self.optimizers["UNet"].step()
-        metrics["loss"] = loss.item()
-        self.metrics.add_concurrent_values(None, metrics)
+        metrics["loss"] = loss.detach()
+        self.metrics.add_concurrent_values(None, self.metrics_to_floats(metrics))
 
     def validation_step(self, item: dict[str, torch.Tensor]) -> None:
         """
@@ -240,11 +269,121 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         ).T
         linear_data = linear_data.to(self.config.training.device)
         output = self.models["UNet"](input_data, x_linear=linear_data)
-        extra_metrics = self.custom_metrics(target_data.detach().cpu().numpy(), output.detach().cpu().numpy())
         loss, metrics = self.training_loss_computation(target_data, output)
-        metrics["loss"] = loss.item()
-        metrics.update(extra_metrics)
-        self.validation_metrics.add_concurrent_values(None, metrics)
+        metrics["loss"] = loss.detach()
+        metrics.update(self.custom_metrics(target_data, output))
+        if self.experiment_logger.experiment is not None and not self.running_validation_metrics:
+            # first item of the first validation batch, the same sample every epoch
+            self.validation_figure_data = (
+                input_data[0, : len(self.config.data.gcm_variables)].detach().cpu().numpy(),
+                target_data[0].detach().cpu().numpy(),
+                output[0].detach().cpu().numpy(),
+            )
+        self.running_consolidation(metrics, batch_size=input_data.shape[0])
+
+    @staticmethod
+    def metric_weight(name: str, batch_size: int) -> float:
+        """
+        Get the weight of a batch value of a metric when consolidating it over the validation dataset.
+
+        Parameters
+        ----------
+        name : str
+            Name of the metric.
+        batch_size : int
+            Number of samples in the batch.
+
+        Returns
+        -------
+        float
+            The batch size for the sample-averaged losses, 1 (a plain mean over batches) for the other metrics.
+        """
+        return float(batch_size) if name in SAMPLE_WEIGHTED_METRICS else 1.0
+
+    def running_consolidation(self, metrics: dict[str, torch.Tensor], batch_size: int) -> None:
+        """
+        Fold the metrics of one validation batch into the running statistics.
+
+        Parameters
+        ----------
+        metrics : dict[str, torch.Tensor]
+            Scalar metric tensors of the batch, possibly on the GPU.
+        batch_size : int
+            Number of samples in the batch.
+
+        Notes
+        -----
+        Called after every validation step, while the batch is still in memory. The statistics stay on the device,
+        so there is no GPU synchronization until ``consolidation``.
+        """
+        for name, value in metrics.items():
+            weight = self.metric_weight(name, batch_size)
+            weighted_value = value.reshape(()).float() * weight
+            if name in self.running_validation_metrics:
+                weighted_sum, total_weight = self.running_validation_metrics[name]
+                weighted_value = weighted_sum + weighted_value
+                weight = total_weight + weight
+            self.running_validation_metrics[name] = (weighted_value, weight)
+
+    def consolidation(self) -> None:
+        """
+        Consolidate the running statistics into one value per metric in ``self.validation_metrics``.
+
+        Notes
+        -----
+        Called at the end of the validation (or test) loop. All metrics are transferred to the CPU in a single
+        synchronization.
+        """
+        if not self.running_validation_metrics:
+            return
+        names = list(self.running_validation_metrics)
+        values = (
+            torch.stack(
+                [self.running_validation_metrics[name][0] / self.running_validation_metrics[name][1] for name in names]
+            )
+            .cpu()
+            .tolist()
+        )
+        self.running_validation_metrics = {}
+        self.validation_metrics.add_concurrent_values(None, dict(zip(names, values, strict=True)))
+
+    def validation_loop(self, epoch: int) -> None:
+        """
+        Perform the validation loop over the entire validation dataset.
+
+        Parameters
+        ----------
+        epoch : int
+            The current epoch number.
+        """
+        self.running_validation_metrics = {}
+        super().validation_loop(epoch)
+
+    def _log_validation_step(self, i: int, identifier: str, inline: bool = True) -> None:
+        """
+        Log the progress of the validation loop, without metric values, which stay on the device until the end.
+
+        Parameters
+        ----------
+        i : int
+            The current iteration index.
+        identifier : str
+            The identifier for the logger.
+        inline : bool
+            Unused, kept for compatibility with the base class.
+        """
+        if self.validation_data_loader is None:
+            raise ValueError("Validation data loader is not specified.")
+        progress_logger.info(
+            "Iteration: #%s/%s (Epoch %s)",
+            i,
+            len(self.validation_data_loader),
+            self.epoch_counter + 1,
+            block_short_repetition_delay=next(self.validation_logging_frequency_sequence),
+            identifier=identifier,
+            expected_nb_of_calls=len(self.validation_data_loader),
+            add_eta=True,
+        )
 
     def validation_consolidate(self) -> None:
         """
@@ -255,8 +394,10 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         This function should update self.metrics with consolidated validation metrics
         e.g. self.metrics.add_concurrent_values(self.metrics.last_time(), dict_of_aggregates)
         """
+        self.consolidation()
         validation_loss = np.mean(self.validation_metrics["mse_loss"].values).item()
         self.metrics.add_concurrent_values(self.metrics.last_time(), {"(ValidationLoss)": validation_loss})
+        self.output_validation_figures()
 
     def config_dict(self) -> dict[str, Any]:
         """
@@ -300,8 +441,15 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         return results
 
     def training_loop(self) -> None:
-        """Execute the main training loop for the model."""
-        for _ in range(self.config.training.nb_of_epochs):
+        """
+        Execute the main training loop for the model.
+
+        Notes
+        -----
+        Trains until ``training.nb_of_epochs`` epochs are completed in total, so a trainer whose state was
+        restored with ``load_state`` only trains the remaining epochs.
+        """
+        for _ in range(self.epoch_counter, self.config.training.nb_of_epochs):
             self(epoch=self.epoch_counter + 1, device=self.config.training.device)
         self.close()
 
@@ -320,17 +468,49 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         output_data : torch.Tensor
             The model output data.
         """
-        if self.config.paths.output is None:
+        if self.experiment_logger.experiment is None:
             return
-        # ToDo: make figure output frequency customizable in config
-        count_list = [0, 1, 2, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90]
-        if self.total_iterations in count_list or self.total_iterations % 100 == 0:
-            figure_path = Path(self.config.paths.output, f"training_visualization_{self.total_iterations:06d}.png")
-            # plotting first batch item
-            balanced_ml_sample_figures(
-                figure_path,
-                input_data=input_data[0, :, :, :].detach().cpu().numpy(),
+        figure_every_n_steps = self.config.training.figure_every_n_steps
+        if figure_every_n_steps > 0 and self.total_iterations % figure_every_n_steps == 0:
+            # plotting first batch item, logged under a single name so Comet ML shows a step slider
+            figure = balanced_ml_sample_figure(
+                input_data=input_data[0, : len(self.config.data.gcm_variables)].detach().cpu().numpy(),
                 target_data=target_data[0, :, :, :].detach().cpu().numpy(),
                 output_data=output_data[0, :, :, :].detach().cpu().numpy(),
+                **self.figure_channel_names(),
             )
-            self.experiment_logger.log_image(figure_path, name=figure_path.name, step=self.total_iterations)
+            self.experiment_logger.log_figure(figure, name="training_visualization", step=self.total_iterations)
+            plt.close(figure)
+
+    def figure_channel_names(self) -> dict[str, list[str]]:
+        """
+        Get the channel names to label the subplots of the visualization figures.
+
+        Returns
+        -------
+        dict[str, list[str]]
+            Names of the input, target and output channels. Mask channels are not visualized, only the normalized
+            GCM variables are.
+        """
+        return {
+            "input_names": list(self.config.data.gcm_variables),
+            "target_names": list(self.config.data.crcm_variables),
+            "output_names": list(self.config.data.crcm_variables),
+        }
+
+    def output_validation_figures(self) -> None:
+        """
+        Log the figure of the fixed validation sample to the experiment logger.
+
+        Notes
+        -----
+        The figure is logged under a single name, at the current training iteration, so that Comet ML shows
+        the same sample evolving across epochs with its step slider. Nothing is saved to disk.
+        """
+        if self.validation_figure_data is None:
+            return
+        input_data, target_data, output_data = self.validation_figure_data
+        self.validation_figure_data = None
+        figure = balanced_ml_sample_figure(input_data, target_data, output_data, **self.figure_channel_names())
+        self.experiment_logger.log_figure(figure, name="validation_visualization", step=self.total_iterations)
+        plt.close(figure)

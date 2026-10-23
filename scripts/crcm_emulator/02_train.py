@@ -2,6 +2,8 @@
 Train the CRCM emulator from a YAML configuration.
 
 Run ``python scripts/crcm_emulator/02_train.py --config configs/crcm_emulator/crcm_emulator_cnrm_ssp245.yaml``
+Training resumes from the latest checkpoint in ``paths.output`` when one exists. Use ``--resume best`` to resume
+from the best checkpoint instead, or ``--resume none`` to always start from scratch.
 """
 
 import argparse
@@ -11,7 +13,7 @@ from resoterre.pipelines.crcm_emulator.crcm_emulator_training import CRCMEmulato
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 
 
-def main(config_path: Path) -> None:
+def main(config_path: Path, resume: str = "latest") -> None:
     """
     Train the CRCM emulator on preprocessed GCM and CRCM Zarr data.
 
@@ -19,6 +21,9 @@ def main(config_path: Path) -> None:
     ----------
     config_path : Path
         Path to a CRCM emulator YAML configuration.
+    resume : str
+        Checkpoint to resume training from, "latest", "best" or "none". With "latest", training starts from
+        scratch if no checkpoint exists yet.
     """
     config = crcm_emulator_parse_config(config_path)
     if config.paths.output is None:
@@ -46,11 +51,22 @@ def main(config_path: Path) -> None:
     trainer = CRCMEmulatorTrainingFromConfig(config)
     if len(trainer.dataset) == 0:
         raise ValueError("No training samples match training_periods and the selected variables.")
+    if resume != "none":
+        try:
+            trainer.load_state(config.paths.output, tag=resume)
+            print(f"Resuming from the {resume} checkpoint at epoch {trainer.epoch_counter}.")
+        except FileNotFoundError:
+            if resume == "best":
+                raise
+            print("No checkpoint found, training from scratch.")
     trainer.training_loop()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True, help="CRCM emulator YAML configuration")
+    parser.add_argument(
+        "--resume", choices=["latest", "best", "none"], default="latest", help="Checkpoint to resume from"
+    )
     args = parser.parse_args()
-    main(args.config)
+    main(args.config, args.resume)
