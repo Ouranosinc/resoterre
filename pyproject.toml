@@ -53,6 +53,7 @@ dependencies = [
   "shapely >=2.0.7",
   "torch >=2.7.1",
   "torchmetrics >=1.8.2",
+  "tqdm >=4.66",
   "xarray >=2024.6.0",
   "zarr >= 2.18.4",
   "comet_ml >= 3.51.0"

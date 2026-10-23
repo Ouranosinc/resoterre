@@ -4299,6 +4299,7 @@ dependencies = [
     { name = "shapely" },
     { name = "torch" },
     { name = "torchmetrics" },
+    { name = "tqdm" },
     { name = "xarray" },
     { name = "zarr", version = "3.1.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "zarr", version = "3.4.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -4411,6 +4412,7 @@ requires-dist = [
     { name = "stac-model", marker = "extra == 'stac-mlm'", specifier = ">=0.7.0" },
     { name = "torch", specifier = ">=2.7.1" },
     { name = "torchmetrics", specifier = ">=1.8.2" },
+    { name = "tqdm", specifier = ">=4.66" },
     { name = "xarray", specifier = ">=2024.6.0" },
     { name = "zarr", specifier = ">=2.18.4" },
 ]
@@ -5782,6 +5784,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a0/ba/5cac156bf0488be76488008dc9b82d0210845e8e60074af0fd6717955c01/tox_gh-1.8.0.tar.gz", hash = "sha256:19c151525e6ed383b2fd23f8f3a35301ee12f3438c19ac7062f81c30958626ad", size = 11694, upload-time = "2026-07-21T13:10:03.406Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0c/49/2dfeb72781e46d5e3f2bc374999bd695515c9015862a53252e59906aafaf/tox_gh-1.8.0-py3-none-any.whl", hash = "sha256:c29a109dc4c1a51bc472b4989bd7063ac9be07bf0c16a2b0fcbe57f16757e397", size = 10353, upload-time = "2026-07-21T13:10:02.028Z" },
+]
+
+[[package]]
+name = "tqdm"
+version = "4.70.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0d/ea/b2a5bd54b28a324dae8211928b2d730b6547500342c7e6c6dea08bd0a485/tqdm-4.70.1.tar.gz", hash = "sha256:cefd0eca11b2a37a3aee776544d4f4ae913f02688135b5556b8788dfa474afc4", size = 171846, upload-time = "2026-09-11T07:25:16.601Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a7/03/921a3d3c75785aca9ebfbfcabfbc3a1be12e2ab5265deb026d55a5a3f83e/tqdm-4.70.1-py3-none-any.whl", hash = "sha256:c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73", size = 80199, upload-time = "2026-09-11T07:25:14.599Z" },
 ]
 
 [[package]]

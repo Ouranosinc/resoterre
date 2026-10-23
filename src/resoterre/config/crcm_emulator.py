@@ -154,6 +154,8 @@ class CRCMEmulatorDataConfig(BaseConfig):
         Batch size for training the emulator.
     num_workers : int
         Number of workers for data loading during training.
+    prefetch_factor : int
+        Number of batches each data loading worker prepares in advance. Ignored when ``num_workers`` is 0.
     max_open_datasets : int
         Maximum number of open zarr datasets allowed simultaneously.
     """
@@ -167,6 +169,7 @@ class CRCMEmulatorDataConfig(BaseConfig):
     test_periods: list[list[datetime]] = Field(default_factory=list)
     batch_size: int = 32
     num_workers: int = 2
+    prefetch_factor: int = 4
     max_open_datasets: int = 2
 
 
@@ -249,10 +252,13 @@ class CRCMEmulatorTrainingConfig(BaseConfig):
         Device to use for training the emulator (e.g., "cpu", "cuda").
     num_threads : int
         Number of threads to use during training.
+    figure_every_n_steps : int
+        Log a training figure to Comet ML every this many training steps, 0 disables the training figures.
     """
 
     nb_of_epochs: int = 10
     device: str = "cpu"
+    figure_every_n_steps: int = Field(default=10, ge=0)
     # TODO: not used, consider removing
     num_threads: int = 2
 
