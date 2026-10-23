@@ -1,7 +1,6 @@
 """Module for processing HRDPS data."""
 
 import logging
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -11,6 +10,7 @@ import numpy as np
 import xarray
 from pyproj import CRS, Transformer
 
+from resoterre.config import HRDPSToZarrConfig
 from resoterre.data_management.geo_utils import GridSpecification
 from resoterre.data_management.netcdf_utils import CFVariables
 from resoterre.datasets.hrdps import hrdps_integrity_check
@@ -19,65 +19,6 @@ from resoterre.plots.nd_plots import CustomPColorMesh
 
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True, slots=True)
-class HRDPSToZarrConfig:
-    """
-    Configuration for HRDPS to Zarr conversion.
-
-    Attributes
-    ----------
-    path_output : Path, optional
-        Path to the output directory where results will be saved.
-    path_preprocessed_zarr : Path, optional
-        Path to the preprocessed Zarr data directory.
-    path_hrdps : Path, optional
-        Path to the raw HRDPS data directory.
-    path_hrdps_geophysical: Path, optional
-        Path to the HRDPS geophysical data directory.
-    conversion_start_datetime : datetime, optional
-        Start datetime for HRDPS to Zarr conversion.
-    conversion_end_datetime : datetime, optional
-        End datetime for HRDPS to Zarr conversion.
-    zarr_start_datetime : datetime, optional
-        Global start datetime for the Zarr file.
-    zarr_end_datetime : datetime, optional
-        Global end datetime for the Zarr file.
-    coarsen_factor : int, optional
-        Factor by which to coarsen the HRDPS grid in the downscaling task.
-    hrdps_variables : list[str]
-        List of HRDPS variable names to process.
-    zarr_hrdps_variables : list[str]
-        List of HRDPS variable names that are initialized in the Zarr file.
-    tile_size : int, optional
-        Size of the tiles for processing.
-    tiles_center_lon : list[float]
-        List of center longitudes for the tiles.
-    tiles_center_lat : list[float]
-        List of center latitudes for the tiles.
-    compute_upscaled_version: bool
-        Whether to also compute an upscaled version of the HRDPS data.
-    debug_hrdps_to_zarr_figures : list
-        List of [variable name, year, month, day, forecast hour] for which to save hrdps to zarr debug figures.
-    """
-
-    path_output: Path | None = None
-    path_preprocessed_zarr: Path | None = None
-    path_hrdps: Path | None = None
-    path_hrdps_geophysical: Path | None = None
-    conversion_start_datetime: datetime | None = None
-    conversion_end_datetime: datetime | None = None
-    zarr_start_datetime: datetime | None = None
-    zarr_end_datetime: datetime | None = None
-    coarsen_factor: int | None = None
-    hrdps_variables: list[str] = field(default_factory=list)
-    zarr_hrdps_variables: list[str] = field(default_factory=list)
-    tile_size: int | None = None
-    tiles_center_lon: list[float] = field(default_factory=list)
-    tiles_center_lat: list[float] = field(default_factory=list)
-    compute_upscaled_version: bool = False
-    debug_hrdps_to_zarr_figures: list[list[str | int]] = field(default_factory=list)
 
 
 def hrdps_grid_coordinates() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:

@@ -5,17 +5,14 @@ snakemake -s 04_rdps_to_hrdps_inference.smk -j1 --config config_yaml=config.yaml
 """
 
 
-from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
 from resoterre.config_utils import config_from_yaml
 
-from resoterre.experiments.rdps_to_hrdps_downscaling.rdps_to_hrdps_workflow import (
-    RDPSToHRDPSConfig,
-    rdps_to_hrdps_config_replace_for_inference
-)
+from resoterre.config import RDPSToHRDPSConfig
+from resoterre.pipelines.rdps_to_hrdps_downscaling.rdps_to_hrdps_workflow import rdps_to_hrdps_config_replace_for_inference
 from resoterre.snakemake_utils import shell_script_args_from_config
 
 snakefile_dir = Path(str(workflow.snakefile)).parent
@@ -29,7 +26,7 @@ upstream_input = [upstream_manifest] if upstream_manifest else []
 
 def expected_manifests(wildcards):
     list_of_expected_manifests = []
-    for variable_name in config_obj.inference_variables:
+    for variable_name in config_obj.inference.variables:
         list_of_expected_manifests.append(
             f"manifests/rdps_to_hrdps_inference_{variable_name}.done")
     return list_of_expected_manifests
