@@ -43,14 +43,12 @@ def main() -> None:
     output_dir = Path(config.path_output) / str(config.experiment_name)
     output_dir.mkdir(parents=True, exist_ok=True)
     log_file = output_dir / "data_analysis.log"
+    # Set up logging to both file and console (terminal)
     logging.basicConfig(
+        level=logging.INFO,
         format="%(asctime)s %(levelname)s:%(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
-        level=logging.INFO,
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler(),
-        ],
+        handlers=[logging.FileHandler(log_file, mode="a"), logging.StreamHandler()],
     )
     logger = logging.getLogger(__name__)
 
@@ -71,13 +69,15 @@ def main() -> None:
     logger.info({k: len(v) for k, v in dataset.valid_time_idx.items()})
 
     # ===== SUMMARIZE DATA =====
+    logger.info("Summarizing data for training periods: %s", config.training_periods)
 
     stats_df = summarize_data(
         dataset=dataset,
         output_dir=output_dir,
-        time_periods=config.training_periods,
+        time_periods=[[np.datetime64(start), np.datetime64(end)] for start, end in config.training_periods],
     )
 
+    logger.info("Visualizing range and mean for training periods: %s", config.training_periods)
     visualize_range_and_mean(
         stats_df=stats_df,
         output_dir=output_dir,
@@ -87,6 +87,8 @@ def main() -> None:
 
     # TODO: handle np.datetime64 vs cftime comparison in cftime_utils
     for start_date, end_date, scenario in config.windows:
+        if scenario == "historical":
+            continue
         scenario_dir = output_dir / scenario
         scenario_dir.mkdir(parents=True, exist_ok=True)
         logger.info("Filtering data for %s from %s to %s", scenario, start_date, end_date)
@@ -94,12 +96,17 @@ def main() -> None:
             dataset=dataset,
             time_periods=[[np.datetime64(start_date), np.datetime64(end_date)]],
         )
+
         if not data_gcm:
             logger.warning("skip %s: no simulations in %s → %s", scenario, start_date, end_date)
             continue
         if not data_crcm:
             logger.warning("skip %s: no simulations in %s → %s", scenario, start_date, end_date)
             continue
+
+        # Chunk the data to avoid memory errors
+        data_gcm = {sim: ds.chunk({"time": 368}) for sim, ds in data_gcm.items()}
+        data_crcm = {sim: ds.chunk({"time": 368}) for sim, ds in data_crcm.items()}
 
         analyze_nan_clusters(
             model_data=data_gcm,

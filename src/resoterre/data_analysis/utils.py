@@ -114,6 +114,7 @@ def first_sample(
     sample = ds[var].isel(time=0)
     sample_time = ds["time"].isel(time=0).values
 
+    # TODO: date handling
     # Extract just the date (YYYY-MM-DD) as a string
     if hasattr(sample_time, "strftime"):
         date_label = sample_time.strftime("%Y-%m-%d")

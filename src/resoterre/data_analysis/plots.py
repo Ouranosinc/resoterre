@@ -317,6 +317,7 @@ def visualize_temporal_mean_and_sample(
     # dask can share chunk reads across panels instead of one graph per panel.
     requests: list[tuple[str, str, str, str]] = []
     lazy_fields: list[xr.DataArray] = []
+    logger.info("Collecting lazy fields for %s simulations", len(data_gcm))
     for sim in data_gcm:
         for model, store in (("gcm", data_gcm), ("crcm", data_crcm)):
             if sim not in store:

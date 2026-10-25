@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TypeVar, cast
 
+import numpy as np
 from dacite import Config, from_dict
 
 from resoterre.io_utils import get_yaml_dict
@@ -12,7 +13,8 @@ from resoterre.io_utils import get_yaml_dict
 T = TypeVar("T")
 
 default_dacite_config = Config(
-    type_hooks={Path: Path, datetime: datetime.fromisoformat, tuple[str, ...]: tuple}, check_types=False
+    type_hooks={Path: Path, datetime: datetime.fromisoformat, np.datetime64: np.datetime64, tuple[str, ...]: tuple},
+    check_types=False,
 )
 
 known_configs: dict[str, Any] = {}

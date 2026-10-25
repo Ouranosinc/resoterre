@@ -86,11 +86,11 @@ class CRCMEmulatorConfig:
         List of GCM variables to use for training the emulator.
     crcm_training_variables : list[str]
         List of CRCM variables to use for training the emulator.
-    training_periods : list[list[datetime]]
+    training_periods : list[list[np.datetime64]]
         List of lists of training periods. Each period has the form [start_datetime, end_datetime].
-    validation_periods : list[list[datetime]]
+    validation_periods : list[list[np.datetime64]]
         List of lists of validation periods. Each period has the form [start_datetime, end_datetime].
-    test_periods : list[list[datetime]]
+    test_periods : list[list[np.datetime64]]
         List of lists of test periods. Each period has the form [start_datetime, end_datetime].
     training_method : str | None
         Emulator model type to use for training.
@@ -151,9 +151,6 @@ class CRCMEmulatorConfig:
         List of windows for data analysis. Each window contains a start date and an end date.
     """
 
-    normalization_start_date: str | None = None
-    normalization_end_date: str | None = None
-
     windows: list[list[str]] = field(default_factory=list)
 
     # TODO when we config refactor, we will not have to hardcode repeat this mapping here.
@@ -202,9 +199,9 @@ class CRCMEmulatorConfig:
     crcm_preprocessing_allow_overwrite: bool = False
     gcm_training_variables: list[str] = field(default_factory=list)
     crcm_training_variables: list[str] = field(default_factory=list)
-    training_periods: list[list[datetime]] = field(default_factory=list)
-    validation_periods: list[list[datetime]] = field(default_factory=list)
-    test_periods: list[list[datetime]] = field(default_factory=list)
+    training_periods: list[list[np.datetime64]] = field(default_factory=list)
+    validation_periods: list[list[np.datetime64]] = field(default_factory=list)
+    test_periods: list[list[np.datetime64]] = field(default_factory=list)
     training_method: str | None = None
     training_batch_size: int = field(default=32, metadata={"is_hyperparameter": True, "hp_type": "training"})
     unet_kernel_size: int | None = field(default=3, metadata={"is_hyperparameter": True, "hp_type": "architecture"})
