@@ -8,14 +8,14 @@ from pathlib import Path
 
 from resoterre.config_utils import config_from_yaml
 
-from resoterre.experiments.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig
+from resoterre.config import CRCMEmulatorConfig
 
 snakefile_dir = Path(str(workflow.snakefile)).parent
 workflow_dir = Path.cwd()
 config_obj = config_from_yaml(CRCMEmulatorConfig, config["config_yaml"])
 upstream_manifest = config.get("upstream_manifest")
 upstream_input = [upstream_manifest] if upstream_manifest else []
-nb_of_epochs = config_obj.nb_of_epochs
+nb_of_epochs = config_obj.training.nb_of_epochs
 
 
 def expected_manifests(wildcards):

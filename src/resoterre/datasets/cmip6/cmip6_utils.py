@@ -5,7 +5,7 @@ from typing import Any
 
 import numpy as np
 
-from resoterre.datasets.cmip6.cmip6_variables import cmip6_variables
+from resoterre.datasets.cmip6.cmip6_variables import cmip6_variables, gcm_vertical_levels
 
 
 logger = logging.getLogger(__name__)
@@ -19,10 +19,9 @@ gcm_calendars = {
 }
 
 gcm_vertical_variables: list[str] = ["hus", "ta", "ua", "va", "zg"]
-gcm_vertical_levels: list[float] = [100000.0, 85000.0, 70000.0, 50000.0, 25000.0, 10000.0, 5000.0, 1000.0]
 
 
-def gcm_variable_levels() -> dict[str, dict[str, Any]]:
+def _build_gcm_variable_levels() -> dict[str, dict[str, Any]]:
     """
     Get a dictionary mapping GCM variable names to their corresponding vertical levels.
 
@@ -36,6 +35,9 @@ def gcm_variable_levels() -> dict[str, dict[str, Any]]:
         for level in gcm_vertical_levels:
             d[f"{variable_name}{int(level / 100)}"] = {"level": level, "variable_name": variable_name}
     return d
+
+
+gcm_variable_levels = _build_gcm_variable_levels()
 
 
 def validate_cmip6_data(data: np.ndarray, variable_name: str) -> bool:

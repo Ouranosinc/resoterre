@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
+from resoterre.config import CRCMEmulatorConfig
 from resoterre.config_utils import config_from_yaml
 from resoterre.data_analysis.gcm_vs_rcm import analyze_gcm_vs_coarsened_crcm
 from resoterre.data_analysis.nan_clusters import analyze_nan_clusters
@@ -24,7 +25,6 @@ from resoterre.data_analysis.summary_stats import (
     summarize_data,
 )
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
-from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig
 
 
 def main() -> None:
@@ -38,9 +38,9 @@ def main() -> None:
     config = config_from_yaml(CRCMEmulatorConfig, args.config)
 
     # ===== LOGGING SETUP =====
-    if config.path_output is None:
+    if config.paths.output is None:
         raise ValueError("path_output must be specified in the configuration.")
-    output_dir = Path(config.path_output) / str(config.experiment_name)
+    output_dir = Path(config.paths.output) / str(config.experiment_name)
     output_dir.mkdir(parents=True, exist_ok=True)
     log_file = output_dir / "data_analysis.log"
     # Set up logging to both file and console (terminal)
@@ -54,15 +54,15 @@ def main() -> None:
 
     # ===== LOAD DATASET =====
     dataset = CRCMEmulatorDataset(
-        path_gcm_preprocessing=str(config.path_gcm_preprocessing),
-        path_crcm_preprocessing=str(config.path_crcm_preprocessing),
-        simulations=config.preprocessing_simulations,
-        gcm_variables=config.gcm_training_variables,
-        crcm_variables=config.crcm_preprocessing_variables,
-        time_periods=[[config.crcm_preprocessing_start_datetime, config.crcm_preprocessing_end_datetime]],
+        path_gcm_preprocessing=str(config.preprocessing.gcm.path),
+        path_crcm_preprocessing=str(config.preprocessing.crcm.path),
+        simulations=config.preprocessing.simulations,
+        gcm_variables=config.data.gcm_variables,
+        crcm_variables=config.preprocessing.crcm.variables,
+        time_periods=[[config.preprocessing.crcm.start_datetime, config.preprocessing.crcm.end_datetime]],
         experiment_name=str(config.experiment_name),
         max_open_datasets=len(
-            config.preprocessing_simulations
+            config.preprocessing.simulations
         ),  # to avoid memory errors when datasets get closed on eviction
     )
     logger.info("Loaded dataset with %s valid indices.", len(dataset.valid_idx))
@@ -74,21 +74,19 @@ def main() -> None:
     stats_df = summarize_data(
         dataset=dataset,
         output_dir=output_dir,
-        time_periods=[[np.datetime64(start), np.datetime64(end)] for start, end in config.training_periods],
+        time_periods=config.data.training_periods,
     )
 
     logger.info("Visualizing range and mean for training periods: %s", config.training_periods)
     visualize_range_and_mean(
         stats_df=stats_df,
         output_dir=output_dir,
-        range_and_mean_groups=config.range_and_mean_groups,
-        surface_variables=config.surface_variables,
+        range_and_mean_groups=config.analysis.range_and_mean_groups,
+        surface_variables=config.analysis.surface_variables,
     )
 
     # TODO: handle np.datetime64 vs cftime comparison in cftime_utils
-    for start_date, end_date, scenario in config.windows:
-        if scenario == "historical":
-            continue
+    for start_date, end_date, scenario in config.analysis.windows:
         scenario_dir = output_dir / scenario
         scenario_dir.mkdir(parents=True, exist_ok=True)
         logger.info("Filtering data for %s from %s to %s", scenario, start_date, end_date)
@@ -110,7 +108,7 @@ def main() -> None:
 
         analyze_nan_clusters(
             model_data=data_gcm,
-            variables=config.gcm_training_variables,
+            variables=config.data.gcm_variables,
             output_dir=scenario_dir,
         )
 
@@ -120,17 +118,17 @@ def main() -> None:
             output_dir=scenario_dir,
         )
 
-        if config.coarsen_factor is None:
+        if config.data.coarsen_factor is None:
             raise ValueError("coarsen_factor must be specified in the configuration.")
 
         stats = analyze_gcm_vs_coarsened_crcm(
             data_gcm=data_gcm,
             data_crcm=data_crcm,
-            gcm_variables=config.gcm_training_variables,
-            rcm_variables=config.crcm_preprocessing_variables,
-            coarsen_factor=config.coarsen_factor,
+            gcm_variables=config.data.gcm_variables,
+            rcm_variables=config.preprocessing.crcm.variables,
+            coarsen_factor=config.data.coarsen_factor,
             output_dir=scenario_dir,
-            surface_variables=config.surface_variables,
+            surface_variables=config.analysis.surface_variables,
         )
 
         visualize_gcm_vs_coarsened_rcm(

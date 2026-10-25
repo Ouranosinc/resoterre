@@ -7,9 +7,9 @@ from pathlib import Path
 import numcodecs  # noqa: F401  # Imported to register logger for disabling
 import torch.multiprocessing as mp
 
-from resoterre.experiments.crcm_emulator.crcm_emulator_training import CRCMEmulatorTrainingFromConfig
-from resoterre.experiments.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 from resoterre.logging_utils import start_root_logger
+from resoterre.pipelines.crcm_emulator.crcm_emulator_training import CRCMEmulatorTrainingFromConfig
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ if __name__ == "__main__":
     try:
         config_obj = crcm_emulator_parse_config(args.config)
         crcm_emulator_training_from_config = CRCMEmulatorTrainingFromConfig(config_obj)
-        crcm_emulator_training_from_config(epoch=args.epoch, device=config_obj.training_device)
+        crcm_emulator_training_from_config(epoch=args.epoch, device=config_obj.training.device)
     except Exception:
         logger.exception("Error calling CRCMEmulatorTrainingFromConfig")
         raise

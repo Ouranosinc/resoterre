@@ -84,8 +84,8 @@ def test_nn_training_save_state():
     nn_training = CustomNNTraining()
     with tempfile.TemporaryDirectory() as tmp_dir:
         nn_training.save_state(path_output=tmp_dir, include_safetensors=True)
-        assert Path(tmp_dir, "unspecified_experiment_epoch_000.pth").is_file()
-        assert Path(tmp_dir, "unspecified_experiment_epoch_000.safetensors").is_file()
+        assert Path(tmp_dir, "unspecified_experiment_epoch_000_latest.pth").is_file()
+        assert Path(tmp_dir, "unspecified_experiment_epoch_000_latest.safetensors").is_file()
 
 
 def test_nn_training_save_state_after_epoch():
@@ -110,7 +110,7 @@ def test_nn_training_save_state_after_epoch():
     with tempfile.TemporaryDirectory() as tmp_dir:
         nn_training = CustomNNTraining(path_models=tmp_dir)
         nn_training(epoch=1)
-        assert Path(tmp_dir, "unspecified_experiment_epoch_001.pth").is_file()
+        assert Path(tmp_dir, "unspecified_experiment_epoch_001_latest.pth").is_file()
 
 
 def test_nn_training_save_state_delete_old_models():
@@ -131,36 +131,41 @@ def test_nn_training_save_state_delete_old_models():
 
     nn_training = CustomNNTraining()
     with tempfile.TemporaryDirectory() as tmp_dir:
+
+        def files() -> set[str]:
+            return {f.name for f in Path(tmp_dir).iterdir()}
+
+        prefix = "unspecified_experiment_epoch_"
         nn_training.save_state(path_output=tmp_dir, include_safetensors=True)
-        assert Path(tmp_dir, "unspecified_experiment_epoch_000.pth").is_file()
-        assert Path(tmp_dir, "unspecified_experiment_epoch_000.safetensors").is_file()
+        assert files() == {f"{prefix}000_latest.pth", f"{prefix}000_latest.safetensors"}
+        nn_training.epoch_counter += 1
+        nn_training.best_validation_metrics["(ValidationLoss)"] = training_utils.MetricMinimum(epoch=1, value=1.0)
+        nn_training.validation_metrics_monitor = ["(ValidationLoss)"]
+        nn_training.save_state(path_output=tmp_dir, include_safetensors=True)
+        assert files() == {
+            f"{prefix}001_latest.pth",
+            f"{prefix}001_latest.safetensors",
+            f"{prefix}001_best.pth",
+            f"{prefix}001_best.safetensors",
+        }
         nn_training.epoch_counter += 1
         nn_training.save_state(path_output=tmp_dir, include_safetensors=True)
-        assert Path(tmp_dir, "unspecified_experiment_epoch_000.pth").is_file()
-        assert Path(tmp_dir, "unspecified_experiment_epoch_000.safetensors").is_file()
-        assert Path(tmp_dir, "unspecified_experiment_epoch_001.pth").is_file()
-        assert Path(tmp_dir, "unspecified_experiment_epoch_001.safetensors").is_file()
+        assert files() == {
+            f"{prefix}002_latest.pth",
+            f"{prefix}002_latest.safetensors",
+            f"{prefix}001_best.pth",
+            f"{prefix}001_best.safetensors",
+        }
         nn_training.epoch_counter += 1
+        nn_training.best_validation_metrics["(ValidationLoss)"] = training_utils.MetricMinimum(epoch=3, value=0.5)
         nn_training.save_state(path_output=tmp_dir, include_safetensors=True)
-        assert Path(tmp_dir, "unspecified_experiment_epoch_001.pth").is_file()
-        assert Path(tmp_dir, "unspecified_experiment_epoch_001.safetensors").is_file()
-        assert Path(tmp_dir, "unspecified_experiment_epoch_002.pth").is_file()
-        assert Path(tmp_dir, "unspecified_experiment_epoch_002.safetensors").is_file()
-        nn_training.minimum_validation_loss_model = Path(tmp_dir, "unspecified_experiment_epoch_002.pth")
-        nn_training.epoch_counter += 1
-        nn_training.save_state(path_output=tmp_dir, include_safetensors=True)
-        assert Path(tmp_dir, "unspecified_experiment_epoch_002.pth").is_file()
-        assert Path(tmp_dir, "unspecified_experiment_epoch_002.safetensors").is_file()
-        assert Path(tmp_dir, "unspecified_experiment_epoch_003.pth").is_file()
-        assert Path(tmp_dir, "unspecified_experiment_epoch_003.safetensors").is_file()
-        nn_training.epoch_counter += 1
-        nn_training.save_state(path_output=tmp_dir, include_safetensors=True)
-        assert Path(tmp_dir, "unspecified_experiment_epoch_002.pth").is_file()
-        assert Path(tmp_dir, "unspecified_experiment_epoch_002.safetensors").is_file()
-        assert Path(tmp_dir, "unspecified_experiment_epoch_003.pth").is_file()
-        assert Path(tmp_dir, "unspecified_experiment_epoch_003.safetensors").is_file()
-        assert Path(tmp_dir, "unspecified_experiment_epoch_004.pth").is_file()
-        assert Path(tmp_dir, "unspecified_experiment_epoch_004.safetensors").is_file()
+        assert files() == {
+            f"{prefix}003_latest.pth",
+            f"{prefix}003_latest.safetensors",
+            f"{prefix}003_best.pth",
+            f"{prefix}003_best.safetensors",
+        }
+        assert nn_training.minimum_validation_loss_model == Path(tmp_dir, f"{prefix}003_best.pth")
 
 
 def test_nn_training_load_last_state():
@@ -193,6 +198,8 @@ def test_nn_training_load_last_state():
         assert nn_training.epoch_iterations == 0
         assert nn_training.total_iterations == 16
         assert nn_training.total_samples == 64
+        with pytest.raises(FileNotFoundError):
+            nn_training.load_state(path_models=tmp_dir, tag="best")
 
 
 def test_nn_training_to_device():
@@ -388,14 +395,15 @@ def test_nn_training_call_cpu():
         assert nn_training.total_samples == 32
         assert nn_training.minima_tracker["Loss"].epoch == 1
         assert nn_training.minima_tracker["Loss"].value == 93.0
-        assert nn_training.minimum_validation_loss_model == Path(tmp_dir, "unspecified_experiment_epoch_001.pth")
+        assert nn_training.minimum_validation_loss_model == Path(tmp_dir, "unspecified_experiment_epoch_001_best.pth")
         assert len(nn_training.metrics["Loss"].values) == 8
         assert len(nn_training.metrics["(ValidationLoss)"].values) == 1
         assert nn_training.metrics["(ValidationLoss)"].times[0] == 7
         assert nn_training.best_validation_metrics["(ValidationLoss)"].epoch == 1
         assert nn_training.best_validation_metrics["(ValidationLoss)"].value == 108.5
         assert Path(tmp_dir, "unspecified_experiment_training_results.json").is_file()
-        assert len(list(Path(tmp_dir).glob("*.pth"))) == 1
+        assert Path(tmp_dir, "unspecified_experiment_epoch_001_latest.pth").is_file()
+        assert Path(tmp_dir, "unspecified_experiment_epoch_001_best.pth").is_file()
         nn_training(epoch=2)
         assert nn_training.epoch_iterations == 8
         nn_training(epoch=3)
@@ -407,13 +415,13 @@ def test_nn_training_call_cpu():
         nn_training(epoch=9)
         assert nn_training.minima_tracker["Loss"].epoch == 9
         assert nn_training.minima_tracker["Loss"].value == 29.0
-        assert nn_training.minimum_validation_loss_model == Path(tmp_dir, "unspecified_experiment_epoch_006.pth")
+        assert nn_training.minimum_validation_loss_model == Path(tmp_dir, "unspecified_experiment_epoch_006_best.pth")
         assert len(nn_training.metrics["(ValidationLoss)"].values) == 9
         assert nn_training.metrics["(ValidationLoss)"].times[-1] == 71
         assert nn_training.best_validation_metrics["(ValidationLoss)"].epoch == 6
         assert nn_training.best_validation_metrics["(ValidationLoss)"].value == 91.5
-        assert len(list(Path(tmp_dir).glob("*.pth"))) == 3
-        assert Path(tmp_dir, "unspecified_experiment_epoch_006.pth").is_file()
+        assert len(list(Path(tmp_dir).glob("*_epoch_*.pth"))) == 2
+        assert Path(tmp_dir, "unspecified_experiment_epoch_006_best.pth").is_file()
         with pytest.raises(RuntimeError):
             nn_training(epoch=10)
 
@@ -488,7 +496,7 @@ def test_nn_training_call_gpu():
         assert nn_training.total_samples == 32
         assert nn_training.minima_tracker["Loss"].epoch == 1
         assert nn_training.minima_tracker["Loss"].value == 93.0
-        assert nn_training.minimum_validation_loss_model == Path(tmp_dir, "unspecified_experiment_epoch_001.pth")
+        assert nn_training.minimum_validation_loss_model == Path(tmp_dir, "unspecified_experiment_epoch_001_best.pth")
         assert len(nn_training.metrics["Loss"].values) == 8
         assert len(nn_training.metrics["(ValidationLoss)"].values) == 1
         assert nn_training.metrics["(ValidationLoss)"].times[0] == 7
@@ -507,12 +515,12 @@ def test_nn_training_call_gpu():
         nn_training(epoch=9, device="cuda")
         assert nn_training.minima_tracker["Loss"].epoch == 9
         assert nn_training.minima_tracker["Loss"].value == 29.0
-        assert nn_training.minimum_validation_loss_model == Path(tmp_dir, "unspecified_experiment_epoch_006.pth")
+        assert nn_training.minimum_validation_loss_model == Path(tmp_dir, "unspecified_experiment_epoch_006_best.pth")
         assert len(nn_training.metrics["(ValidationLoss)"].values) == 9
         assert nn_training.metrics["(ValidationLoss)"].times[-1] == 71
         assert nn_training.best_validation_metrics["(ValidationLoss)"].epoch == 6
         assert nn_training.best_validation_metrics["(ValidationLoss)"].value == 91.5
-        assert len(list(Path(tmp_dir).glob("*.pth"))) == 3
-        assert Path(tmp_dir, "unspecified_experiment_epoch_006.pth").is_file()
+        assert len(list(Path(tmp_dir).glob("*_epoch_*.pth"))) == 2
+        assert Path(tmp_dir, "unspecified_experiment_epoch_006_best.pth").is_file()
         with pytest.raises(RuntimeError):
             nn_training(epoch=10, device="cuda")

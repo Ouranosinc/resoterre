@@ -1,38 +1,14 @@
 """Module for machine learning data sample plotting."""
 
 import math
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.figure import Figure
 
 from resoterre.plots.nd_plots import nd_ax_plot
 from resoterre.utils import ActionScheduler
-
-
-@dataclass(frozen=True, slots=True)
-class MachineLearningDataPlotConfig:
-    """
-    Configuration for machine learning data plotting.
-
-    Attributes
-    ----------
-    dimensions_selected_index : dict[str, int | str]
-        Dictionary specifying the selected index for each dimension.
-    zoom_collection : dict[str, Any]
-        Dictionary representation of a zoom collection.
-    local_variance_max_sample_kwargs : dict[str, Any]
-        Keyword arguments for local variance maximum sample calculation.
-    figure_size_scale_factor : int
-        Scale factor for the figure size.
-    """
-
-    dimensions_selected_index: dict[str, int | str] = field(default_factory=dict)
-    zoom_collection: dict[str, Any] = field(default_factory=dict)
-    local_variance_max_sample_kwargs: dict[str, Any] = field(default_factory=dict)
-    figure_size_scale_factor: int = 1
 
 
 def num_free_dimensions(
@@ -201,6 +177,9 @@ def balanced_ml_sample_figures(
     input_data: np.ndarray,
     target_data: np.ndarray,
     output_data: np.ndarray,
+    input_names: list[str] | None = None,
+    target_names: list[str] | None = None,
+    output_names: list[str] | None = None,
 ) -> None:
     """
     Generate and save balanced sample figures for machine learning data.
@@ -215,6 +194,49 @@ def balanced_ml_sample_figures(
         The ground truth target data.
     output_data : np.ndarray
         The model output data.
+    input_names : list[str], optional
+        Name of each input channel, used in the subplot titles.
+    target_names : list[str], optional
+        Name of each target channel, used in the subplot titles.
+    output_names : list[str], optional
+        Name of each output channel, used in the subplot titles.
+    """
+    fig = balanced_ml_sample_figure(input_data, target_data, output_data, input_names, target_names, output_names)
+    Path(path_figure).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path_figure)
+    plt.close(fig)
+
+
+def balanced_ml_sample_figure(
+    input_data: np.ndarray,
+    target_data: np.ndarray,
+    output_data: np.ndarray,
+    input_names: list[str] | None = None,
+    target_names: list[str] | None = None,
+    output_names: list[str] | None = None,
+) -> Figure:
+    """
+    Generate a balanced sample figure for machine learning data.
+
+    Parameters
+    ----------
+    input_data : np.ndarray
+        The input data for the model.
+    target_data : np.ndarray
+        The ground truth target data.
+    output_data : np.ndarray
+        The model output data.
+    input_names : list[str], optional
+        Name of each input channel, used in the subplot titles.
+    target_names : list[str], optional
+        Name of each target channel, used in the subplot titles.
+    output_names : list[str], optional
+        Name of each output channel, used in the subplot titles.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure, which the caller is responsible for closing.
     """
     n_inputs = input_data.shape[0]
     n_targets = target_data.shape[0]
@@ -254,12 +276,12 @@ def balanced_ml_sample_figures(
             ax.axis("off")
 
     categories = [
-        ("Input", input_data, n_inputs),
-        ("Target", target_data, n_targets),
-        ("Output", output_data, n_outputs),
+        ("Input", input_data, n_inputs, input_names),
+        ("Target", target_data, n_targets, target_names),
+        ("Output", output_data, n_outputs, output_names),
     ]
     col_offset = 0
-    for category_idx, (title, numpy_data, n_channels) in enumerate(categories):
+    for category_idx, (category, numpy_data, n_channels, names) in enumerate(categories):
         block_cols = best_cols_per_category[category_idx]
         for channel_idx in range(n_channels):
             row = channel_idx % best_rows
@@ -267,14 +289,12 @@ def balanced_ml_sample_figures(
             col = col_offset + col_in_block
             ax = axes[row, col]
             ax.axis("on")
-            ax.set_title(title)
+            ax.set_title(f"{category}: {names[channel_idx]}" if names and channel_idx < len(names) else category)
             ax.pcolormesh(
                 numpy_data[channel_idx, :, :],
                 vmin=-1,
                 vmax=1,
             )
         col_offset += block_cols
-    plt.tight_layout()
-    Path(path_figure).parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(path_figure)
-    plt.close(fig)
+    fig.tight_layout()
+    return fig
