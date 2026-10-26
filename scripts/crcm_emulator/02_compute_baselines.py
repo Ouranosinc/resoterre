@@ -5,6 +5,10 @@ Run::
 
     python scripts/crcm_emulator/02_compute_baselines.py \
         --config configs/crcm_emulator/crcm_emulator_cnrm_ssp245.yaml``
+
+Notes
+-----
+A snakemake parallel version can be found in `scripts/meta_workflows/crcm_emulator/`
 """
 
 import argparse
