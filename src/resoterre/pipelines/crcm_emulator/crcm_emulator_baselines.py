@@ -25,7 +25,7 @@ from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import (
 logger = logging.getLogger(__name__)
 
 
-class InterpolationBaselineFromConfig:
+class InterpolationBaseline:
     """
     Compute the interpolation baseline for the CRCM emulation task.
 
@@ -58,9 +58,9 @@ class InterpolationBaselineFromConfig:
         """
         gcm_str = "_".join(gcm_simulation)
         model_str = f"interpolation_baseline_{gcm_str}"
-        if self.config.paths.baselines is None:
-            raise ValueError("config.paths.baselines is None")
-        return Path(self.config.paths.baselines, f"{model_str}.zarr")
+        if not self.config.paths.baselines_out_dirs.get("interpolation", ""):
+            raise ValueError("interpolation not found in config.paths.baselines_out_dirs")
+        return Path(self.config.paths.baselines_out_dirs["interpolation"], f"{model_str}.zarr")
 
     def initialize_zarr(self) -> None:
         """Initialize the zarr dataset for each GCM simulation in the preprocessing range."""
@@ -85,7 +85,7 @@ class InterpolationBaselineFromConfig:
                 chunk_size=self.config.preprocessing.chunk_size,
             )
 
-    def __call__(self, gcm_simulation: list[str], chunk_idx_start: int, chunk_idx_end: int) -> None:
+    def run(self, gcm_simulation: list[str], chunk_idx_start: int, chunk_idx_end: int) -> None:
         """
         Process a chunk of interpolation baseline data for the given GCM simulation.
 

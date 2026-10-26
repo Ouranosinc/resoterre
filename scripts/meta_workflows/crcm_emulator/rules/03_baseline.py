@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from resoterre.logging_utils import start_root_logger
-from resoterre.pipelines.crcm_emulator.crcm_emulator_baselines import InterpolationBaselineFromConfig
+from resoterre.pipelines.crcm_emulator.crcm_emulator_baselines import InterpolationBaseline
 
 
 logger = logging.getLogger(__name__)
@@ -32,12 +32,12 @@ if __name__ == "__main__":
     )
 
     try:
-        baseline = InterpolationBaselineFromConfig(config=args.config, initialize_zarr=args.initialize)
-        baseline(
+        baseline = InterpolationBaseline(config=args.config, initialize_zarr=args.initialize)
+        baseline.run(
             gcm_simulation=[args.gcm, args.pathway, args.realization],
             chunk_idx_start=args.chunk_idx_start,
             chunk_idx_end=args.chunk_idx_end,
         )
     except Exception:
-        logger.exception("Error calling InterpolationBaselineFromConfig")
+        logger.exception("Error calling InterpolationBaseline")
         raise

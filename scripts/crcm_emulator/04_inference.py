@@ -1,7 +1,7 @@
 """
 Evaluate a trained CRCM emulator checkpoint on the test data.
 
-Run ``python scripts/crcm_emulator/03_inference.py --config configs/crcm_emulator/crcm_emulator_cnrm_ssp245.yaml``
+Run ``python scripts/crcm_emulator/04_inference.py --config configs/crcm_emulator/crcm_emulator_cnrm_ssp245.yaml``
 """
 
 import argparse
