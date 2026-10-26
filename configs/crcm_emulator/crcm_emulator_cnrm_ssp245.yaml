@@ -7,6 +7,8 @@ paths:
   gcm_data: /Path/to/GCMs
   emission_data: /Path/to/GHGs
   crcm_data: /Path/to/MRCC5-CMIP6
+  baselines_out_dirs:
+    interpolation: /Path/to/baseline/interpolation
 
 preprocessing:
   # Simulations shared by GCM and CRCM preprocessing

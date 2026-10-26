@@ -66,6 +66,8 @@ class CRCMEmulatorPathsConfig(BaseConfig):
         Path to the directory containing emission data.
     crcm_data : Path | None
         Path to the directory containing CRCM data.
+    baselines_out_dirs : dict[str, Path]
+        Dictionary mapping baseline names to their respective output directories.
     """
 
     output: Path | None = None
@@ -74,6 +76,7 @@ class CRCMEmulatorPathsConfig(BaseConfig):
     gcm_data: Path | None = None
     emission_data: Path | None = None
     crcm_data: Path | None = None
+    baselines_out_dirs: dict[str, Path] = Field(default_factory=dict)
 
 
 class CRCMEmulatorSourcePreprocessingConfig(BaseConfig):
