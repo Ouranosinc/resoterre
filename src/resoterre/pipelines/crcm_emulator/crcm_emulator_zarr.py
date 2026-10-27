@@ -173,6 +173,7 @@ def crcm_emulator_output_format(
         dtype=np.int8,
         attributes={"long_name": "Indicates if the dimensions are empty (0) or have been filled with data (1)"},
     )
+    encoding_dict["is_computed"] = {"chunks": (1, chunk_size)}
     cf_variables = CFVariables()
     for variable_name in expected_variables:
         cf_variables.add(
@@ -370,6 +371,7 @@ def crcm_emulator_input_format(
         dtype=np.int8,
         attributes={"long_name": "Indicates if the dimensions are empty (0) or have been filled with data (1)"},
     )
+    encoding_dict["is_computed"] = {"chunks": (1, chunk_size)}
     if path_emissions is not None:
         emission_data: dict[str, list[float]] = {"CO2": [], "N2O": [], "CH4": [], "CFC11_eq": [], "CFC12": []}
         historical_emissions_years, historical_emissions_rows = read_emission_file(path_emissions[0])
@@ -418,16 +420,14 @@ def write_crcm_time_slice_of_data(
         Mask array indicating which values are NaN (True) or valid (False). If None, no mask is written.
     """
     xarray_dataset = xarray.open_zarr(path_output)
-    is_computed = xarray_dataset["is_computed"].values
     variable_idx = list(xarray_dataset["variable_names"].values).index(variable_name)
     xarray_dataset.close()
 
     cf_coordinates = CFVariables()
-    is_computed[variable_idx, time_slice] = 1
     cf_coordinates.add(
         "is_computed",
         dims=("num_variables", "time"),
-        data=is_computed[:, time_slice],
+        data=np.ones((1, time_slice.stop - time_slice.start), dtype=np.int8),
         dtype=np.int8,
         attributes={"long_name": "Indicates if the dimensions are empty (0) or have been filled with data (1)"},
     )
@@ -453,4 +453,6 @@ def write_crcm_time_slice_of_data(
             },
         )
     xarray_dataset = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs={})
-    xarray_dataset.to_zarr(path_output, region={"time": time_slice})
+    xarray_dataset.to_zarr(
+        path_output, region={"time": time_slice, "num_variables": slice(variable_idx, variable_idx + 1)}
+    )
