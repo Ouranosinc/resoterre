@@ -1,3 +1,4 @@
+import json
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -73,7 +74,9 @@ def test_crcm_emulator_training():
         assert Path(config.paths.output, "training.log").is_file()
         assert Path(config.paths.output, "test_epoch_001_latest.pth").is_file()
         assert Path(config.paths.output, "test_epoch_001_best.pth").is_file()
-        assert Path(config.paths.output, "test_training_results.json").is_file()
+        results = json.loads(Path(config.paths.output, "test_training_results.json").read_text())
+        assert "LastVal loss" in results
+        assert "LastVal mse_loss" in results
         assert not list(Path(config.paths.output).glob("training_visualization_*.png"))
 
 
@@ -236,7 +239,7 @@ def test_crcm_emulator_test_evaluation_reports_test_metrics():
         for test_metrics, expected in (
             (
                 ["max_value_absolute_error"],
-                {"loss", "mse_loss", "max_value_absolute_error/tas", "max_value_absolute_error/pr"},
+                {"loss", "mse_loss", "tas/max_value_absolute_error", "pr/max_value_absolute_error"},
             ),
             ([], {"loss", "mse_loss"}),
         ):
@@ -359,4 +362,4 @@ def test_crcm_emulator_metrics_use_denormalized_data_but_losses_do_not():
         runner.evaluation_step(next(iter(td.DataLoader(dataset, 2))), {"record": record})
         assert seen["target"].min() >= 243.15
         assert seen["target"].max() <= 303.15
-        assert set(runner.running_validation_metrics) >= {"record/tas", "mse_loss"}
+        assert set(runner.running_validation_metrics) >= {"tas/record", "mse_loss"}

@@ -109,9 +109,9 @@ def per_variable_metrics(name: str, values: torch.Tensor, variable_names: list[s
     Returns
     -------
     dict[str, torch.Tensor]
-        Scalar metrics, named ``<metric>/<variable>`` (e.g. ``rmse/tas``).
+        Scalar metrics, named ``<variable>/<metric>`` (e.g. ``tas/rmse``), so that Comet groups metrics by variable.
     """
-    return {f"{name}/{variable_name}": value for variable_name, value in zip(variable_names, values, strict=True)}
+    return {f"{variable_name}/{name}": value for variable_name, value in zip(variable_names, values, strict=True)}
 
 
 class Metric(ABC):
@@ -340,7 +340,7 @@ def metric_reduction(name: str) -> Reduction:
     Parameters
     ----------
     name : str
-        Name of the metric, optionally with a variable suffix (``rmse/tas``).
+        Name of the metric, optionally with a variable prefix (``tas/rmse``).
 
     Returns
     -------
@@ -348,7 +348,7 @@ def metric_reduction(name: str) -> Reduction:
         The reduction of the metric. The losses are averaged over samples, and names that are neither a loss nor an
         available metric are averaged over batches.
     """
-    name = name.split("/")[0]
+    name = name.split("/")[-1]
     if name in AVAILABLE_METRICS:
         return AVAILABLE_METRICS[name].reduction
     return "sample_mean" if name in LOSS_NAMES else "batch_mean"

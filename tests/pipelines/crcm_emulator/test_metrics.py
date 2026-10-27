@@ -26,7 +26,7 @@ def test_max_value_absolute_error():
 
 def test_per_variable_metrics():
     result = metrics.per_variable_metrics("rmse", torch.tensor([1.0, 2.0]), ["tas", "pr"])
-    assert {name: value.item() for name, value in result.items()} == {"rmse/tas": 1.0, "rmse/pr": 2.0}
+    assert {name: value.item() for name, value in result.items()} == {"tas/rmse": 1.0, "pr/rmse": 2.0}
 
 
 def test_metrics_are_reported_per_variable():
@@ -37,8 +37,8 @@ def test_metrics_are_reported_per_variable():
 
 
 def test_metric_reduction():
-    assert metrics.metric_reduction("rmse/tas") == "sample_mean"
-    assert metrics.metric_reduction("some_other_metric/tas") == "batch_mean"
+    assert metrics.metric_reduction("tas/rmse") == "sample_mean"
+    assert metrics.metric_reduction("tas/some_other_metric") == "batch_mean"
     assert metrics.metric_reduction("mse_loss") == "sample_mean"
     assert metrics.metric_reduction("ccc") == "sample_mean"
     assert metrics.metric_reduction("some_other_metric") == "batch_mean"

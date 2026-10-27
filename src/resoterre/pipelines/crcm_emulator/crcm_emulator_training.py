@@ -55,7 +55,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             experiment_name=self.config.experiment_name,
             path_models=self.config.paths.output,
             training_metrics_monitor=["loss"],
-            validation_metrics_monitor=["(ValidationLoss)"],
+            validation_metrics_monitor=["validation_loss"],
             logger_config=self.config.logger,
         )
         self.dataset = self.build_dataset(self.config.data.training_periods)
@@ -285,7 +285,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         Compute the losses and the given metrics on a batch and fold them into the running statistics.
 
         Losses are computed on the normalized target and output. Metrics are computed on the denormalized (physical
-        units) ones, and reported for each variable (``<metric>/<variable>``).
+        units) ones, and reported for each variable (``<variable>/<metric>``).
 
         Parameters
         ----------
@@ -440,8 +440,8 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         e.g. self.metrics.add_concurrent_values(self.metrics.last_time(), dict_of_aggregates)
         """
         self.consolidation()
-        validation_loss = np.mean(self.validation_metrics["mse_loss"].values).item()
-        self.metrics.add_concurrent_values(self.metrics.last_time(), {"(ValidationLoss)": validation_loss})
+        validation_loss = np.mean(self.validation_metrics["loss"].values).item()
+        self.metrics.add_concurrent_values(self.metrics.last_time(), {"validation_loss": validation_loss})
         self.output_validation_figures()
 
     def config_dict(self) -> dict[str, Any]:

@@ -10,7 +10,7 @@ Contributors: Contributors: Francis Charette-Migneault (:user:`fmigneault`), Bla
 
 Changes
 ^^^^^^^
-* Add a ``metrics`` module for the CRCM emulator with configurable validation and test metrics selected by name (``training.validation_metrics``, ``inference.test_metrics``): ``max_value_absolute_error``, ``rmse``, ``ccc`` and ``wasserstein_distance``, computed on denormalized data, reported for each variable (e.g. ``rmse/tas``), with a per-metric aggregation (``reduction``), and refactor the trainer and ``04_inference.py`` to share one evaluation path. (:issue:`156`, :pull:`162`).
+* Add a ``metrics`` module for the CRCM emulator with configurable validation and test metrics selected by name (``training.validation_metrics``, ``inference.test_metrics``): ``max_value_absolute_error``, ``rmse``, ``ccc`` and ``wasserstein_distance``, computed on denormalized data, reported for each variable (e.g. ``tas/rmse``), with a per-metric aggregation (``reduction``), and refactor the trainer and ``04_inference.py`` to share one evaluation path. (:issue:`156`, :pull:`162`).
 * Add interpolation baseline workflow (``03_baseline.smk``) for the CRCM emulator (:issue:`122`, :pull:`160`)
 * Add a SLURM run script and a test-set evaluation script (``03_inference.py``) for the CRCM emulator, and improve the training pipeline with best and latest checkpoints, resuming training, Comet ML figures, ``tqdm`` progress bars and fewer GPU to CPU synchronizations. (:issue:`150`, :issue:`151`, :issue:`158`, :pull:`159`).
 * Add normalization values based on the training dataset statistics. (:issue:`129`, :pull:`152`)

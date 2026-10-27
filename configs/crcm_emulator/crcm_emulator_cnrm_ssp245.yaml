@@ -34,6 +34,8 @@ preprocessing:
       - vas
       - va
       - zg
+      - pr
+      - tas
     nan_replacement: true
     allow_overwrite: false
   crcm:
@@ -64,6 +66,7 @@ data:
     - ta850
     - ta700
     - ta500
+    - tas
     - uas
     - ua850
     - ua700
@@ -73,6 +76,7 @@ data:
     - va700
     - va500
     - psl
+    - pr
   crcm_variables:
     - tas
   training_periods:
