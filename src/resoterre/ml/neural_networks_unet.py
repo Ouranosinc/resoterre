@@ -1,7 +1,5 @@
 """UNet architecture implementation with configurable parameters."""
 
-from dataclasses import dataclass, field
-
 import torch
 from torch import nn
 
@@ -10,99 +8,6 @@ from resoterre.ml.neural_networks_basic import Conv2d, SEBlock
 
 default_relu_init = "kaiming_uniform_"
 default_relu_kwargs = {"nonlinearity": "relu"}
-
-
-@dataclass(frozen=True, slots=True)
-class UNetConfig:
-    """
-    Configuration for the UNet architecture.
-
-    Attributes
-    ----------
-    in_channels : int
-        Number of input channels.
-    out_channels : int
-        Number of output channels.
-    depth : int
-        Depth of the UNet, i.e., number of downsampling operations.
-    initial_nb_of_hidden_channels : int
-        Number of initial hidden channels.
-    kernel_size : int
-        Size of the convolution kernel. Must be an odd number.
-    resolution_increase_layers : int
-        Number of additional resolution increase layers at the end of the UNet.
-    go_to_1x1 : bool
-        If True, the UNet will go to a 1x1 layer at the bottom.
-    h_in : int, optional
-        Height of the input tensor. Required if `go_to_1x1` is True.
-    w_in : int, optional
-        Width of the input tensor. Required if `go_to_1x1` is True.
-    linear_size : int, optional
-        Size of the linear input tensor. Required if `go_to_1x1` is True.
-    num_last_layer_input_channels : int
-        Number of channels in the last layer input (for fixed additional 2d information).
-    reduction_ratio : int, optional
-        Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
-    """
-
-    in_channels: int
-    out_channels: int
-    depth: int = field(metadata={"is_hyperparameter": True, "immutable": True})
-    initial_nb_of_hidden_channels: int = field(
-        metadata={"is_hyperparameter": True, "immutable": True, "display_name": "init chan"}
-    )
-    kernel_size: int = 3
-    resolution_increase_layers: int = 0
-    go_to_1x1: bool = False
-    h_in: int | None = None
-    w_in: int | None = None
-    linear_size: int | None = None
-    num_last_layer_input_channels: int = 0
-    reduction_ratio: int | None = field(
-        default=None, metadata={"is_hyperparameter": True, "immutable": True, "display_name": "reduction ratio"}
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class DenseUNetConfig:
-    """
-    Configuration for the UNet architecture.
-
-    Attributes
-    ----------
-    in_channels : int
-        Number of input channels.
-    out_channels : int
-        Number of output channels.
-    depth : int
-        Depth of the UNet, i.e., number of downsampling operations.
-    out_additional_channels : int
-        Additional output channels for each dense convolution layer.
-    num_layers : int
-        Number of dense convolution layers in the block.
-    kernel_size : int
-        Size of the convolution kernel. Must be an odd number.
-    resolution_increase_layers : int
-        Number of additional resolution increase layers at the end of the UNet.
-    num_last_layer_input_channels : int
-        Number of channels in the last layer input (for fixed additional 2d information).
-    reduction_ratio : int, optional
-        Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
-    """
-
-    in_channels: int
-    out_channels: int
-    depth: int = field(metadata={"is_hyperparameter": True, "immutable": True})
-    out_additional_channels: int = field(
-        metadata={"is_hyperparameter": True, "immutable": True, "display_name": "add chan"}
-    )
-    num_layers: int = field(metadata={"is_hyperparameter": True, "immutable": True, "display_name": "num layers"})
-    kernel_size: int = 3
-    resolution_increase_layers: int = 0
-    num_last_layer_input_channels: int = 0
-    reduction_ratio: int | None = field(
-        default=None, metadata={"is_hyperparameter": True, "immutable": True, "display_name": "reduction ratio"}
-    )
 
 
 class DenseConvolution(nn.Module):  # type: ignore[misc]

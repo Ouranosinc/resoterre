@@ -1,0 +1,170 @@
+experiment_name: cnrm-ssp245
+executing_institution: Ouranos
+
+paths:
+  output: /Path/to/output
+  regridding_weights: /Path/to/regridding_weights
+  gcm_data: /Path/to/GCMs
+  emission_data: /Path/to/GHGs
+  crcm_data: /Path/to/MRCC5-CMIP6
+  baselines_out_dirs:
+    interpolation: /Path/to/baseline/interpolation
+
+preprocessing:
+  # Simulations shared by GCM and CRCM preprocessing
+  simulations:
+    -
+      - CNRM-ESM2-1
+      - historical
+      - r1i1p1f2
+    -
+      - CNRM-ESM2-1
+      - ssp245
+      - r1i1p1f2
+  gcm:
+    path: /Path/to/preprocessed/gcm_preprocessing
+    start_datetime: "1950-01-01"
+    end_datetime: "2100-12-31"
+    variables:
+      - hus
+      - psl
+      - ta
+      - ua
+      - uas
+      - vas
+      - va
+      - zg
+      - pr
+      - tas
+    nan_replacement: true
+    allow_overwrite: false
+  crcm:
+    path: /Path/to/preprocessed/crcm_preprocessing
+    start_datetime: "1951-01-01"
+    end_datetime: "2100-12-31"
+    variables:
+      - tas
+      - pr
+      - uas
+      - vas
+    allow_overwrite: false
+  chunk_size: 8
+  chunks_per_task: 32
+
+# DataLoader parameters
+data:
+  # Global parameters
+  tile_size: 576
+  coarsen_factor: 8
+  gcm_variables:
+    - zg850
+    - zg700
+    - zg500
+    - hus850
+    - hus700
+    - hus500
+    - ta850
+    - ta700
+    - ta500
+    - tas
+    - uas
+    - ua850
+    - ua700
+    - ua500
+    - vas
+    - va850
+    - va700
+    - va500
+    - psl
+    - pr
+  crcm_variables:
+    - tas
+  training_periods:
+    -
+      - "1951-01-01"
+      - "1984-12-31"
+    -
+      - "2015-01-01"
+      - "2069-12-31"
+  validation_periods:
+    -
+      - "1985-01-01"
+      - "1999-12-31"
+    -
+      - "2070-01-01"
+      - "2084-12-31"
+  test_periods:
+    -
+      - "2000-01-01"
+      - "2014-12-31"
+    -
+      - "2085-01-01"
+      - "2100-12-31"
+  batch_size: 128
+  max_open_datasets: 4
+  num_workers: 8
+  prefetch_factor: 4
+
+# U-Net parameters
+model:
+  kernel_size: 3
+  initial_num_of_hidden_channels: 64
+  depth: 3
+  reduction_ratio: null
+
+optimizer:
+  optimizer_name: AdamW # Adam or AdamW
+  lr: 0.001
+  weight_decay: 0.001
+
+loss:
+  mse_weight: 1.0
+  ssim_weight: 0.0
+
+training:
+  nb_of_epochs: 10
+  num_threads: 2
+  device: cuda
+  figure_every_n_steps: 10 # Comet ML training figure frequency, 0 to disable
+  validation_metrics: # extra metrics reported during validation, in addition to the losses
+    - max_value_absolute_error
+    - rmse
+    - ccc
+    - wasserstein_distance
+
+inference:
+  test_metrics: # extra metrics reported when evaluating on the test data, in addition to the losses
+    - max_value_absolute_error
+    - rmse
+    - ccc
+    - wasserstein_distance
+
+debug:
+  crcm_figures:
+    - [ "CNRM-ESM2-1", "historical", "r1i1p1f2", "tas", 2000, 1, 2 ]
+    - [ "CNRM-ESM2-1", "ssp245", "r1i1p1f2", "uas", 2025, 7, 24 ]
+  gcm_figures:
+    - [ "CNRM-ESM2-1", "historical", "r1i1p1f2", "ta850", 2000, 1, 2 ]
+    - [ "CNRM-ESM2-1", "ssp245", "r1i1p1f2", "psl", 2025, 7, 24 ]
+
+# Data analysis (scripts/crcm_emulator/01_data_analysis.py)
+analysis:
+  # Each window has the form [start_date, end_date, scenario]
+  windows:
+    -
+      - "1951-01-01"
+      - "2014-12-31"
+      - "historical"
+    -
+      - "2015-01-01"
+      - "2100-12-31"
+      - "ssp245"
+
+# Comet ML experiment logger, locally export COMET_API_KEY=YOUR_KEY
+logger:
+  disabled: true
+  project_name: ""
+  workspace: ""
+  tags: [ "first_experiment" ]
+  offline: false # set to true, when we have no api key
+  offline_directory: null # set when offline is true

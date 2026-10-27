@@ -51,8 +51,10 @@ def get_memory_usage_by_user(user_name: str | None = None) -> int:
     total_memory = 0
     try:
         for proc in psutil.process_iter(["username", "memory_info"]):
-            if proc.info["username"] == user_name:
-                total_memory += proc.info["memory_info"].rss  # rss is the resident set size (actual memory usage)
+            # memory_info is None when the process cannot be inspected.
+            memory_info = proc.info["memory_info"]
+            if proc.info["username"] == user_name and memory_info is not None:
+                total_memory += memory_info.rss  # rss is the resident set size (actual memory usage)
     except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
         # Handle processes that might terminate or be inaccessible
         logging.debug("Could not access process info for PID %d", proc.pid)

@@ -3,7 +3,6 @@
 import argparse
 import calendar
 import logging
-from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,16 +13,18 @@ import torch
 import xarray
 from scipy.sparse import load_npz, save_npz
 
-from resoterre.config_utils import config_from_yaml, known_configs
+from resoterre.config import (
+    HRDPSToZarrConfig,
+    NeuralNetworksManagerConfig,
+    RDPSToHRDPSConfig,
+    RDPSToHRDPSInferenceConfig,
+    RDPSToHRDPSOnDiskConfig,
+)
+from resoterre.config_utils import config_from_yaml
 from resoterre.data_management.geo_utils import GridSpecification, compute_grids_area_weights
 from resoterre.data_management.netcdf_utils import CFVariables
 from resoterre.datasets.hrdps.hrdps_integrity_check import HRDPSCasparFile, hrdps_caspar_individual_file_check
-from resoterre.datasets.hrdps.hrdps_processing import (
-    HRDPSToZarr,
-    HRDPSToZarrConfig,
-    create_hrdps_grid_spec,
-    hrdps_grid_coordinates,
-)
+from resoterre.datasets.hrdps.hrdps_processing import HRDPSToZarr, create_hrdps_grid_spec, hrdps_grid_coordinates
 from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables
 from resoterre.datasets.rdps.rdps_integrity_check import RDPSML1File, rdps_ml1_data, rdps_ml1_individual_file_check
 from resoterre.datasets.rdps.rdps_processing import save_rdps_coarse
@@ -32,411 +33,13 @@ from resoterre.datasets.rdps.rdps_variables import rdps_variables as rdps_variab
 from resoterre.hybrid_data_loaders.rdps_to_hrdps import post_process_model_output
 from resoterre.hybrid_data_loaders.rdps_to_hrdps_preprocess import save_rdps_to_hrdps_preprocessed_batch
 from resoterre.logging_utils import start_root_logger
-from resoterre.ml.network_manager import NeuralNetworksManager, NeuralNetworksManagerConfig
+from resoterre.ml.network_manager import NeuralNetworksManager
 from resoterre.ml.neural_networks_unet import UNet
 from resoterre.plots.nd_plots import CustomPColorMesh
 from resoterre.utils import TemplateStore
 
 
 logger = logging.getLogger(__name__)
-
-
-# ToDo: obsolete, replaced by RDPSToHRDPConfig
-@dataclass(frozen=True, slots=True)
-class RDPSToHRDPSOnDiskConfig:
-    """
-    Configuration for the RDPS to HRDPS data workflow.
-
-    Attributes
-    ----------
-    path_workflow : Path
-        Path to the main workflow directory.
-    path_logs : Path, optional
-        Path to the logs directory.
-    path_figures : Path, optional
-        Path to the figures directory.
-    path_rdps_regrid : Path, optional
-        Path to the RDPS regridded data directory.
-    path_hrdps_regrid : Path, optional
-        Path to the HRDPS regridded data directory.
-    path_ml_data : Path, optional
-        Path for the output machine learning data.
-    path_rdps : Path, optional
-        Path to the raw RDPS data directory.
-    path_rdps_climatology : Path, optional
-        Path to the RDPS climatology data directory.
-    path_hrdps : Path, optional
-        Path to the raw HRDPS data directory.
-    path_hrdps_climatology : Path, optional
-        Path to the HRDPS climatology data directory.
-    path_hrdps_mask : Path, optional
-        Path to the HRDPS mask file.
-    path_hrdps_mf : Path, optional
-        Path to the HRDPS topography file.
-    path_hrdps_sftlf : Path, optional
-        Path to the HRDPS land-sea mask file.
-    path_grids : Path, optional
-        Path to the grids directory.
-    random_seed : int, optional
-        Random seed for reproducibility.
-    rdps_input_validation_batch_size : int
-        Batch size for RDPS input validation.
-    data_loader_snakemake_batch_size : int
-        How many time steps are processed in a single snakemake job. This should be a multiple of save_batch_size.
-    grid_input_for_ml : str, optional
-        Grid name for input data in machine learning.
-    grid_output_for_ml : str, optional
-        Grid name for output data in machine learning.
-    start_datetime : datetime, optional
-        Start datetime for data processing.
-    end_datetime : datetime, optional
-        End datetime for data processing.
-    rdps_variables : list[str]
-        List of RDPS variable names to process.
-    hrdps_variables : list[str]
-        List of HRDPS variable names to process.
-    forecast_hours : list[int]
-        List of forecast hours to include.
-        Only tested with [7, 8, 9, 10, 11, 12].
-    rdps_window_size : int, optional
-        Size of the RDPS patches (if using tiling).
-    overlap_factor : int, optional
-        Overlap factor for RDPS patches.
-    hrdps_required_unmasked_fraction : float, optional
-        Required unmasked fraction for HRDPS data.
-    input_mode : str, optional
-        Mode for input data, options: "rdps_only", "rdps_and_hrdps", "hrdps_upscale".
-    temporal_window : int, optional
-        Temporal window size for including context (1 = one timestep on each side of current timestep).
-    variables_with_temporal_context : list[str]
-        List of variable names that should include temporal context.
-    anomaly_variables : list[str]
-        List of variable names to be treated as anomalies.
-    fixed_variables : list[str]
-        List of variable names that are fixed in time.
-    normalize : bool
-        Whether to normalize the data.
-    train_fraction : float
-        Fraction of data to use for training.
-    validation_fraction : float
-        Fraction of data to use for validation.
-    test_fraction : float
-        Fraction of data to use for testing.
-    save_batch_size : int
-        Batch size for saving data.
-    debug_figures_return_period : int
-        If greater than 0, random debug figures will be saved at roughly this return period.
-    """
-
-    path_workflow: Path
-    path_logs: Path | None = None
-    path_figures: Path | None = None
-    path_rdps_regrid: Path | None = None
-    path_hrdps_regrid: Path | None = None
-    path_ml_data: Path | None = None
-    path_rdps: Path | None = None
-    path_rdps_climatology: Path | None = None
-    path_hrdps: Path | None = None
-    path_hrdps_climatology: Path | None = None
-    path_hrdps_mask: Path | None = None
-    path_hrdps_mf: Path | None = None
-    path_hrdps_sftlf: Path | None = None
-    path_grids: Path | None = None
-    random_seed: int | None = 0
-    input_validation_batch_size: int = 32
-    data_loader_snakemake_batch_size: int = 128
-    # ToDo: many more workflow settings are needed here
-    grid_input_for_ml: str | None = None
-    grid_output_for_ml: str | None = None
-    start_datetime: datetime | None = None
-    end_datetime: datetime | None = None
-    rdps_variables: list[str] = field(default_factory=list)
-    hrdps_variables: list[str] = field(default_factory=list)
-    forecast_hours: list[int] = field(default_factory=list)
-    rdps_window_size: int | None = None
-    overlap_factor: int | None = None  # preferably a divisor of rdps_window_size
-    hrdps_required_unmasked_fraction: float | None = None
-    restrict_hrdps_i_j: list[Any] = field(default_factory=list)
-    input_mode: str | None = None
-    temporal_window: int | None = None
-    variables_with_temporal_context: list[str] = field(default_factory=list)
-    anomaly_variables: list[str] = field(default_factory=list)
-    fixed_variables: list[str] = field(default_factory=list)
-    normalize: bool = True
-    train_fraction: float = 0.8
-    validation_fraction: float = 0.1
-    test_fraction: float = 0.1
-    save_batch_size: int = 1
-    debug_figures_return_period: int = 0  # 0 means no debug return period.
-
-
-# ToDo: obsolete, replaced by RDPSToHRDPConfig
-@dataclass(frozen=True, slots=True)
-class RDPSToHRDPSInferenceConfig:
-    """
-    Configuration for RDPS to HRDPS inference.
-
-    Attributes
-    ----------
-    path_logs : Path, optional
-        Path to the logs directory.
-    path_models : Path, optional
-        Path to the directory containing the trained models.
-    path_hrdps_climatology : Path, optional
-        Path to the HRDPS climatology data, used for adding climatology back to the outputs if they are anomalies.
-    path_rdps_climatology : Path, optional
-        Path to the RDPS climatology data, used for adding climatology back to the inputs if they are anomalies.
-    path_output : Path, optional
-        Path to the output directory where results will be saved.
-    path_preprocessed_batch : Path, optional
-        Path to the preprocessed data batch for inference.
-    path_figures : Path, optional
-        Path to the directory where debug figures will be saved.
-    path_mask : Path, optional
-        Path to the mask file to apply to the outputs.
-    search_path: Path, optional
-        Path to the directory containing preprocessed data files for inference.
-    glob_pattern: str, optional
-        Glob pattern to match multiple preprocessed data files for inference.
-    experiment_name : str
-        Name of the experiment.
-    anomaly_variables : list[str]
-        List of variable names to be treated as anomalies during post-processing.
-    fixed_variables: list[str]
-        List of variable that are fixed in time.
-    restricted_channels: dict[str, list[int]]
-        Dictionary specifying restricted channels for each dynamic dataset key.
-    batch_size : int
-        Batch size for splitting the inference into multiple jobs (not the batch size of the data).
-    hrdps_upscale_filename_extension : str
-        Filename extension to identify samples that use HRDPS upscale data.
-    device : str
-        Device to use for inference (e.g., "cpu" or "cuda").
-    """
-
-    path_logs: Path | None = None
-    path_models: Path | None = None
-    path_hrdps_climatology: Path | None = None
-    path_rdps_climatology: Path | None = None
-    path_output: Path | None = None
-    path_preprocessed_batch: Path | None = None
-    path_figures: Path | None = None
-    # ToDo: phase out path_mask when it is available in the data sample.
-    path_mask: Path | None = None
-    search_path: Path | None = None
-    glob_pattern: str | None = None
-    experiment_name: str = "test"
-    anomaly_variables: list[str] = field(default_factory=list)
-    fixed_variables: list[str] = field(default_factory=list)
-    restricted_channels: dict[str, list[int]] | None = None
-    batch_size: int = 1
-    hrdps_upscale_filename_extension: str = "_hrdps_upscale"
-    device: str = "cpu"
-
-
-@dataclass(frozen=True, slots=True)
-class RDPSToHRDPSConfig:
-    """
-    Configuration for RDPS to HRDPS workflows.
-
-    Attributes
-    ----------
-    path_logs : Path, optional
-        Path to the logs directory.
-    path_output : Path, optional
-        Path to the output directory where results will be saved.
-    path_preprocessed_zarr : Path, optional
-        Path to the preprocessed Zarr data directory.
-    path_regridding_weights : Path, optional
-        Path to the regridding weights directory. If None, defaults to path_output
-    path_models : Path, optional
-        Path to the directory containing the trained models. If None, defaults to path_output
-    path_hrdps : Path, optional
-        Path to the raw HRDPS data directory.
-    path_hrdps_geophysical: Path, optional
-        Path to the HRDPS geophysical data directory.
-    path_rdps : Path, optional
-        Path to the raw RDPS data directory.
-    use_flat_rdps_directory_structure : bool, optional
-        Whether to use a flat directory structure for RDPS files.
-    experiment_name: str, optional
-        Name of the experiment.
-    global_start_datetime : datetime, optional
-        Global start datetime for data processing.
-    global_end_datetime : datetime, optional
-        Global end datetime for data processing.
-    coarsen_factor : int, optional
-        Factor by which to coarsen the HRDPS grid in the downscaling task.
-    hrdps_preprocessing_skip : bool
-        Whether to skip HRDPS preprocessing.
-    hrdps_variables : list[str]
-        List of HRDPS variable names to process.
-    tile_size : int, optional
-        Size of the tiles for processing.
-    tiles_center_lon : list[float]
-        List of center longitudes for the tiles.
-    tiles_center_lat : list[float]
-        List of center latitudes for the tiles.
-    hrdps_preprocessing_start_datetime : datetime, optional
-        Start datetime for HRDPS preprocessing.
-    hrdps_preprocessing_end_datetime : datetime, optional
-        End datetime for HRDPS preprocessing.
-    hrdps_compute_upscaled_version: bool
-        Whether to also compute an upscaled version of the HRDPS data.
-    rdps_preprocessing_skip : bool
-        Whether to skip RDPS preprocessing.
-    rdps_variables: list[str]
-        List of RDPS variable names to process.
-    rdps_preprocessing_start_datetime : datetime, optional
-        Start datetime for RDPS preprocessing.
-    rdps_preprocessing_end_datetime : datetime, optional
-        End datetime for RDPS preprocessing.
-    rdps_variables_for_training : list[str], optional
-        List of RDPS variable names to use for training.
-    hrdps_variables_for_training : list[str], optional
-        List of HRDPS variable names to use for training.
-    hrdps_geophysical_variables_for_training : list[str], optional
-        List of HRDPS geophysical variable names to use for training.
-    validation_period_start: datetime, optional
-        Start datetime for the validation period.
-    test_period_start: datetime, optional
-        Start datetime for the test period. Currently only implemented if after validation_period_start.
-    training_batch_size : int
-        Batch size for training.
-    kernel_size : int
-        Kernel size for the neural network.
-    initial_nb_of_hidden_channels : int
-        Initial number of hidden channels for the neural network.
-    depth : int
-        Depth of the neural network.
-    reduction_ratio : int, optional
-        Squeeze and excitation reduction ratio for the neural network.
-    learning_rate : float
-        Learning rate for training.
-    weight_decay : float, optional
-        Weight decay for training.
-    mse_loss_weight : float
-        Weight for the mean squared error loss component.
-    mae_loss_weight : float
-        Weight for the mean absolute error loss component.
-    mass_loss_weight : float
-        Weight for the mass loss component.
-    ssim_loss_weight : float
-        Weight for the structural similarity index loss component.
-    nb_of_epochs : int
-        Number of epochs for training.
-    num_workers : int
-        Number of workers for data loading.
-    num_threads : int
-        Number of threads for PyTorch operations.
-    device : str
-        Device to use for training (e.g., "cpu" or "cuda").
-    inference_variables : list[str]
-        List of variable names to use for inference.
-    inference_start_datetime : datetime, optional
-        Start datetime for inference.
-    inference_end_datetime : datetime, optional
-        End datetime for inference.
-    path_inference_model : Path | str, optional
-        Path to the inference model.
-    inference_device : str, optional
-        Device to use for inference (e.g., "cpu" or "cuda").
-    diagnostics : list
-        List of diagnostics to perform.
-    diagnostic_variables : list
-        List of variable names for diagnostics.
-    diagnostic_time_groupings : list
-        List of time groupings for diagnostics.
-    diagnostic_start_datetime : datetime, optional
-        Start datetime for diagnostics.
-    diagnostic_end_datetime : datetime, optional
-        End datetime for diagnostics.
-    debug_hrdps_to_zarr_figures : list
-        List of [variable name, year, month, day, forecast hour] for which to save hrdps to zarr debug figures.
-    debug_rdps_to_zarr_figures : list
-        List of [variable name, year, month, day, forecast hour] for which to save rdps to zarr debug figures.
-    debug_num_samples : int, optional
-        Number of sample in the dataset for debugging purposes. If None, all samples are used.
-    debug_training_figures_progression : list[list[int]]
-        Output frequency progression for the training figures.
-    """
-
-    path_logs: Path | None = None
-    path_output: Path | None = None
-    path_preprocessed_zarr: Path | None = None
-    path_regridding_weights: Path | None = None
-    path_models: Path | None = None
-    path_hrdps: Path | None = None
-    path_hrdps_geophysical: Path | None = None
-    path_rdps: Path | None = None
-    use_flat_rdps_directory_structure: bool = False
-    experiment_name: str | None = None
-    global_start_datetime: datetime | None = None
-    global_end_datetime: datetime | None = None
-    coarsen_factor: int | None = None
-    hrdps_preprocessing_skip: bool = False
-    hrdps_variables: list[str] = field(default_factory=list)
-    tile_size: int | None = None
-    tiles_center_lon: list[float] = field(default_factory=list)
-    tiles_center_lat: list[float] = field(default_factory=list)
-    hrdps_preprocessing_start_datetime: datetime | None = None
-    hrdps_preprocessing_end_datetime: datetime | None = None
-    hrdps_compute_upscaled_version: bool = False
-    rdps_preprocessing_skip: bool = False
-    rdps_variables: list[str] = field(default_factory=list)
-    rdps_preprocessing_start_datetime: datetime | None = None
-    rdps_preprocessing_end_datetime: datetime | None = None
-    rdps_variables_for_training: list[str] = field(default_factory=list)
-    hrdps_variables_for_training: list[str] = field(default_factory=list)
-    hrdps_geophysical_variables_for_training: list[str] = field(default_factory=list)
-    validation_period_start: datetime | None = None
-    test_period_start: datetime | None = None
-    training_batch_size: int = field(
-        default=32, metadata={"is_hyperparameter": True, "display_name": "batch_size", "hp_type": "training"}
-    )
-    kernel_size: int = 3
-    initial_nb_of_hidden_channels: int = field(
-        default=16, metadata={"is_hyperparameter": True, "display_name": "init_chan", "hp_type": "architecture"}
-    )
-    depth: int = field(default=2, metadata={"is_hyperparameter": True, "hp_type": "architecture"})
-    reduction_ratio: int | None = field(
-        default=None, metadata={"is_hyperparameter": True, "display_name": "S&E", "hp_type": "architecture"}
-    )
-    learning_rate: float = field(
-        default=0.001, metadata={"is_hyperparameter": True, "display_name": "lr", "hp_type": "training"}
-    )
-    weight_decay: float | None = field(default=None, metadata={"is_hyperparameter": True, "hp_type": "training"})
-    # mse_loss_weight: float = 1.0
-    mse_loss_weight: float = field(
-        default=1.0, metadata={"is_hyperparameter": True, "display_name": "weight_mse", "hp_type": "objective"}
-    )
-    mae_loss_weight: float = field(
-        default=0.0, metadata={"is_hyperparameter": True, "display_name": "weight_mae", "hp_type": "objective"}
-    )
-    mass_loss_weight: float = field(
-        default=0.0, metadata={"is_hyperparameter": True, "display_name": "weight_mass", "hp_type": "objective"}
-    )
-    ssim_loss_weight: float = field(
-        default=0.0, metadata={"is_hyperparameter": True, "display_name": "weight_ssim", "hp_type": "objective"}
-    )
-    nb_of_epochs: int = 10
-    num_workers: int = field(default=2, metadata={"is_setting": True})
-    num_threads: int = field(default=2, metadata={"is_setting": True})
-    device: str = field(default="cpu", metadata={"is_setting": True})
-    inference_variables: list[str] = field(default_factory=list)
-    inference_start_datetime: datetime | None = None
-    inference_end_datetime: datetime | None = None
-    path_inference_model: Path | str | None = None
-    inference_device: str | None = None
-    diagnostics: list[str] = field(default_factory=list)
-    diagnostic_variables: list[str] = field(default_factory=list)
-    diagnostic_time_groupings: list[str] = field(default_factory=list)
-    diagnostic_start_datetime: datetime | None = None
-    diagnostic_end_datetime: datetime | None = None
-    debug_hrdps_to_zarr_figures: list[list[str | int]] = field(default_factory=list)
-    debug_rdps_to_zarr_figures: list[list[str | int]] = field(default_factory=list)
-    debug_num_samples: int | None = None
-    debug_training_figures_progression: list[list[int]] = field(default_factory=list)
 
 
 def rdps_to_hrdps_parse_config(config: RDPSToHRDPSConfig | Path | str) -> RDPSToHRDPSConfig:
@@ -482,16 +85,17 @@ def rdps_to_hrdps_config_replace_for_inference(
     if hasattr(args, "start_datetime") and hasattr(args, "end_datetime"):
         start_replace = datetime.fromisoformat(args.start_datetime)
         end_replace = datetime.fromisoformat(args.end_datetime)
-        config = replace(
-            config,
-            global_start_datetime=datetime(start_replace.year, start_replace.month, start_replace.day),
-            global_end_datetime=datetime(end_replace.year, end_replace.month, end_replace.day, 23, 59, 59),
-            hrdps_preprocessing_start_datetime=start_replace,
-            hrdps_preprocessing_end_datetime=end_replace,
-            rdps_preprocessing_start_datetime=start_replace,
-            rdps_preprocessing_end_datetime=end_replace,
-            inference_start_datetime=start_replace,
-            inference_end_datetime=end_replace,
+        dates = {"start_datetime": start_replace, "end_datetime": end_replace}
+        preprocessing = config.preprocessing.model_copy(
+            update={
+                "global_start_datetime": datetime(start_replace.year, start_replace.month, start_replace.day),
+                "global_end_datetime": datetime(end_replace.year, end_replace.month, end_replace.day, 23, 59, 59),
+                "hrdps": config.preprocessing.hrdps.model_copy(update=dates),
+                "rdps": config.preprocessing.rdps.model_copy(update=dates),
+            }
+        )
+        config = config.model_copy(
+            update={"preprocessing": preprocessing, "inference": config.inference.model_copy(update=dates)}
         )
     return config
 
@@ -672,7 +276,7 @@ def inference_from_preprocessed_data(
     if isinstance(config, RDPSToHRDPSInferenceConfig):
         config_obj = config
     else:
-        config_obj = config_from_yaml(RDPSToHRDPSInferenceConfig, config, known_custom_config_dict=known_configs)
+        config_obj = config_from_yaml(RDPSToHRDPSInferenceConfig, config)
 
     if config_obj.path_models is None:
         raise ValueError("path_models must be specified in the config.")
@@ -750,27 +354,27 @@ def hrdps_to_zarr_from_config(config: RDPSToHRDPSConfig, variable_name: str, yea
     month : int
         Month of the data to process.
     """
-    if config.hrdps_preprocessing_skip:
+    if config.preprocessing.hrdps.skip:
         logger.info("HRDPS preprocessing is disabled in the configuration. Skipping HRDPS to Zarr conversion.")
         return
     logger.info("Starting HRDPS to Zarr conversion for variable %s for %d-%02d.", variable_name, year, month)
     subtask_config = HRDPSToZarrConfig(
-        path_output=config.path_output,
-        path_preprocessed_zarr=config.path_preprocessed_zarr,
-        path_hrdps=config.path_hrdps,
-        path_hrdps_geophysical=config.path_hrdps_geophysical,
+        path_output=config.paths.output,
+        path_preprocessed_zarr=config.paths.preprocessed_zarr,
+        path_hrdps=config.paths.hrdps,
+        path_hrdps_geophysical=config.paths.hrdps_geophysical,
         conversion_start_datetime=datetime(year, month, 1),
         conversion_end_datetime=datetime(year, month, calendar.monthrange(year, month)[1], 23, 59, 59),
-        zarr_start_datetime=config.global_start_datetime,
-        zarr_end_datetime=config.global_end_datetime,
-        coarsen_factor=config.coarsen_factor,
+        zarr_start_datetime=config.preprocessing.global_start_datetime,
+        zarr_end_datetime=config.preprocessing.global_end_datetime,
+        coarsen_factor=config.preprocessing.coarsen_factor,
         hrdps_variables=[variable_name],
-        zarr_hrdps_variables=config.hrdps_variables,
-        tile_size=config.tile_size,
-        tiles_center_lon=config.tiles_center_lon,
-        tiles_center_lat=config.tiles_center_lat,
-        compute_upscaled_version=config.hrdps_compute_upscaled_version,
-        debug_hrdps_to_zarr_figures=config.debug_hrdps_to_zarr_figures,
+        zarr_hrdps_variables=config.preprocessing.hrdps.variables,
+        tile_size=config.preprocessing.tile_size,
+        tiles_center_lon=config.preprocessing.tiles_center_lon,
+        tiles_center_lat=config.preprocessing.tiles_center_lat,
+        compute_upscaled_version=config.preprocessing.hrdps.compute_upscaled_version,
+        debug_hrdps_to_zarr_figures=config.debug.hrdps_to_zarr_figures,
     )
     HRDPSToZarr(subtask_config)()
 
@@ -790,10 +394,10 @@ def find_hrdps_sample_file(config: RDPSToHRDPSConfig) -> Path:
     Path
         Path to a sample HRDPS file.
     """
-    if config.path_hrdps is None:
-        raise ValueError("config.path_hrdps must be specified to find a sample HRDPS file.")
-    for variable_name in config.hrdps_variables:
-        search_path = Path(config.path_hrdps, "0-12", variable_name)
+    if config.paths.hrdps is None:
+        raise ValueError("config.paths.hrdps must be specified to find a sample HRDPS file.")
+    for variable_name in config.preprocessing.hrdps.variables:
+        search_path = Path(config.paths.hrdps, "0-12", variable_name)
         year_directories = search_path.glob("20*")
         for year_directory in year_directories:
             year_search_path = Path(search_path, year_directory.name)
@@ -805,7 +409,7 @@ def find_hrdps_sample_file(config: RDPSToHRDPSConfig) -> Path:
                 )
                 if dataset_info._properties.get("valid_for_ml", [False, False, False])[2]:
                     return sample_file
-    raise FileNotFoundError(f"No HRDPS sample file found in {config.path_hrdps}")
+    raise FileNotFoundError(f"No HRDPS sample file found in {config.paths.hrdps}")
 
 
 def rdps_regrid_to_zarr_debug_figures(
@@ -840,12 +444,12 @@ def rdps_regrid_to_zarr_debug_figures(
     month : int
         Month of the data being processed.
     """
-    if config.path_output is None:
+    if config.paths.output is None:
         raise ValueError("path_output must be specified in the configuration.")
     step_datetime = rdps_ml1_file.datetime + timedelta(hours=rdps_ml1_file.forecast_hour)
     day = step_datetime.day
     hour = step_datetime.hour
-    if [variable_name, year, month, day, hour] in config.debug_rdps_to_zarr_figures:
+    if [variable_name, year, month, day, hour] in config.debug.rdps_to_zarr_figures:
         if len(data.shape) == 3:
             plot_data = data[0, rdps_grid_spec.i_slice, rdps_grid_spec.j_slice]
         elif len(data.shape) == 4:
@@ -857,14 +461,16 @@ def rdps_regrid_to_zarr_debug_figures(
             plot_data,
             vmin_quantile=0.01,
             vmax_quantile=0.99,
-            path_output=Path(config.path_output, f"rdps_raw_{variable_name}_{year}{month:02d}{day:02d}_{hour:02d}.png"),
+            path_output=Path(
+                config.paths.output, f"rdps_raw_{variable_name}_{year}{month:02d}{day:02d}_{hour:02d}.png"
+            ),
         )
         CustomPColorMesh(scale_factor=2.0).plot(
             result_reshaped,
             vmin=custom_pcolormesh.vmin,
             vmax=custom_pcolormesh.vmax,
             path_output=Path(
-                config.path_output,
+                config.paths.output,
                 f"rdps_regrid_zarr_{variable_name}_{year}{month:02d}{day:02d}_{hour:02d}.png",
             ),
         )
@@ -914,9 +520,9 @@ def rdps_regrid_to_zarr_single_file_processing(
     month : int
         Month of the data being processed.
     """
-    if config.path_output is None:
+    if config.paths.output is None:
         raise ValueError("path_output must be specified in the configuration.")
-    if config.path_rdps is None or config.path_preprocessed_zarr is None:
+    if config.paths.rdps is None or config.paths.preprocessed_zarr is None:
         raise ValueError("Both path_rdps and path_preprocessed_zarr must be specified in the configuration.")
     rdps_ml1_file = RDPSML1File(rdps_candidate_file)
     rdps_variable_handler = rdps_variables_collection[variable_name]
@@ -945,8 +551,8 @@ def rdps_regrid_to_zarr_single_file_processing(
     result_flatten = rdps_to_hrdps_csr_matrix.dot(data_flatten)
     result_reshaped = result_flatten.reshape(hrdps_grid_spec.tile_lon.shape)
     path_rdps_coarse_zarr = Path(
-        config.path_preprocessed_zarr,
-        f"rdps_coarse_i_{i_start:04d}_j_{j_start:04d}_size_{config.tile_size:04d}.zarr",
+        config.paths.preprocessed_zarr,
+        f"rdps_coarse_i_{i_start:04d}_j_{j_start:04d}_size_{config.preprocessing.tile_size:04d}.zarr",
     )
     logger.info("Saving RDPS coarse data to Zarr: %s", path_rdps_coarse_zarr)
     save_rdps_coarse(
@@ -958,9 +564,9 @@ def rdps_regrid_to_zarr_single_file_processing(
         data=result_reshaped[np.newaxis, :, :],
         ds_rdps=ds,
         variable_name=variable_name,
-        expected_variables=config.rdps_variables,
-        start_datetime=config.global_start_datetime,
-        end_datetime=config.global_end_datetime,
+        expected_variables=config.preprocessing.rdps.variables,
+        start_datetime=config.preprocessing.global_start_datetime,
+        end_datetime=config.preprocessing.global_end_datetime,
     )
 
     rdps_regrid_to_zarr_debug_figures(
@@ -1057,17 +663,21 @@ def rdps_regrid_to_zarr_from_config(
     days : list[int], optional
         List of days to process. If None, all days in the month will be processed.
     """
-    if config.hrdps_preprocessing_skip:
+    if config.preprocessing.hrdps.skip:
         logger.info("RDPS preprocessing is disabled in the configuration. Skipping RDPS to Zarr conversion.")
         return
     logger.info("Starting RDPS regrid to Zarr for variable %s for %d-%02d.", variable_name, year, month)
-    if config.path_output is None:
+    if config.paths.output is None:
         raise ValueError("path_output must be specified in the configuration.")
-    if config.path_rdps is None or config.path_preprocessed_zarr is None:
+    if config.paths.rdps is None or config.paths.preprocessed_zarr is None:
         raise ValueError("Both path_rdps and path_preprocessed_zarr must be specified in the configuration.")
-    if config.coarsen_factor is None:
+    if config.preprocessing.coarsen_factor is None:
         raise ValueError("coarsen_factor must be specified in the configuration.")
-    if config.tiles_center_lat is None or config.tiles_center_lon is None or config.tile_size is None:
+    if (
+        config.preprocessing.tiles_center_lat is None
+        or config.preprocessing.tiles_center_lon is None
+        or config.preprocessing.tile_size is None
+    ):
         raise ValueError("tiles_center_lat, tiles_center_lon, and tile_size must be specified in the configuration.")
     days = days or list(range(1, calendar.monthrange(year, month)[1] + 1))
     rdps_candidate_files = rdps_datetimes_to_forecast_files(
@@ -1075,9 +685,9 @@ def rdps_regrid_to_zarr_from_config(
         end_datetime=datetime(year, month, days[-1], 23, 59, 59),
         first_valid_forecast_step=7,
         requires_previous_forecast_step=False,
-        include_year_month_subdirectory=not config.use_flat_rdps_directory_structure,
+        include_year_month_subdirectory=not config.preprocessing.rdps.use_flat_directory_structure,
     )
-    rdps_candidate_files = [Path(config.path_rdps, x) for x in rdps_candidate_files]
+    rdps_candidate_files = [Path(config.paths.rdps, x) for x in rdps_candidate_files]
     rdps_sample_file = None
     for rdps_candidate_file in rdps_candidate_files:
         if rdps_sample_file is None and rdps_candidate_file.is_file():
@@ -1089,33 +699,36 @@ def rdps_regrid_to_zarr_from_config(
     rdps_grid_spec = GridSpecification(ds["lon"].values, ds["lat"].values)
     rdps_grid_spec.sub_tile(
         key="high_res",
-        tile_center_lon=config.tiles_center_lon[0],
-        tile_center_lat=config.tiles_center_lat[0],
-        tile_size=config.tile_size // config.coarsen_factor,
+        tile_center_lon=config.preprocessing.tiles_center_lon[0],
+        tile_center_lat=config.preprocessing.tiles_center_lat[0],
+        tile_size=config.preprocessing.tile_size // config.preprocessing.coarsen_factor,
         set_to_active=True,
     )
 
     hrdps_grid_spec = create_hrdps_grid_spec(
-        tile_size=config.tile_size,
-        coarsen_factor=config.coarsen_factor,
-        tile_center_lon=config.tiles_center_lon[0],
-        tile_center_lat=config.tiles_center_lat[0],
+        tile_size=config.preprocessing.tile_size,
+        coarsen_factor=config.preprocessing.coarsen_factor,
+        tile_center_lon=config.preprocessing.tiles_center_lon[0],
+        tile_center_lat=config.preprocessing.tiles_center_lat[0],
         switch_to_positive_longitudes=True,
     )
     hrdps_grid_spec.active_tile = "coarse"
     # Assuming that 2 significant digits are enough for common regridding matrices.
-    center_str = f"lon_{config.tiles_center_lon[0]:.2f}_lat_{config.tiles_center_lat[0]:.2f}"
-    if config.path_regridding_weights is not None:
-        path_regridding_weights = config.path_regridding_weights
+    center_str = (
+        f"lon_{config.preprocessing.tiles_center_lon[0]:.2f}_lat_{config.preprocessing.tiles_center_lat[0]:.2f}"
+    )
+    if config.paths.regridding_weights is not None:
+        path_regridding_weights = config.paths.regridding_weights
     else:
-        path_regridding_weights = config.path_output
+        path_regridding_weights = config.paths.output
     path_csr_matrix_output = Path(
-        path_regridding_weights, f"rdps_to_hrdps_csr_matrix_{center_str}_{config.tile_size}_{config.coarsen_factor}.npz"
+        path_regridding_weights,
+        f"rdps_to_hrdps_csr_matrix_{center_str}_{config.preprocessing.tile_size}_{config.preprocessing.coarsen_factor}.npz",
     )
     if not path_csr_matrix_output.is_file():
         path_coo_matrix_output = Path(
             path_regridding_weights,
-            f"rdps_to_hrdps_coo_matrix_{center_str}_{config.tile_size}_{config.coarsen_factor}.npz",
+            f"rdps_to_hrdps_coo_matrix_{center_str}_{config.preprocessing.tile_size}_{config.preprocessing.coarsen_factor}.npz",
         )
         if not path_coo_matrix_output.is_file():
             rdps_to_hrdps_coo_matrix = compute_grids_area_weights(ds["lon"].values, ds["lat"].values, hrdps_grid_spec)
@@ -1134,13 +747,13 @@ def rdps_regrid_to_zarr_from_config(
     i_start = hrdps_grid_spec.i_slice.start
     j_start = hrdps_grid_spec.j_slice.start
     rlat_original = hrdps_rlat[hrdps_grid_spec.i_slice]
-    rlat_left = rlat_original[config.coarsen_factor // 2 - 1 :: config.coarsen_factor]
-    rlat_right = rlat_original[config.coarsen_factor // 2 :: config.coarsen_factor]
+    rlat_left = rlat_original[config.preprocessing.coarsen_factor // 2 - 1 :: config.preprocessing.coarsen_factor]
+    rlat_right = rlat_original[config.preprocessing.coarsen_factor // 2 :: config.preprocessing.coarsen_factor]
     rlat_coarse = (rlat_left + rlat_right) / 2
 
     rlon_original = hrdps_rlon[hrdps_grid_spec.j_slice]
-    rlon_left = rlon_original[config.coarsen_factor // 2 - 1 :: config.coarsen_factor]
-    rlon_right = rlon_original[config.coarsen_factor // 2 :: config.coarsen_factor]
+    rlon_left = rlon_original[config.preprocessing.coarsen_factor // 2 - 1 :: config.preprocessing.coarsen_factor]
+    rlon_right = rlon_original[config.preprocessing.coarsen_factor // 2 :: config.preprocessing.coarsen_factor]
     rlon_coarse = (rlon_left + rlon_right) / 2
     # ToDo: check if we can close this sooner
     ds.close()
