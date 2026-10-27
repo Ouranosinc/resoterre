@@ -524,3 +524,8 @@ def test_nn_training_call_gpu():
         assert Path(tmp_dir, "unspecified_experiment_epoch_006_best.pth").is_file()
         with pytest.raises(RuntimeError):
             nn_training(epoch=10, device="cuda")
+
+
+def test_with_split():
+    result = training_utils.with_split({"tas/rmse": 1.0, "loss": 2.0, "(ValidationLoss)": 3.0}, "validation")
+    assert result == {"tas/validation_rmse": 1.0, "validation_loss": 2.0, "(ValidationLoss)": 3.0}
