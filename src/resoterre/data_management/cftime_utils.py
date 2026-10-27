@@ -105,3 +105,37 @@ def cftime_period_bounds_idx_in_list_of_datetimes(
         raise RuntimeError("Could not find valid time indices for the specified time period.")
 
     return initial_idx, final_idx
+
+
+def overlap_periods_from_dates_and_periods(
+    list_of_datetimes: list[datetime | cftime.DatetimeNoLeap | np.datetime64],
+    periods: list[list[datetime | cftime.DatetimeNoLeap | np.datetime64]],
+) -> list[list[datetime]]:  # Currently only supporting output as list of datetime objects
+    """
+    Find the overlapping periods between a list of dates and specified periods.
+
+    Parameters
+    ----------
+    list_of_datetimes : list[datetime | cftime.DatetimeNoLeap | np.datetime64]
+        List of datetime objects, cftime objects, or numpy datetime64 objects.
+    periods : list[list[datetime | cftime.DatetimeNoLeap | np.datetime64]]
+        List of periods as [start_datetime, end_datetime] lists.
+
+    Returns
+    -------
+    list[list[datetime]]
+        List of overlapping periods as [start_datetime, end_datetime] lists.
+    """
+    # There are assumptions about ordering and non-overlapping periods in the input list.
+    overlap_periods = []
+    for start_period, end_period in periods:
+        overlap_start = None
+        overlap_end = None
+        for date in list_of_datetimes:
+            if overlap_start is None and start_period <= date <= end_period:
+                overlap_start = date
+            if start_period <= date <= end_period:
+                overlap_end = date
+        if overlap_start is not None and overlap_end is not None:
+            overlap_periods.append([overlap_start, overlap_end])
+    return overlap_periods

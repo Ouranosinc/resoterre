@@ -200,7 +200,7 @@ def test_crcm_emulator_validation_metrics_are_configurable():
 
 
 def test_crcm_emulator_test_evaluation_reports_test_metrics():
-    # same flow as scripts/crcm_emulator/03_inference.py: load a checkpoint, evaluate, consolidate
+    # same flow as scripts/crcm_emulator/04_inference.py: load a checkpoint, evaluate, consolidate
     with tempfile.TemporaryDirectory() as tmp_dir:
         config = CRCMEmulatorConfig(
             experiment_name="test",

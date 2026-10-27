@@ -106,7 +106,7 @@ class GCMToZarrFromConfig:
     config : CRCMEmulatorConfig
         CRCM emulator configuration object.
     initialize_zarr : bool, optional
-        Whether to initialize the zarr dataset for each year and month in the preprocessing range.
+        Whether to initialize the zarr datasets.
     """
 
     def __init__(self, config: CRCMEmulatorConfig, initialize_zarr: bool = False):
@@ -335,7 +335,7 @@ class GCMToZarrFromConfig:
             regrid_data = data
         validate_cmip6_data(regrid_data, variable_name_in_zarr)
         mask = np.isnan(regrid_data) if write_mask else None
-        if level == 1000000.0:
+        if level == 100000.0:
             raise NotImplementedError("Using 1000 hPa not supported, it it often mostly NaN.")
         if nan_replacement and np.any(np.isnan(regrid_data)):
             regrid_data = replace_nan_with_auto_2d_window_average(regrid_data)
@@ -437,6 +437,9 @@ class GCMToZarrFromConfig:
         # ToDo: this section is too repetitive
         if variable_name in gcm_vertical_variables:
             for level in gcm_vertical_levels:
+                # Skip the level 100000.0 as it is not needed for processing
+                if level == 100000.0:
+                    continue
                 self.write_crcm_time_slice_of_data_with_regrid(
                     path_output=path_output,
                     gcm_simulation=gcm_simulation,
