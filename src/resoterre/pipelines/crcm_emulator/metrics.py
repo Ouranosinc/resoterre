@@ -214,6 +214,37 @@ class RMSE(Metric):
         return torch.sqrt(squared_error.mean(dim=-1)).mean(dim=0)
 
 
+class BiasMap(Metric):
+    """
+    Bias between the target and the output.
+
+    Notes
+    -----
+    Computed on each image of each variable, then averaged over the batch, which leaves one value per variable.
+    """
+
+    name = "bias_map"
+    reduction = "sample_mean"
+
+    def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the metric.
+
+        Parameters
+        ----------
+        target_data : torch.Tensor
+            The ground truth data.
+        output : torch.Tensor
+            The model output data.
+
+        Returns
+        -------
+        torch.Tensor
+            Metric of each variable, of shape (variables,), computed on the tensors' device.
+        """
+        return (output - target_data).mean(dim=0)
+
+
 class CCC(Metric):
     """
     Lin's concordance correlation coefficient between the target and the output.
@@ -305,6 +336,7 @@ AVAILABLE_METRICS: dict[str, type[Metric]] = {
     RMSE.name: RMSE,
     CCC.name: CCC,
     WassersteinDistance.name: WassersteinDistance,
+    BiasMap.name: BiasMap,
 }
 
 
@@ -377,7 +409,7 @@ def running_consolidation(
     """
     for name, batch_value in metrics.items():
         reduction = metric_reduction(name)
-        value = batch_value.reshape(()).float()
+        value = batch_value.float()
         weight = 1.0
         if reduction == "sample_mean":
             value = value * batch_size
@@ -397,7 +429,7 @@ def running_consolidation(
         running_metrics[name] = (value, weight)
 
 
-def consolidation(running_metrics: dict[str, tuple[torch.Tensor, float]]) -> dict[str, float]:
+def consolidation(running_metrics: dict[str, tuple[torch.Tensor, float]]) -> dict[str, float | torch.Tensor]:
     """
     Consolidate the running statistics into one value per metric, whatever its reduction.
 
@@ -408,15 +440,16 @@ def consolidation(running_metrics: dict[str, tuple[torch.Tensor, float]]) -> dic
 
     Returns
     -------
-    dict[str, float]
+    dict[str, float | torch.Tensor]
         The consolidated value of each metric.
 
     Notes
     -----
     All metrics are transferred to the CPU in a single synchronization.
     """
-    if not running_metrics:
-        return {}
-    names = list(running_metrics)
-    values = torch.stack([running_metrics[name][0] / running_metrics[name][1] for name in names]).cpu().tolist()
-    return dict(zip(names, values, strict=True))
+    results: dict[str, float | torch.Tensor] = {}
+    for name, (value, weight) in running_metrics.items():
+        mean = (value / weight).cpu()
+        results[name] = mean.item() if mean.numel() == 1 else mean
+
+    return results
