@@ -390,7 +390,11 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             return
         consolidated = consolidation(self.running_validation_metrics)
         self.running_validation_metrics = {}
-        self.validation_metrics.add_concurrent_values(None, consolidated)
+        single_values_metrics = {key: value for key, value in consolidated.items() if isinstance(value, (float, int))}
+        self.validation_metrics.add_concurrent_values(None, single_values_metrics)
+        self.validation_diagnostics.update(
+            {key: value for key, value in consolidated.items() if not isinstance(value, (float, int))}
+        )
 
     def validation_loop(self, epoch: int) -> None:
         """
