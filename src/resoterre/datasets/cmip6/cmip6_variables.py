@@ -21,9 +21,27 @@ for variable_name in ["hus", "ta"]:
     )
 
 # Ranges for North America domain
-_stats_shortcut = {}
+_stats_shortcut: dict[str, dict[str, float]] = {}
 
 for csv_import_line in csv_data:
+    if csv_import_line["model"] == "scalar":
+        # Scalar (greenhouse gas) inputs trend over time, so the normalization range spans all simulations (historical
+        # and future) rather than mean +/- 3 std of the first period.
+        variable_name = csv_import_line["variable"]
+        variable_min = float(csv_import_line["min"])
+        variable_max = float(csv_import_line["max"])
+        if variable_name in _stats_shortcut:
+            variable_min = min(variable_min, _stats_shortcut[variable_name]["min"])
+            variable_max = max(variable_max, _stats_shortcut[variable_name]["max"])
+        _stats_shortcut[variable_name] = {
+            "min": variable_min,
+            "max": variable_max,
+            "mean_min": variable_min,
+            "mean_max": variable_max,
+            "normalize_min": variable_min,
+            "normalize_max": variable_max,
+        }
+        continue
     if csv_import_line["model"] != "gcm":
         continue
     variable_name = csv_import_line["variable"]
@@ -125,6 +143,11 @@ variable_args: dict[str, dict[str, Any]] = {
         "vertical_level": 1000,
         "vertical_level_units": "hPa",
     },
+    "CO2": {"name": "CO2", "units": "ppm", "netcdf_key": "CO2", "target_cf_units": "ppm"},
+    "CH4": {"name": "CH4", "units": "ppm", "netcdf_key": "CH4", "target_cf_units": "ppm"},
+    "N2O": {"name": "N2O", "units": "ppm", "netcdf_key": "N2O", "target_cf_units": "ppm"},
+    "CFC12": {"name": "CFC12", "units": "ppb", "netcdf_key": "CFC12", "target_cf_units": "ppb"},
+    "CFC11_eq": {"name": "CFC11_eq", "units": "ppb", "netcdf_key": "CFC11_eq", "target_cf_units": "ppb"},
 }
 
 for key, kwargs in variable_args.items():
