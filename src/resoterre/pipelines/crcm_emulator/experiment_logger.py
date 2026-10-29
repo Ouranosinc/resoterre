@@ -194,6 +194,8 @@ class CometMLLogger:
         step : int, optional
             The step at which the figure was recorded.
         """
+        if self.config.offline_directory is not None:
+            figure.savefig(Path(self.config.offline_directory, f"{name}_{step}.png"))
         if self.experiment is None:
             return
         self.experiment.log_figure(figure_name=name, figure=figure, step=step)
