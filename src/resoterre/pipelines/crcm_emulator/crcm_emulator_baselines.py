@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+import torch
 import xarray
 from scipy.ndimage import zoom
 
@@ -19,6 +20,12 @@ from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulat
 from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import (
     crcm_emulator_output_format,
     write_crcm_time_slice_of_data,
+)
+from resoterre.pipelines.crcm_emulator.metrics import (
+    build_metrics,
+    consolidation,
+    per_variable_metrics,
+    running_consolidation,
 )
 
 
@@ -62,15 +69,136 @@ class InterpolationBaseline:
             raise ValueError("interpolation not found in config.paths.baselines_out_dirs")
         return Path(self.config.paths.baselines_out_dirs["interpolation"], f"{model_str}.zarr")
 
-    def initialize_zarr(self) -> None:
-        """Initialize the zarr dataset for each GCM simulation in the preprocessing range."""
+    def is_computed(self, gcm_simulation: list[str]) -> bool:
+        """
+        Check if the baseline of a GCM simulation was already computed for the validation and test periods.
+
+        Parameters
+        ----------
+        gcm_simulation : list[str]
+            List containing the GCM name, emission scenario, and ensemble member.
+
+        Returns
+        -------
+        bool
+            True if the baseline zarr exists and all its variables are computed for every time step in the validation
+            and test periods.
+        """
+        path_zarr = self.baseline_zarr_path(gcm_simulation)
+        if not path_zarr.exists():
+            return False
+        xarray_dataset = xarray.open_zarr(path_zarr)
+        try:
+            time_values_cftime = convert_list_of_datetimes_to_cftime(xarray_dataset["time"].values)
+            is_computed = xarray_dataset["is_computed"].values
+        finally:
+            xarray_dataset.close()
+        periods = self.config.data.validation_periods + self.config.data.test_periods
+        expected = np.array(
+            [
+                any(start <= datetime(x.year, x.month, x.day) <= end for start, end in periods)
+                for x in time_values_cftime
+            ]
+        )
+        return bool(expected.any() and np.all(is_computed[:, expected] == 1))
+
+    def evaluate(self, metric_names: list[str], split: str = "test") -> dict[str, float]:
+        """
+        Evaluate the computed baseline against the CRCM data over the validation or test periods.
+
+        Parameters
+        ----------
+        metric_names : list[str]
+            Names of the metrics, as for ``inference.test_metrics``.
+        split : str
+            Either "test" or "validation".
+
+        Returns
+        -------
+        dict[str, float]
+            One consolidated value per metric and variable (``<variable>/<metric>``), in physical units, computed in
+            the same way as for the trained model.
+        """
+        if split not in ("test", "validation"):
+            raise ValueError("split must be 'test' or 'validation'.")
+        periods = getattr(self.config.data, f"{split}_periods")
+        if not periods:
+            raise ValueError(f"Set data.{split}_periods in the configuration.")
+        if self.config.preprocessing.gcm.path is None:
+            raise ValueError("GCM preprocessing path is not specified in the configuration.")
+        if self.config.preprocessing.crcm.path is None:
+            raise ValueError("CRCM preprocessing path is not specified in the configuration.")
+        variable_names = self.config.data.crcm_variables
+        dataset = CRCMEmulatorDataset(
+            path_gcm_preprocessing=self.config.preprocessing.gcm.path,
+            path_crcm_preprocessing=self.config.preprocessing.crcm.path,
+            simulations=self.config.preprocessing.simulations,
+            gcm_variables=variable_names,
+            crcm_variables=variable_names,
+            time_periods=periods,
+            normalize=False,
+            max_open_datasets=self.config.data.max_open_datasets,
+        )
+        if not len(dataset):
+            raise ValueError(f"No {split} samples match {split}_periods and the selected variables.")
+        metrics = build_metrics(metric_names)
+        simulations_by_name = {"_".join(x): x for x in self.config.preprocessing.simulations}
+        baseline_datasets: dict[str, xarray.Dataset] = {}
+        baseline_date_idx: dict[str, dict[tuple[int, int, int], int]] = {}
+        running_metrics: dict[str, tuple[torch.Tensor, float]] = {}
+        batch_size = self.config.data.batch_size
+        try:
+            for batch_start in range(0, len(dataset), batch_size):
+                targets, outputs = [], []
+                for idx in range(batch_start, min(batch_start + batch_size, len(dataset))):
+                    item = dataset[idx]
+                    gcm_str = dataset.valid_idx[idx][0]
+                    if gcm_str not in baseline_datasets:
+                        baseline_datasets[gcm_str] = xarray.open_zarr(
+                            self.baseline_zarr_path(simulations_by_name[gcm_str])
+                        )
+                        time_values_cftime = convert_list_of_datetimes_to_cftime(
+                            list(baseline_datasets[gcm_str]["time"].values)
+                        )
+                        baseline_date_idx[gcm_str] = {
+                            (x.year, x.month, x.day): k for k, x in enumerate(time_values_cftime)
+                        }
+                    k = baseline_date_idx[gcm_str][(item["year"].item(), item["month"].item(), item["day"].item())]
+                    if not np.all(baseline_datasets[gcm_str]["is_computed"][:, k].values == 1):
+                        raise RuntimeError(f"Baseline of {gcm_str} is not computed for time index {k}.")
+                    targets.append(item["target"])
+                    outputs.append(
+                        np.stack([baseline_datasets[gcm_str][name].isel(time=k).values for name in variable_names])
+                    )
+                target_tensor = torch.from_numpy(np.stack(targets)).float()
+                output_tensor = torch.from_numpy(np.stack(outputs)).float()
+                batch_metrics = {}
+                for name, metric_function in metrics.items():
+                    batch_metrics.update(
+                        per_variable_metrics(name, metric_function(target_tensor, output_tensor), variable_names)
+                    )
+                running_consolidation(running_metrics, batch_metrics, batch_size=target_tensor.shape[0])
+        finally:
+            for baseline_dataset in baseline_datasets.values():
+                baseline_dataset.close()
+        return consolidation(running_metrics)
+
+    def initialize_zarr(self, simulations: list[list[str]] | None = None) -> None:
+        """
+        Initialize the zarr dataset for each GCM simulation in the preprocessing range.
+
+        Parameters
+        ----------
+        simulations : list[list[str]] | None
+            GCM simulations to initialize. If None, all the simulations of the preprocessing configuration.
+        """
         if self.config.preprocessing.gcm.path is None:
             raise ValueError("config.preprocessing.gcm.path is None")
         if self.config.preprocessing.crcm.start_datetime is None:
             raise ValueError("CRCM preprocessing start datetime must be specified.")
         if self.config.preprocessing.crcm.end_datetime is None:
             raise ValueError("CRCM preprocessing end datetime must be specified.")
-        for gcm_simulation in self.config.preprocessing.simulations:
+        for gcm_simulation in simulations if simulations is not None else self.config.preprocessing.simulations:
             path_output = self.baseline_zarr_path(gcm_simulation)
             # if path_output.exists() and False:  # Consider having an overwrite check in yaml config
             #     raise FileExistsError(f"Output file already exists: {path_output}")
