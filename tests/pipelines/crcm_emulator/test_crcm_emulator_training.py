@@ -319,6 +319,7 @@ def test_crcm_emulator_consolidation_weights_losses_by_batch_size():
     runner = SimpleNamespace(
         running_validation_metrics={},
         validation_metrics=MultiTimeseries(),
+        validation_diagnostics={},
     )
     consolidator = crcm_emulator_training.CRCMEmulatorTrainingFromConfig
     # 128 samples with zero error, then a partial batch of 1 sample with a squared error of 100
