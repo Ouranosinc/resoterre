@@ -1,6 +1,6 @@
 """Module for manipulating zarr datasets for the CRCM emulator."""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +8,7 @@ import dask.array as da
 import numpy as np
 import xarray
 
+from resoterre.data_management.cftime_utils import dates_in_range
 from resoterre.data_management.netcdf_utils import CFVariables
 from resoterre.datasets.cmip6.cmip6_utils import gcm_variable_levels, gcm_vertical_variables
 from resoterre.datasets.cmip6.cmip6_variables import gcm_vertical_levels
@@ -153,18 +154,11 @@ def crcm_emulator_output_format(
         data=lat,
         attributes={"long_name": "latitude", "standard_name": "latitude", "units": "degrees_north"},
     )
-    time_data = xarray.date_range(
-        start=start_datetime,
-        end=end_datetime + timedelta(seconds=1),  # Fixing precision issues
-        freq=frequency,
-        inclusive="both",
-        use_cftime=True,
-        calendar=calendar,
-    )
+    time_data = dates_in_range(start_datetime, end_datetime, calendar, freq=frequency)
     cf_coordinates.add(
         "time", dims=("time",), data=time_data.values, attributes={"long_name": "time", "standard_name": "time"}
     )
-    encoding_dict["time"] = {"chunks": (chunk_size,)}
+    encoding_dict["time"] = {"chunks": (chunk_size,), "units": "days since 1850-01-01", "calendar": calendar}
     cf_coordinates.add("variable_names", dims=("num_variables",), data=np.array(expected_variables, dtype=str))
     cf_coordinates.add(
         "is_computed",
@@ -304,18 +298,11 @@ def crcm_emulator_input_format(
         data=lat,
         attributes={"long_name": "latitude", "standard_name": "latitude", "units": "degrees_north"},
     )
-    time_data = xarray.date_range(
-        start=start_datetime,
-        end=end_datetime + timedelta(seconds=1),  # Fixing precision issues
-        freq=frequency,
-        inclusive="both",
-        use_cftime=True,
-        calendar=calendar,
-    )
+    time_data = dates_in_range(start_datetime, end_datetime, calendar, freq=frequency)
     cf_coordinates.add(
         "time", dims=("time",), data=time_data.values, attributes={"long_name": "time", "standard_name": "time"}
     )
-    encoding_dict["time"] = {"chunks": (chunk_size,)}
+    encoding_dict["time"] = {"chunks": (chunk_size,), "units": "days since 1850-01-01", "calendar": calendar}
     cf_variables = CFVariables()
     single_level_variables = []
     levels_processed = set()

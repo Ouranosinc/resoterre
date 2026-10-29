@@ -23,7 +23,7 @@ dependencies:
   - torchmetrics >=1.8.2
   - tqdm >=4.66
   - types-pyyaml >=6.0.12.20240917
-  - xarray >=2024.6.0
+  - xarray >=2025.01.2
   - zarr >=2.18.4
   # Dev tools and testing
   - pip >=26.0.1

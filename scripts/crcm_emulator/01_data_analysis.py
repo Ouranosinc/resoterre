@@ -9,8 +9,6 @@ import argparse
 import logging
 from pathlib import Path
 
-import numpy as np
-
 from resoterre.config import CRCMEmulatorConfig
 from resoterre.config_utils import config_from_yaml
 from resoterre.data_analysis.gcm_vs_rcm import analyze_gcm_vs_coarsened_crcm
@@ -85,14 +83,13 @@ def main() -> None:
         surface_variables=config.analysis.surface_variables,
     )
 
-    # TODO: handle np.datetime64 vs cftime comparison in cftime_utils
     for start_date, end_date, scenario in config.analysis.windows:
         scenario_dir = output_dir / scenario
         scenario_dir.mkdir(parents=True, exist_ok=True)
         logger.info("Filtering data for %s from %s to %s", scenario, start_date, end_date)
         data_gcm, data_crcm = filter_data(
             dataset=dataset,
-            time_periods=[[np.datetime64(start_date), np.datetime64(end_date)]],
+            time_periods=[[start_date, end_date]],
         )
 
         if not data_gcm:

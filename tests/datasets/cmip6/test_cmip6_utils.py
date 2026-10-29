@@ -33,3 +33,9 @@ def test_validate_cmip6_data_tas():
 def test_validate_cmip6_data_pr():
     data = np.array([0.0001, 0.0002])
     assert cmip6_utils.validate_cmip6_data(data, "pr") is True
+
+
+def test_get_gcm_calendar():
+    assert cmip6_utils.get_gcm_calendar("CanESM5") == "noleap"
+    with pytest.raises(KeyError, match="add it to gcm_calendars"):
+        cmip6_utils.get_gcm_calendar("UnknownGCM")

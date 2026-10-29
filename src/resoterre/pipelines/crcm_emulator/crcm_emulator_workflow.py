@@ -1,17 +1,20 @@
 """Workflow components for the CRCM emulation task."""
 
 import logging
-from datetime import timedelta
 from pathlib import Path
-from typing import Any
 
-import cftime
 import numpy as np
 import xarray
 
 from resoterre.config import CRCMEmulatorConfig
 from resoterre.config_utils import config_from_yaml
-from resoterre.datasets.cmip6.cmip6_utils import gcm_calendars
+from resoterre.data_management.cftime_utils import (
+    check_netcdf_calendar,
+    decode_time_axis,
+    decode_times_as_cftime,
+    get_intersection_slices,
+)
+from resoterre.datasets.cmip6.cmip6_utils import get_gcm_calendar
 from resoterre.datasets.crcm.crcm_utils import (
     crcm_north_america_grid_coordinates,
     validate_crcm_data,
@@ -118,6 +121,15 @@ class CRCMToZarrFromConfig:
             path_output = self.zarr_path(gcm_simulation)
             if path_output.exists() and not self.config.preprocessing.crcm.allow_overwrite:
                 raise FileExistsError(f"Output file already exists: {path_output}")
+
+            # Check that the CRCM data uses the expected calendar
+            # defined in the crcm_calendars dictionary in crcm_utils.py
+            # gcm_simulation[0] is the GCM name ex. CNRM-ESM2-1
+            calendar = get_gcm_calendar(gcm_simulation[0])
+            if self.config.paths.crcm_data is not None:
+                nc_files = self.nc_files(gcm_simulation, self.config.preprocessing.crcm.variables[0])
+                if nc_files:
+                    check_netcdf_calendar(nc_files[0], calendar)
             # ToDo: add pilot information to CF metadata
             crcm_emulator_output_format(
                 path_output=path_output,
@@ -126,7 +138,7 @@ class CRCMToZarrFromConfig:
                 expected_variables=self.config.preprocessing.crcm.variables,
                 institution=self.config.executing_institution,
                 tile_size=self.config.data.tile_size,
-                calendar=gcm_calendars[gcm_simulation[0]],
+                calendar=calendar,
                 chunk_size=self.config.preprocessing.chunk_size,
             )
 
@@ -201,39 +213,21 @@ class CRCMToZarrFromConfig:
         nc_files = self.nc_files(gcm_simulation, variable_name)
         if len(nc_files) == 0:
             raise FileNotFoundError(f"No NetCDF files found for {gcm_simulation} and variable {variable_name}")
-        xarray_dataset_crcm = xarray.open_mfdataset(nc_files, decode_times=False)
-        list_of_time_values = xarray_dataset_crcm["time"].values
-        list_of_datetimes = cftime.num2date(
-            list_of_time_values,
-            units=xarray_dataset_crcm["time"].attrs["units"],
-            calendar=xarray_dataset_crcm["time"].attrs["calendar"],
-            only_use_cftime_datetimes=True,
+        xarray_dataset_crcm = xarray.open_mfdataset(nc_files, decode_times=False, preprocess=decode_time_axis)
+        path_output = self.zarr_path(gcm_simulation)
+        xarray_dataset_zarr = xarray.open_zarr(path_output, decode_times=decode_times_as_cftime)
+        zarr_dates = xarray_dataset_zarr.indexes["time"]
+
+        # Historical files end in 2014 and SSP files start in 2015, so the intersection drops the days of the chunk
+        # belonging to the other scenario and gives the zarr position to start writing at.
+        slices = get_intersection_slices(
+            xarray_dataset_zarr,
+            xarray_dataset_crcm,
+            start=zarr_dates[chunk_idx_start],
+            end=zarr_dates[chunk_idx_end],
         )
-        if self.config.preprocessing.crcm.end_datetime is None:
-            raise ValueError("GCM preprocessing end datetime must be specified.")
-        zarr_datetimes = xarray.cftime_range(
-            start=self.config.preprocessing.crcm.start_datetime,
-            end=self.config.preprocessing.crcm.end_datetime + timedelta(seconds=1),  # Fixing precision issues
-            freq="D",
-            calendar=gcm_calendars[gcm_simulation[0]],
-        )
-        zarr_datetimes = zarr_datetimes[chunk_idx_start : chunk_idx_end + 1]
-        num_datetimes = chunk_idx_end - chunk_idx_start + 1
-        # Filter out dates outside historical or ssp periods
-        if gcm_simulation[1] == "historical":
-            zarr_datetimes = [dt for dt in zarr_datetimes if dt.year <= 2014]
-            chunk_idx_end = chunk_idx_end - (num_datetimes - len(zarr_datetimes))
-        else:
-            zarr_datetimes = [dt for dt in zarr_datetimes if dt.year >= 2015]
-            chunk_idx_start = chunk_idx_start + (num_datetimes - len(zarr_datetimes))
-        # Manually finding intersection from just year, month, day
-        netcdf_indices_by_date = {(dt.year, dt.month, dt.day): i for i, dt in enumerate(list_of_datetimes)}
-        common_idx_in_netcdf = [
-            netcdf_indices_by_date[(dt_zarr.year, dt_zarr.month, dt_zarr.day)]
-            for dt_zarr in zarr_datetimes
-            if (dt_zarr.year, dt_zarr.month, dt_zarr.day) in netcdf_indices_by_date
-        ]
-        if not common_idx_in_netcdf:
+        xarray_dataset_zarr.close()
+        if slices is None:
             logger.warning(
                 "Did not find common time indices for %s %s %s %s",
                 gcm_simulation,
@@ -241,27 +235,20 @@ class CRCMToZarrFromConfig:
                 chunk_idx_start,
                 chunk_idx_end,
             )
+            xarray_dataset_crcm.close()
             return
-        my_slice = slice(common_idx_in_netcdf[0], common_idx_in_netcdf[-1] + 1)
+        zarr_slice, netcdf_slice = slices
         lat_slice = slice(self.rlat_buffer, self.rlat_buffer + self.config.data.tile_size)
         lon_slice = slice(self.rlon_buffer, self.rlon_buffer + self.config.data.tile_size)
-        data = xarray_dataset_crcm[variable_name][my_slice, lat_slice, lon_slice].values.astype(np.float32)
+        data = xarray_dataset_crcm[variable_name][netcdf_slice, lat_slice, lon_slice].values.astype(np.float32)
         _ = validate_crcm_data(data, variable_name)
-        path_output = self.zarr_path(gcm_simulation)
         write_crcm_time_slice_of_data(
             path_output=path_output,
             variable_name=variable_name,
             data=data,
-            time_slice=slice(chunk_idx_start, chunk_idx_start + my_slice.stop - my_slice.start),
+            time_slice=zarr_slice,
         )
-        self.debug_figures(
-            xarray_dataset_crcm,
-            gcm_simulation,
-            variable_name,
-            list_of_datetimes,
-            list_of_datetimes[my_slice],
-            chunk_idx_start,
-        )
+        self.debug_figures(xarray_dataset_crcm, gcm_simulation, variable_name, zarr_slice, netcdf_slice)
         xarray_dataset_crcm.close()
 
     def debug_figures(
@@ -269,9 +256,8 @@ class CRCMToZarrFromConfig:
         xarray_dataset_crcm: xarray.Dataset,
         gcm_simulation: list[str],
         variable_name: str,
-        list_of_datetimes: list[Any],
-        list_of_datetimes_slice: list[Any],
-        chunk_idx_start: int,
+        zarr_slice: slice,
+        netcdf_slice: slice,
     ) -> None:
         """
         Generate debug figures for the CRCM data and the corresponding zarr data.
@@ -284,25 +270,19 @@ class CRCMToZarrFromConfig:
             GCM simulation identifier.
         variable_name : str
             Name of the variable.
-        list_of_datetimes : list[Any]
-            List of datetime objects corresponding to the time values in the CRCM dataset.
-        list_of_datetimes_slice : list[Any]
-            List of datetime objects corresponding to the subset of time values for which debug figures are generated.
-        chunk_idx_start : int
-            The starting index of the chunk of time values for which debug figures are generated.
+        zarr_slice : slice
+            Time indices written to in the zarr dataset.
+        netcdf_slice : slice
+            Time indices read from in the NetCDF dataset, same days as zarr_slice.
         """
         custom_pcolormesh = CustomPColorMesh(scale_factor=2.0)
         for debug_list in self.config.debug.crcm_figures:
             if debug_list[0:3] != gcm_simulation or debug_list[3] != variable_name:
                 continue
-            for i, dt in enumerate(list_of_datetimes_slice):
-                year = dt.year
-                month = dt.month
-                day = dt.day
-                if debug_list[4:7] != [year, month, day]:
+            for i, dt in enumerate(xarray_dataset_crcm.indexes["time"][netcdf_slice]):
+                if debug_list[4:7] != [dt.year, dt.month, dt.day]:
                     continue
-                list_of_dates = [[dt.year, dt.month, dt.day] for dt in list_of_datetimes]
-                t = list_of_dates.index(debug_list[4:7])
+                t = netcdf_slice.start + i
                 plot_data = xarray_dataset_crcm[variable_name].isel(time=t).values
                 gcm_str = "_".join(gcm_simulation)
                 if self.config.paths.output is None:
@@ -318,7 +298,7 @@ class CRCMToZarrFromConfig:
                     ),
                 )
                 zarr_data = xarray.open_zarr(self.zarr_path(gcm_simulation))
-                zarr_time_idx = chunk_idx_start + i
+                zarr_time_idx = zarr_slice.start + i
                 zarr_plot_data = zarr_data[variable_name].isel(time=zarr_time_idx).values
                 custom_pcolormesh.plot(
                     zarr_plot_data,

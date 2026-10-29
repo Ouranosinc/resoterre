@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -58,9 +60,12 @@ class _FakeEmulatorDataset:
         return self._stores[dataset_type][key]
 
 
+def _days(start: str, periods: int) -> np.ndarray:
+    return xr.date_range(start, periods=periods, freq="D", calendar="standard", use_cftime=True).values
+
+
 def _daily_dataset(var_name: str, start: str, periods: int) -> xr.Dataset:
-    times = pd.date_range(start, periods=periods, freq="D")
-    return xr.Dataset({var_name: ("time", np.arange(periods, dtype=float))}, coords={"time": times})
+    return xr.Dataset({var_name: ("time", np.arange(periods, dtype=float))}, coords={"time": _days(start, periods)})
 
 
 def test_filter_data_keeps_in_window_days():
@@ -75,10 +80,10 @@ def test_filter_data_keeps_in_window_days():
 
     data_gcm, data_crcm = filter_data(
         dataset=dataset,
-        time_periods=[[np.datetime64("2000-01-02"), np.datetime64("2000-01-03")]],
+        time_periods=[[datetime(2000, 1, 2), datetime(2000, 1, 3)]],
     )
 
-    expected_times = pd.date_range("2000-01-02", periods=2, freq="D")
+    expected_times = _days("2000-01-02", 2)
     assert list(data_gcm) == ["sim_a"]
     assert data_gcm["sim_a"].sizes["time"] == 2
     np.testing.assert_array_equal(data_gcm["sim_a"]["time"].values, expected_times)
@@ -102,7 +107,7 @@ def test_filter_data_skips_simulations_outside_window():
 
     data_gcm, data_crcm = filter_data(
         dataset=dataset,
-        time_periods=[[np.datetime64("2000-01-02"), np.datetime64("2000-01-03")]],
+        time_periods=[[datetime(2000, 1, 2), datetime(2000, 1, 3)]],
     )
 
     assert list(data_gcm) == ["in_range"]
@@ -139,13 +144,13 @@ def test_filter_data_merges_overlapping_periods_once():
     data_gcm, data_crcm = filter_data(
         dataset=dataset,
         time_periods=[
-            [np.datetime64("2000-01-01"), np.datetime64("2000-01-03")],
-            [np.datetime64("2000-01-03"), np.datetime64("2000-01-05")],
+            [datetime(2000, 1, 1), datetime(2000, 1, 3)],
+            [datetime(2000, 1, 3), datetime(2000, 1, 5)],
         ],
     )
 
     # Jan 3 is in both windows and must appear once. Both window endpoints are included.
-    expected_times = pd.date_range("2000-01-01", periods=5, freq="D")
+    expected_times = _days("2000-01-01", 5)
     np.testing.assert_array_equal(data_gcm["sim_a"]["time"].values, expected_times)
     np.testing.assert_array_equal(data_crcm["sim_a"]["time"].values, expected_times)
     np.testing.assert_array_equal(data_gcm["sim_a"]["ta850"].values, [0.0, 1.0, 2.0, 3.0, 4.0])
@@ -165,12 +170,12 @@ def test_filter_data_keeps_requested_dates_and_drops_the_gap():
     data_gcm, data_crcm = filter_data(
         dataset=dataset,
         time_periods=[
-            [np.datetime64("2000-01-01"), np.datetime64("2000-01-02")],
-            [np.datetime64("2000-01-04"), np.datetime64("2000-01-05")],
+            [datetime(2000, 1, 1), datetime(2000, 1, 2)],
+            [datetime(2000, 1, 4), datetime(2000, 1, 5)],
         ],
     )
 
-    expected_times = pd.to_datetime(["2000-01-01", "2000-01-02", "2000-01-04", "2000-01-05"])
+    expected_times = _days("2000-01-01", 5)[[0, 1, 3, 4]]
     np.testing.assert_array_equal(data_gcm["sim_a"]["time"].values, expected_times)
     np.testing.assert_array_equal(data_crcm["sim_a"]["time"].values, expected_times)
     np.testing.assert_array_equal(data_gcm["sim_a"]["ta850"].values, [0.0, 1.0, 3.0, 4.0])
@@ -186,7 +191,7 @@ def test_select_data_by_indices_returns_contiguous_indices():
     np.testing.assert_array_equal(selected["ta850"].values, [1.0, 2.0, 3.0])
     np.testing.assert_array_equal(
         selected["time"].values,
-        pd.date_range("2000-01-02", periods=3, freq="D"),
+        _days("2000-01-02", 3),
     )
 
     single = select_data_by_indices(ds["ta850"], np.array([4]))
@@ -202,7 +207,7 @@ def test_select_data_by_indices_selects_scattered_indices():
     np.testing.assert_array_equal(selected["ta850"].values, [0.0, 2.0, 4.0])
     np.testing.assert_array_equal(
         selected["time"].values,
-        pd.to_datetime(["2000-01-01", "2000-01-03", "2000-01-05"]),
+        _days("2000-01-01", 5)[[0, 2, 4]],
     )
 
 
@@ -219,7 +224,7 @@ def test_summarize_data(tmp_path):
     stats_df = summarize_data(
         dataset=dataset,
         output_dir=tmp_path,
-        time_periods=[[np.datetime64("2000-01-02"), np.datetime64("2000-01-03")]],
+        time_periods=[[datetime(2000, 1, 2), datetime(2000, 1, 3)]],
     )
 
     assert list(stats_df.columns) == [
@@ -264,7 +269,7 @@ def test_summarize_data_raises_when_no_days_in_range(tmp_path):
         summarize_data(
             dataset=dataset,
             output_dir=tmp_path,
-            time_periods=[[np.datetime64("1999-01-01"), np.datetime64("1999-01-31")]],
+            time_periods=[[datetime(1999, 1, 1), datetime(1999, 1, 31)]],
         )
 
     assert not (tmp_path / "simulation_stats.csv").exists()

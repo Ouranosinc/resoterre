@@ -1,5 +1,6 @@
 import json
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Annotated, Any, Literal
@@ -128,7 +129,7 @@ def test_crcm_emulator_nested_config_from_yaml():
     assert config.data.prefetch_factor == 4
     assert config.training.figure_every_n_steps == 10
     assert config.training.device == "cuda"
-    assert config.analysis.windows[1] == ["2015-01-01", "2100-12-31", "ssp245"]
+    assert config.analysis.windows[1] == (datetime(2015, 1, 1), datetime(2100, 12, 31), "ssp245")
     assert config.analysis.surface_variables["tas"] == "ta"
     assert config.experiment_name == "cnrm-ssp245"
     assert CRCMEmulatorConfig().optimizer.lr == 0.01
