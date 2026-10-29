@@ -5,8 +5,8 @@
 #SBATCH --partition=long
 #SBATCH --ntasks=1
 #SBATCH --time=03:59:00
-#SBATCH --mem=64Gb
-#SBATCH --cpus-per-task=8
+#SBATCH --mem=48Gb
+#SBATCH --cpus-per-task=16
 #SBATCH --requeue
 #SBATCH --signal=B:TERM@300
 
@@ -23,4 +23,4 @@ mkdir -p logs
 source .venv/bin/activate
 export PYTHONUNBUFFERED=1
 
-srun python scripts/crcm_emulator/02_compute_baselines.py --config "$CONFIG_FILE" "$@"
+srun python scripts/crcm_emulator/02_compute_baselines.py --config "$CONFIG_FILE" --workers "${SLURM_CPUS_PER_TASK:-1}" "$@"
