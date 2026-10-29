@@ -217,6 +217,9 @@ class CRCMEmulatorModelConfig(BaseConfig):
         Depth of the U-Net.
     reduction_ratio : int | bool | None
         Squeeze-and-excitation reduction ratio of the U-Net.
+    linear_embedding_sizes : list[int] | None
+        Output sizes of the dense network embedding the scalar inputs (date and greenhouse gases) before they are
+        concatenated at the U-Net bottleneck. If None, the scalar inputs are concatenated as is. Defaults to [32, 64].
     """
 
     # TODO: not used, consider removing
@@ -225,6 +228,7 @@ class CRCMEmulatorModelConfig(BaseConfig):
     initial_num_of_hidden_channels: int | None = 16
     depth: int | None = 2
     reduction_ratio: int | bool | None = None
+    linear_embedding_sizes: list[int] | None = [32, 64]
 
 
 class CRCMEmulatorLossConfig(BaseConfig):

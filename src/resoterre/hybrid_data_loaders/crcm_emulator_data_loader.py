@@ -331,13 +331,16 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
             input_first_block = self.input_first_block_as_3d(xarray_dataset_gcm, gcm_idx)
         else:
             input_first_block = self.input_first_block_as_2d_channels(xarray_dataset_gcm, gcm_idx)
-        emission_data = {
-            "CO2": xarray_dataset_gcm["CO2"][gcm_idx].values,
-            "CH4": xarray_dataset_gcm["CH4"][gcm_idx].values,
-            "N2O": xarray_dataset_gcm["N2O"][gcm_idx].values,
-            "CFC12": xarray_dataset_gcm["CFC12"][gcm_idx].values,
-            "CFC11_eq": xarray_dataset_gcm["CFC11_eq"][gcm_idx].values,
-        }
+        emission_data = {}
+        for emission_name in ["CO2", "CH4", "N2O", "CFC12", "CFC11_eq"]:
+            emission_value = xarray_dataset_gcm[emission_name][gcm_idx].values
+            if self.normalize:
+                emission_value = normalize(
+                    emission_value,
+                    valid_min=cmip6_variables[emission_name].normalize_min,
+                    valid_max=cmip6_variables[emission_name].normalize_max,
+                )
+            emission_data[emission_name] = emission_value
         xarray_dataset_gcm.close()
         xarray_dataset_crcm = self.get_open_dataset("crcm", gcm_str)
         target = np.zeros(0)  # placeholder

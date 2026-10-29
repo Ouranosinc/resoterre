@@ -17,6 +17,7 @@ from resoterre.config import CRCMEmulatorConfig
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
 from resoterre.logging_utils import CustomLogging
 from resoterre.ml.network_manager import NeuralNetworksManager
+from resoterre.ml.neural_networks_basic import CyclicalDateEncoding
 from resoterre.ml.neural_networks_unet import UNet
 from resoterre.ml.training_utils import NNTraining
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
@@ -76,6 +77,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             )
         if self.config.data.coarsen_factor is None:
             raise ValueError("Coarsen factor must be specified in the configuration.")
+        self.date_encoding = CyclicalDateEncoding().to(self.config.training.device)
         self.validation_figure_data: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
         # per metric: (weighted sum, total weight), kept as tensors on the device until consolidation()
         self.running_validation_metrics: dict[str, tuple[torch.Tensor, float]] = {}
@@ -191,6 +193,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             w_in=self.config.data.tile_size // self.config.data.coarsen_factor,
             linear_size=7,
             reduction_ratio=self.config.model.reduction_ratio,
+            linear_embedding_sizes=self.config.model.linear_embedding_sizes,
         )
         self.optimizers["UNet"] = NeuralNetworksManager.optimizer_setup(
             self.models["UNet"].parameters(), self.config.optimizer
@@ -248,11 +251,11 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         """
         input_data = item["input_first_block"].to(self.config.training.device)
         target_data = item["target"].to(self.config.training.device)
-        # ToDo: convert month and day to time embeddings, normalize?
-        linear_data = torch.vstack(
-            [item["month"], item["day"], item["CO2"], item["CH4"], item["N2O"], item["CFC12"], item["CFC11_eq"]]
-        ).T
-        linear_data = linear_data.to(self.config.training.device)
+        date_encoding = self.date_encoding(
+            item["month"].to(self.config.training.device), item["day"].to(self.config.training.device)
+        )
+        gases = torch.vstack([item["CO2"], item["CH4"], item["N2O"], item["CFC12"], item["CFC11_eq"]]).T
+        linear_data = torch.cat([date_encoding, gases.to(self.config.training.device)], dim=1)
         output = self.models["UNet"](input_data, x_linear=linear_data)
         return input_data, target_data, output
 

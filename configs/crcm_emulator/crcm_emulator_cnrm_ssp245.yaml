@@ -23,7 +23,7 @@ preprocessing:
       - r1i1p1f2
   gcm:
     path: /Path/to/preprocessed/gcm_preprocessing
-    start_datetime: "1950-01-01"
+    start_datetime: "1951-01-01"
     end_datetime: "2100-12-31"
     variables:
       - hus

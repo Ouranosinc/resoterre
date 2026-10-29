@@ -3,7 +3,7 @@
 import torch
 from torch import nn
 
-from resoterre.ml.neural_networks_basic import Conv2d, SEBlock
+from resoterre.ml.neural_networks_basic import Conv2d, LinearEmbedding, SEBlock
 
 
 default_relu_init = "kaiming_uniform_"
@@ -525,6 +525,9 @@ class UNetBase(nn.Module):  # type: ignore[misc]
             if (self.to_1x1_operation is None) or (self.out_of_1x1_operation is None):
                 raise ValueError("x_linear can only be provided if go_to_1x1 is True.")
             x = self.to_1x1_operation(downward_layers[-1])
+            linear_embedding = getattr(self, "linear_embedding", None)
+            if linear_embedding is not None:
+                x_linear = linear_embedding(x_linear)
             x_linear = x_linear.unsqueeze(-1).unsqueeze(-1)
             x = torch.cat([x, x_linear], dim=1)
             x = self.out_of_1x1_operation(x)
@@ -572,6 +575,9 @@ class UNet(UNetBase, nn.Module):  # type: ignore[misc]
         Number of channels in the last layer input (for fixed additional 2d information).
     reduction_ratio : int, optional
         Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
+    linear_embedding_sizes : list[int], optional
+        Output sizes of a small dense network applied to the linear input before it is concatenated at the 1x1
+        bottleneck, trained jointly with the UNet. If None, the linear input is concatenated as is.
 
     References
     ----------
@@ -593,6 +599,7 @@ class UNet(UNetBase, nn.Module):  # type: ignore[misc]
         linear_size: int | None = None,
         num_last_layer_input_channels: int = 0,
         reduction_ratio: int | None = None,
+        linear_embedding_sizes: list[int] | None = None,
     ) -> None:
         super().__init__()
         if go_to_1x1:
@@ -603,6 +610,12 @@ class UNet(UNetBase, nn.Module):  # type: ignore[misc]
                     raise ValueError("h_in and h_out must be divisible by 2 up to the depth of the UNET.")
                 h_in //= 2
                 w_in //= 2
+            if linear_embedding_sizes:
+                embedding = LinearEmbedding(linear_size, linear_embedding_sizes)
+                self.linear_embedding = embedding
+                linear_size = embedding.out_features
+        elif linear_embedding_sizes:
+            raise ValueError("linear_embedding_sizes can only be provided if go_to_1x1 is True.")
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size
