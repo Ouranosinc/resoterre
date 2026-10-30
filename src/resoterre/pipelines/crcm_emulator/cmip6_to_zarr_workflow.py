@@ -1,25 +1,29 @@
 """Workflow components for converting CMIP6 GCM data to zarr format for the CRCM emulation task."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import cftime
 import numpy as np
 import xarray
 from scipy.sparse import load_npz, save_npz
 
 from resoterre.config import CRCMEmulatorConfig
+from resoterre.data_management.cftime_utils import (
+    check_netcdf_calendar,
+    dates_in_range,
+    decode_time_axis,
+    decode_times_as_cftime,
+    get_intersection_slices,
+)
 from resoterre.data_management.geo_utils import GridSpecification, compute_grids_area_weights
 from resoterre.data_management.ndimage_utils import replace_nan_with_auto_2d_window_average
 from resoterre.datasets.cmip6.cmip6_utils import (
-    gcm_calendars,
     gcm_variable_levels,
-    gcm_vertical_variables,
+    get_gcm_calendar,
     validate_cmip6_data,
 )
-from resoterre.datasets.cmip6.cmip6_variables import gcm_vertical_levels
 from resoterre.datasets.crcm.crcm_utils import crcm_north_america_grid_coordinates
 from resoterre.io_utils import path_with_uuid
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
@@ -35,8 +39,8 @@ logger = logging.getLogger(__name__)
 
 def get_chunk_indices(
     gcm: str,
-    start_datetime: str | datetime,
-    end_datetime: str | datetime,
+    start_datetime: datetime,
+    end_datetime: datetime,
     chunk_size: int = 8,
     chunks_per_task: int = 1,
 ) -> list[tuple[int, int]]:
@@ -47,9 +51,9 @@ def get_chunk_indices(
     ----------
     gcm : str
         GCM name.
-    start_datetime : str | datetime
+    start_datetime : datetime
         Start datetime of the preprocessing range.
-    end_datetime : str | datetime
+    end_datetime : datetime
         End datetime of the preprocessing range.
     chunk_size : int
         Number of days per chunk.
@@ -61,7 +65,7 @@ def get_chunk_indices(
     list[tuple[int, int]]
         List of tuples containing the start and end indices of each chunk.
     """
-    datetimes = xarray.cftime_range(start=start_datetime, end=end_datetime, freq="D", calendar=gcm_calendars[gcm])
+    datetimes = dates_in_range(start_datetime, end_datetime, calendar=get_gcm_calendar(gcm))
     total_chunks = (len(datetimes) + chunk_size - 1) // chunk_size
     chunk_indices = []
     for i in range(0, total_chunks, chunks_per_task):
@@ -69,32 +73,6 @@ def get_chunk_indices(
         end_idx = min(start_idx + chunk_size * chunks_per_task, len(datetimes))
         chunk_indices.append((start_idx, end_idx - 1))
     return chunk_indices
-
-
-def chunk_index_to_datetime(
-    gcm: str, start_datetime: str | datetime, end_datetime: str | datetime, chunk_idx: int
-) -> Any:
-    """
-    Convert a chunk index to the corresponding datetime.
-
-    Parameters
-    ----------
-    gcm : str
-        GCM name.
-    start_datetime : str | datetime
-        Start datetime of the preprocessing range.
-    end_datetime : str | datetime
-        End datetime of the preprocessing range.
-    chunk_idx : int
-        Index of the chunk.
-
-    Returns
-    -------
-    Any
-        Corresponding datetime for the given chunk index (particular instance of cftime library).
-    """
-    datetimes = xarray.cftime_range(start=start_datetime, end=end_datetime, freq="D", calendar=gcm_calendars[gcm])
-    return datetimes[chunk_idx]
 
 
 class GCMToZarrFromConfig:
@@ -174,6 +152,16 @@ class GCMToZarrFromConfig:
             path_output = self.zarr_path(gcm_simulation)
             if path_output.exists() and not self.config.preprocessing.gcm.allow_overwrite:
                 raise FileExistsError(f"Output file already exists: {path_output}")
+
+            # Check that the GCM data uses the expected calendar
+            # defined in the gcm_calendars dictionary in cmip6_utils.py
+            # gcm_simulation[0] is the GCM name ex. CNRM-ESM2-1
+            calendar = get_gcm_calendar(gcm_simulation[0])
+            if self.config.paths.gcm_data is not None:
+                nc_files = self.nc_files(gcm_simulation, self.config.preprocessing.gcm.variables[0])
+                if nc_files:
+                    check_netcdf_calendar(nc_files[0], calendar)
+
             # ToDo: add GCM information to CF metadata
             crcm_emulator_input_format(
                 path_output=path_output,
@@ -183,7 +171,7 @@ class GCMToZarrFromConfig:
                 institution=self.config.executing_institution,
                 tile_size=self.config.data.tile_size,
                 coarsen_factor=self.config.data.coarsen_factor,
-                calendar=gcm_calendars[gcm_simulation[0]],
+                calendar=calendar,
                 path_emissions=self.emission_paths(gcm_simulation),
                 chunk_size=self.config.preprocessing.chunk_size,
             )
@@ -283,8 +271,8 @@ class GCMToZarrFromConfig:
         xarray_dataset_gcm: xarray.Dataset,
         variable_name_in_zarr: str,
         variable_name_in_netcdf: str,
-        chunk_idx_start: int,
-        time_slice: slice,
+        zarr_slice: slice,
+        netcdf_slice: slice,
         level: float | None = None,
         nan_replacement: bool = False,
         write_mask: bool = False,
@@ -304,10 +292,10 @@ class GCMToZarrFromConfig:
             Name of the variable in the zarr dataset.
         variable_name_in_netcdf : str
             Name of the variable in the NetCDF dataset.
-        chunk_idx_start : int
-            Starting index of the chunk to write.
-        time_slice : slice
-            Slice object specifying the time indices to write.
+        zarr_slice : slice
+            Time indices to write to in the zarr dataset.
+        netcdf_slice : slice
+            Time indices to read from in the NetCDF dataset, same days as zarr_slice.
         level : float, optional
             Vertical level to select from the GCM data, if applicable.
         nan_replacement : bool
@@ -317,10 +305,12 @@ class GCMToZarrFromConfig:
         """
         # ToDo: should I do this in smaller (8) chunks?
         if level is None:
-            data = xarray_dataset_gcm[variable_name_in_netcdf][time_slice, :, :].values.astype(np.float32)
+            data = xarray_dataset_gcm[variable_name_in_netcdf][netcdf_slice, :, :].values.astype(np.float32)
         else:
             data = (
-                xarray_dataset_gcm[variable_name_in_netcdf].sel(plev=level)[time_slice, :, :].values.astype(np.float32)
+                xarray_dataset_gcm[variable_name_in_netcdf]
+                .sel(plev=level)[netcdf_slice, :, :]
+                .values.astype(np.float32)
             )
 
         if self.config.data.coarsen_factor is not None:
@@ -343,7 +333,7 @@ class GCMToZarrFromConfig:
             path_output=path_output,
             variable_name=variable_name_in_zarr,
             data=regrid_data,
-            time_slice=slice(chunk_idx_start, chunk_idx_start + time_slice.stop - time_slice.start),
+            time_slice=zarr_slice,
             mask=mask,
         )
 
@@ -374,52 +364,22 @@ class GCMToZarrFromConfig:
         nc_files = self.nc_files(gcm_simulation, variable_name)
         if len(nc_files) == 0:
             raise FileNotFoundError(f"No NetCDF files found for {gcm_simulation} and variable {variable_name}")
-        xarray_dataset_gcm = xarray.open_mfdataset(nc_files, decode_times=False)
-        list_of_time_values = xarray_dataset_gcm["time"].values
-        list_of_datetimes = cftime.num2date(
-            list_of_time_values,
-            units=xarray_dataset_gcm["time"].attrs["units"],
-            calendar=xarray_dataset_gcm["time"].attrs["calendar"],
-            only_use_cftime_datetimes=True,
+
+        xarray_dataset_gcm = xarray.open_mfdataset(nc_files, decode_times=False, preprocess=decode_time_axis)
+        path_output = self.zarr_path(gcm_simulation)
+        xarray_dataset_zarr = xarray.open_zarr(path_output, decode_times=decode_times_as_cftime)
+        zarr_dates = xarray_dataset_zarr.indexes["time"]
+
+        # Historical files end in 2014 and SSP files start in 2015, so the intersection drops the days of the chunk
+        # belonging to the other scenario and gives the zarr position to start writing at.
+        slices = get_intersection_slices(
+            xarray_dataset_zarr,
+            xarray_dataset_gcm,
+            start=zarr_dates[chunk_idx_start],
+            end=zarr_dates[chunk_idx_end],
         )
-        if self.config.preprocessing.gcm.end_datetime is None:
-            raise ValueError("GCM preprocessing end datetime must be specified.")
-        zarr_datetimes = xarray.cftime_range(
-            start=self.config.preprocessing.gcm.start_datetime,
-            end=self.config.preprocessing.gcm.end_datetime + timedelta(seconds=1),  # Fixing precision issues
-            freq="D",
-            calendar=gcm_calendars[gcm_simulation[0]],
-        )
-        zarr_datetimes = zarr_datetimes[chunk_idx_start : chunk_idx_end + 1]
-        num_datetimes = chunk_idx_end - chunk_idx_start + 1
-        # Filter out dates outside historical or ssp periods
-        if gcm_simulation[1] == "historical":
-            zarr_datetimes = [dt for dt in zarr_datetimes if dt.year <= 2014]
-            chunk_idx_end = chunk_idx_end - (num_datetimes - len(zarr_datetimes))
-        else:
-            zarr_datetimes = [dt for dt in zarr_datetimes if dt.year >= 2015]
-            chunk_idx_start = chunk_idx_start + (num_datetimes - len(zarr_datetimes))
-        if not zarr_datetimes:
-            logger.warning(
-                "No Zarr datetimes found for %s %s",
-                gcm_simulation,
-                variable_name,
-            )
-            return
-        logger.debug(
-            "Chunk idx/date mapping: %s:%s, %s:%s",
-            chunk_idx_start,
-            chunk_idx_end,
-            zarr_datetimes[0],
-            zarr_datetimes[-1],
-        )
-        # Manually finding intersection from just year, month, day
-        common_idx_in_netcdf = []
-        for dt_zarr in zarr_datetimes:
-            for i, dt_netcdf in enumerate(list_of_datetimes):
-                if dt_zarr.year == dt_netcdf.year and dt_zarr.month == dt_netcdf.month and dt_zarr.day == dt_netcdf.day:
-                    common_idx_in_netcdf.append(i)
-        if not common_idx_in_netcdf:
+        xarray_dataset_zarr.close()
+        if slices is None:
             logger.warning(
                 "No common time indices found for %s %s %s %s",
                 gcm_simulation,
@@ -427,86 +387,60 @@ class GCMToZarrFromConfig:
                 chunk_idx_start,
                 chunk_idx_end,
             )
+            xarray_dataset_gcm.close()
             return
-        my_slice = slice(common_idx_in_netcdf[0], common_idx_in_netcdf[-1] + 1)
-        if len(zarr_datetimes) != (my_slice.stop - my_slice.start):
-            raise NotImplementedError("Mismatch between Zarr datetimes and NetCDF slice length.")
-        logger.debug("NetCDF slice: %s", my_slice)
-        path_output = self.zarr_path(gcm_simulation)
+        zarr_slice, netcdf_slice = slices
+        logger.debug("Zarr slice: %s, NetCDF slice: %s", zarr_slice, netcdf_slice)
 
-        # ToDo: this section is too repetitive
-        if variable_name in gcm_vertical_variables:
-            for level in gcm_vertical_levels:
-                # Skip the level 100000.0 as it is not needed for processing
-                if level == 100000.0:
-                    continue
-                self.write_crcm_time_slice_of_data_with_regrid(
-                    path_output=path_output,
-                    gcm_simulation=gcm_simulation,
-                    xarray_dataset_gcm=xarray_dataset_gcm,
-                    variable_name_in_zarr=f"{variable_name}{int(level / 100)}",
-                    variable_name_in_netcdf=variable_name,
-                    chunk_idx_start=chunk_idx_start,
-                    time_slice=my_slice,
-                    level=level,
-                    nan_replacement=self.config.preprocessing.gcm.nan_replacement,
-                    write_mask=write_mask,
-                )
-                self.debug_figures(
-                    xarray_dataset_gcm,
-                    gcm_simulation,
-                    f"{variable_name}{int(level / 100)}",
-                    variable_name,
-                    list_of_datetimes,
-                    list_of_datetimes_slice=list_of_datetimes[my_slice],
-                    chunk_idx_start=chunk_idx_start,
-                    level=int(level),
-                )
-        elif variable_name in gcm_variable_levels:
+        for zarr_name, level in self.zarr_targets(variable_name):
             self.write_crcm_time_slice_of_data_with_regrid(
                 path_output=path_output,
                 gcm_simulation=gcm_simulation,
                 xarray_dataset_gcm=xarray_dataset_gcm,
-                variable_name_in_zarr=gcm_variable_levels[variable_name]["variable_name"],
+                variable_name_in_zarr=zarr_name,
                 variable_name_in_netcdf=variable_name,
-                chunk_idx_start=chunk_idx_start,
-                time_slice=my_slice,
-                level=int(gcm_variable_levels[variable_name]["level"]),
+                zarr_slice=zarr_slice,
+                netcdf_slice=netcdf_slice,
+                level=level,
                 nan_replacement=self.config.preprocessing.gcm.nan_replacement,
-                write_mask=write_mask,
+                write_mask=write_mask and level is not None,
             )
             self.debug_figures(
-                xarray_dataset_gcm,
-                gcm_simulation,
-                gcm_variable_levels[variable_name]["variable_name"],
-                variable_name,
-                list_of_datetimes,
-                list_of_datetimes_slice=list_of_datetimes[my_slice],
-                chunk_idx_start=chunk_idx_start,
-                level=int(gcm_variable_levels[variable_name]["level"]),
-            )
-        else:
-            self.write_crcm_time_slice_of_data_with_regrid(
-                path_output=path_output,
-                gcm_simulation=gcm_simulation,
                 xarray_dataset_gcm=xarray_dataset_gcm,
-                variable_name_in_zarr=variable_name,
+                gcm_simulation=gcm_simulation,
+                variable_name_in_zarr=zarr_name,
                 variable_name_in_netcdf=variable_name,
-                chunk_idx_start=chunk_idx_start,
-                time_slice=my_slice,
-                nan_replacement=self.config.preprocessing.gcm.nan_replacement,
-            )
-            self.debug_figures(
-                xarray_dataset_gcm,
-                gcm_simulation,
-                variable_name,
-                variable_name,
-                list_of_datetimes,
-                list_of_datetimes_slice=list_of_datetimes[my_slice],
-                chunk_idx_start=chunk_idx_start,
-                level=None,
+                zarr_slice=zarr_slice,
+                netcdf_slice=netcdf_slice,
+                level=None if level is None else int(level),
             )
         xarray_dataset_gcm.close()
+
+    @staticmethod
+    def zarr_targets(variable_name: str) -> list[tuple[str, float | None]]:
+        """
+        Return (zarr_name, pressure_level) for pairs of NetCDF variables.
+
+        Parameters
+        ----------
+        variable_name : str
+            Name of the variable.
+
+        Returns
+        -------
+        list[tuple[str, float | None]]
+            List of tuples of (zarr_name, pressure_level) for pairs of NetCDF variables.
+            If no vertical levels, return (variable_name, None).
+        """
+        level_targets = [
+            (zarr_name, val["level"])
+            for zarr_name, val in gcm_variable_levels.items()
+            if val["variable_name"] == variable_name
+        ]  # returns list of tuples for ex. ta -> [("ta100", 100000.0), ("ta500", 50000.0), ("ta850", 85000.0)]
+        if level_targets:
+            return level_targets
+        else:
+            return [(variable_name, None)]
 
     def debug_figures(
         self,
@@ -514,9 +448,8 @@ class GCMToZarrFromConfig:
         gcm_simulation: list[str],
         variable_name_in_zarr: str,
         variable_name_in_netcdf: str,
-        list_of_datetimes: list[Any],
-        list_of_datetimes_slice: list[Any],
-        chunk_idx_start: int,
+        zarr_slice: slice,
+        netcdf_slice: slice,
         level: int | None = None,
     ) -> None:
         """
@@ -532,12 +465,10 @@ class GCMToZarrFromConfig:
             Name of the variable in the zarr dataset.
         variable_name_in_netcdf : str
             Name of the variable in the netcdf dataset.
-        list_of_datetimes : list[Any]
-            List of datetime objects corresponding to the time values in the CRCM dataset.
-        list_of_datetimes_slice : list[Any]
-            List of datetime objects corresponding to the subset of time values for which debug figures are generated.
-        chunk_idx_start : int
-            The starting index of the chunk of time values for which debug figures are generated.
+        zarr_slice : slice
+            Time indices written to in the zarr dataset.
+        netcdf_slice : slice
+            Time indices read from in the NetCDF dataset, same days as zarr_slice.
         level : int, optional
             Vertical level to select from the GCM data, if applicable.
         """
@@ -545,14 +476,10 @@ class GCMToZarrFromConfig:
         for debug_list in self.config.debug.gcm_figures:
             if debug_list[0:3] != gcm_simulation or debug_list[3] != variable_name_in_zarr:
                 continue
-            for i, dt in enumerate(list_of_datetimes_slice):
-                year = dt.year
-                month = dt.month
-                day = dt.day
-                if debug_list[4:7] != [year, month, day]:
+            for i, dt in enumerate(xarray_dataset_gcm.indexes["time"][netcdf_slice]):
+                if debug_list[4:7] != [dt.year, dt.month, dt.day]:
                     continue
-                list_of_dates = [[dt.year, dt.month, dt.day] for dt in list_of_datetimes]
-                t = list_of_dates.index(debug_list[4:7])
+                t = netcdf_slice.start + i
                 if level is None:
                     plot_data = xarray_dataset_gcm[variable_name_in_netcdf].isel(time=t).values
                 else:
@@ -571,7 +498,7 @@ class GCMToZarrFromConfig:
                     ),
                 )
                 zarr_data = xarray.open_zarr(self.zarr_path(gcm_simulation))
-                zarr_time_idx = chunk_idx_start + i
+                zarr_time_idx = zarr_slice.start + i
                 zarr_plot_data = zarr_data[variable_name_in_zarr].isel(time=zarr_time_idx).values
                 custom_pcolormesh.plot(
                     zarr_plot_data,

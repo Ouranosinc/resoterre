@@ -182,7 +182,7 @@ class CRCMEmulatorAnalysisConfig(BaseConfig):
 
     Attributes
     ----------
-    windows : list[list[str]]
+    windows : list[tuple[datetime, datetime, str]]
         Analysis windows. Each window has the form [start_date, end_date, scenario].
     range_and_mean_groups : dict[str, str]
         Variable family mapped to the range-and-mean figure it shares. Families that are
@@ -192,7 +192,7 @@ class CRCMEmulatorAnalysisConfig(BaseConfig):
         surface RCM field can be paired with a pressure-level GCM field of the same family.
     """
 
-    windows: list[list[str]] = Field(default_factory=list)
+    windows: list[tuple[datetime, datetime, str]] = Field(default_factory=list)
     range_and_mean_groups: dict[str, str] = Field(
         default_factory=lambda: {"hus": "hus", "pr": "pr", "ta": "ta", "ua": "ua_va", "va": "ua_va", "zg": "zg"}
     )

@@ -8,7 +8,7 @@ import numpy as np
 import xarray
 from torch.utils import data as td
 
-from resoterre.data_management.cftime_utils import cftime_period_bounds_idx_in_list_of_datetimes
+from resoterre.data_management.cftime_utils import decode_times_as_cftime, get_intersection_slices
 from resoterre.datasets.cmip6.cmip6_utils import gcm_variable_levels
 from resoterre.datasets.cmip6.cmip6_variables import cmip6_variables
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
@@ -91,7 +91,6 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
             variables_in_gcm_zarr = xarray_dataset_gcm["variable_names"].values.tolist()
             xarray_dataset_gcm.close()
             xarray_dataset_gcm = self.get_open_dataset("gcm", gcm_str)
-            gcm_time_values = xarray_dataset_gcm["time"].values
 
             zarr_directory = Path(path_crcm_preprocessing, f"crcm_emulator_output_{gcm_str}.zarr")
             self.crcm_zarr[gcm_str] = zarr_directory
@@ -99,38 +98,18 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
             variables_in_crcm_zarr = xarray_dataset_crcm["variable_names"].values.tolist()
             xarray_dataset_crcm.close()
             xarray_dataset_crcm = self.get_open_dataset("crcm", gcm_str)
-            crcm_time_values = xarray_dataset_crcm["time"].values
-            for time_period in time_periods:
-                gcm_initial_time_idx, gcm_final_time_idx = cftime_period_bounds_idx_in_list_of_datetimes(
-                    gcm_time_values, time_period[0], time_period[1], comparison_precision="day"
-                )
-                crcm_initial_time_idx, crcm_final_time_idx = cftime_period_bounds_idx_in_list_of_datetimes(
-                    crcm_time_values, time_period[0], time_period[1], comparison_precision="day"
-                )
-                time_idx_offset = crcm_initial_time_idx - gcm_initial_time_idx
-                valid_gcm_time_idx: set[int] | None = None
-                for variable_name in gcm_variables:
-                    variable_idx = variables_in_gcm_zarr.index(variable_name)
-                    time_slice = slice(gcm_initial_time_idx, gcm_final_time_idx + 1)
-                    is_computed = xarray_dataset_gcm["is_computed"][variable_idx, time_slice].values
-                    valid_time_idx = (np.where(is_computed)[0]).tolist()
-                    if valid_gcm_time_idx is None:
-                        valid_gcm_time_idx = {x + gcm_initial_time_idx for x in valid_time_idx}
-                    else:
-                        valid_gcm_time_idx = valid_gcm_time_idx.intersection(
-                            [x + gcm_initial_time_idx for x in valid_time_idx]
-                        )
-                if valid_gcm_time_idx is None:
-                    raise RuntimeError("No valid GCM time indices found for the specified time period.")
-                for variable_name in crcm_variables:
-                    variable_idx = variables_in_crcm_zarr.index(variable_name)
-                    time_slice = slice(crcm_initial_time_idx, crcm_final_time_idx + 1)
-                    is_computed = xarray_dataset_crcm["is_computed"][variable_idx, time_slice].values
-                    valid_time_idx = np.where(is_computed)[0].tolist()
-                    valid_time_idx_offset = [x + gcm_initial_time_idx for x in valid_time_idx]
-                    valid_gcm_time_idx = set(valid_gcm_time_idx).intersection(valid_time_idx_offset)
-                valid_idx = [(x, x + time_idx_offset) for x in sorted(list(valid_gcm_time_idx))]
-                self.valid_time_idx[gcm_str].extend(valid_idx)
+
+            gcm_variable_idx = [variables_in_gcm_zarr.index(variable_name) for variable_name in gcm_variables]
+            crcm_variable_idx = [variables_in_crcm_zarr.index(variable_name) for variable_name in crcm_variables]
+            for start, end in time_periods:
+                slices = get_intersection_slices(xarray_dataset_gcm, xarray_dataset_crcm, start=start, end=end)
+                if slices is None:
+                    raise RuntimeError(f"No common GCM and CRCM days for {gcm_str} between {start} and {end}.")
+                gcm_slice, crcm_slice = slices
+                gcm_computed = xarray_dataset_gcm["is_computed"][gcm_variable_idx, gcm_slice].values.all(axis=0)
+                crcm_computed = xarray_dataset_crcm["is_computed"][crcm_variable_idx, crcm_slice].values.all(axis=0)
+                for i in np.flatnonzero(gcm_computed & crcm_computed):
+                    self.valid_time_idx[gcm_str].append((gcm_slice.start + int(i), crcm_slice.start + int(i)))
             xarray_dataset_gcm.close()
             xarray_dataset_crcm.close()
         self.valid_idx = []
@@ -171,7 +150,9 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     oldest_key = next(iter(self.gcm_open_dataset))
                     self.gcm_open_dataset[oldest_key].close()
                     del self.gcm_open_dataset[oldest_key]
-                self.gcm_open_dataset[key] = xarray.open_dataset(self.gcm_zarr[key], engine="zarr")
+                self.gcm_open_dataset[key] = xarray.open_dataset(
+                    self.gcm_zarr[key], engine="zarr", decode_times=decode_times_as_cftime
+                )
             return self.gcm_open_dataset[key]
         elif dataset_type == "crcm":
             if key not in self.crcm_open_dataset:
@@ -179,7 +160,9 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     oldest_key = next(iter(self.crcm_open_dataset))
                     self.crcm_open_dataset[oldest_key].close()
                     del self.crcm_open_dataset[oldest_key]
-                self.crcm_open_dataset[key] = xarray.open_dataset(self.crcm_zarr[key], engine="zarr")
+                self.crcm_open_dataset[key] = xarray.open_dataset(
+                    self.crcm_zarr[key], engine="zarr", decode_times=decode_times_as_cftime
+                )
             return self.crcm_open_dataset[key]
         else:
             raise ValueError(f"Unknown dataset type: {dataset_type}")
@@ -358,9 +341,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                 )
             target[i, :, :] = crcm_data
 
-        current_datetime = xarray_dataset_crcm["time"].values[crcm_idx]
-        if isinstance(current_datetime, np.datetime64):
-            current_datetime = current_datetime.astype("datetime64[us]").astype(object)
+        current_datetime = xarray_dataset_crcm.indexes["time"][crcm_idx]
         xarray_dataset_crcm.close()
 
         return {
