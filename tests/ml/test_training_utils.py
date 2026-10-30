@@ -503,7 +503,7 @@ def test_nn_training_call_gpu():
         assert nn_training.best_validation_metrics["(ValidationLoss)"].epoch == 1
         assert nn_training.best_validation_metrics["(ValidationLoss)"].value == 108.5
         assert Path(tmp_dir, "unspecified_experiment_training_results.json").is_file()
-        assert len(list(Path(tmp_dir).glob("*.pth"))) == 1
+        assert len(list(Path(tmp_dir).glob("*.pth"))) == 2
         nn_training(epoch=2, device="cuda")
         assert nn_training.epoch_iterations == 8
         nn_training(epoch=3, device="cuda")
@@ -524,3 +524,8 @@ def test_nn_training_call_gpu():
         assert Path(tmp_dir, "unspecified_experiment_epoch_006_best.pth").is_file()
         with pytest.raises(RuntimeError):
             nn_training(epoch=10, device="cuda")
+
+
+def test_with_split():
+    result = training_utils.with_split({"tas/rmse": 1.0, "loss": 2.0, "(ValidationLoss)": 3.0}, "validation")
+    assert result == {"tas/validation_rmse": 1.0, "validation_loss": 2.0, "(ValidationLoss)": 3.0}

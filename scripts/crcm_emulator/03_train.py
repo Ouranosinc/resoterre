@@ -1,7 +1,7 @@
 """
 Train the CRCM emulator from a YAML configuration.
 
-Run ``python scripts/crcm_emulator/02_train.py --config configs/crcm_emulator/crcm_emulator_cnrm_ssp245.yaml``
+Run ``python scripts/crcm_emulator/03_train.py --config configs/crcm_emulator/crcm_emulator_cnrm_ssp245.yaml``
 Training resumes from the latest checkpoint in ``paths.output`` when one exists. Use ``--resume best`` to resume
 from the best checkpoint instead, or ``--resume none`` to always start from scratch.
 """

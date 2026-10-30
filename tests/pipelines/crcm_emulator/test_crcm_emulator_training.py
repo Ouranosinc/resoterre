@@ -1,3 +1,4 @@
+import json
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,6 +23,7 @@ from resoterre.data_generators.crcm_emulator_mock_dataset import CRCMEmulatorMoc
 from resoterre.data_management.timeseries import MultiTimeseries
 from resoterre.logging_utils import start_root_logger
 from resoterre.pipelines.crcm_emulator import crcm_emulator_training
+from resoterre.pipelines.crcm_emulator.metrics import build_metrics
 
 
 def test_crcm_emulator_training():
@@ -33,7 +35,7 @@ def test_crcm_emulator_training():
                 gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
                 crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
             ),
-            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
             model=CRCMEmulatorModelConfig(
                 kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
             ),
@@ -72,7 +74,9 @@ def test_crcm_emulator_training():
         assert Path(config.paths.output, "training.log").is_file()
         assert Path(config.paths.output, "test_epoch_001_latest.pth").is_file()
         assert Path(config.paths.output, "test_epoch_001_best.pth").is_file()
-        assert Path(config.paths.output, "test_training_results.json").is_file()
+        results = json.loads(Path(config.paths.output, "test_training_results.json").read_text())
+        assert "LastVal loss" in results
+        assert "LastVal mse_loss" in results
         assert not list(Path(config.paths.output).glob("training_visualization_*.png"))
 
 
@@ -85,7 +89,7 @@ def test_crcm_emulator_training_resume():
                 gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
                 crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
             ),
-            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
             model=CRCMEmulatorModelConfig(
                 kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
             ),
@@ -126,7 +130,7 @@ def test_crcm_emulator_training_figures_logged_to_comet_only():
                 gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
                 crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
             ),
-            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
             model=CRCMEmulatorModelConfig(
                 kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
             ),
@@ -151,7 +155,7 @@ def test_crcm_emulator_training_figure_frequency_is_configurable():
                 gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
                 crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
             ),
-            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
             model=CRCMEmulatorModelConfig(
                 kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
             ),
@@ -170,6 +174,102 @@ def test_crcm_emulator_training_figure_frequency_is_configurable():
             assert [call.kwargs["step"] for call in log_figure.call_args_list] == expected_steps
 
 
+def test_crcm_emulator_validation_metrics_are_configurable():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
+            model=CRCMEmulatorModelConfig(
+                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+            ),
+        )
+        for names in (["max_value_absolute_error"], []):
+            training_config = CRCMEmulatorTrainingConfig(validation_metrics=names)
+            runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(
+                config=config.model_copy(update={"training": training_config})
+            )
+            assert list(runner.validation_metric_functions) == names
+        with pytest.raises(ValueError, match="Unknown metrics"):
+            crcm_emulator_training.CRCMEmulatorTrainingFromConfig(
+                config=config.model_copy(
+                    update={"training": CRCMEmulatorTrainingConfig(validation_metrics=["not_a_metric"])}
+                )
+            )
+
+
+def test_crcm_emulator_test_evaluation_reports_test_metrics():
+    # same flow as scripts/crcm_emulator/04_inference.py: load a checkpoint, evaluate, consolidate
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
+            model=CRCMEmulatorModelConfig(
+                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+            ),
+            loss=CRCMEmulatorLossConfig(mse_weight=1.0, ssim_weight=0.0),
+            training=CRCMEmulatorTrainingConfig(nb_of_epochs=1, device="cpu"),
+        )
+        mock_kwargs = {"num_input_channels": 2, "num_output_channels": 2, "tile_size": 128, "coarsen_factor": 4}
+
+        def make_runner(training: CRCMEmulatorTrainingConfig) -> crcm_emulator_training.CRCMEmulatorTrainingFromConfig:
+            runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(
+                config=config.model_copy(update={"training": training})
+            )
+            runner.dataset = CRCMEmulatorMockDataset(num_samples=8, **mock_kwargs)
+            runner.train_data_loader = td.DataLoader(runner.dataset, 4, shuffle=True)
+            runner.validation_dataset = CRCMEmulatorMockDataset(num_samples=4, **mock_kwargs)
+            runner.validation_data_loader = td.DataLoader(runner.validation_dataset, 4, shuffle=False)
+            runner.init_unet()
+            return runner
+
+        make_runner(config.training)(epoch=1, device="cpu")
+
+        # a batch of 4 and a partial batch of 1
+        test_data_loader = td.DataLoader(CRCMEmulatorMockDataset(num_samples=5, **mock_kwargs), 4, shuffle=False)
+        for test_metrics, expected in (
+            (
+                ["max_value_absolute_error"],
+                {"loss", "mse_loss", "tas/max_value_absolute_error", "pr/max_value_absolute_error"},
+            ),
+            ([], {"loss", "mse_loss"}),
+        ):
+            runner = make_runner(config.training)
+            runner.load_state(Path(tmp_dir), tag="latest")
+            results = runner.evaluate(test_data_loader, build_metrics(test_metrics))
+            assert set(results) == expected
+            assert runner.running_validation_metrics == {}
+            assert len(runner.validation_metrics) == 0
+
+
+def test_crcm_emulator_build_test_data_loader_requires_test_periods():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
+            model=CRCMEmulatorModelConfig(
+                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+            ),
+        )
+        runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+        with pytest.raises(ValueError, match="test_periods"):
+            runner.build_test_data_loader()
+
+
 def test_crcm_emulator_validation_figure_logged_to_comet_only():
     with tempfile.TemporaryDirectory() as tmp_dir:
         config = CRCMEmulatorConfig(
@@ -179,7 +279,7 @@ def test_crcm_emulator_validation_figure_logged_to_comet_only():
                 gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
                 crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
             ),
-            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
             model=CRCMEmulatorModelConfig(
                 kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
             ),
@@ -219,15 +319,47 @@ def test_crcm_emulator_consolidation_weights_losses_by_batch_size():
     runner = SimpleNamespace(
         running_validation_metrics={},
         validation_metrics=MultiTimeseries(),
-        metric_weight=crcm_emulator_training.CRCMEmulatorTrainingFromConfig.metric_weight,
     )
     consolidator = crcm_emulator_training.CRCMEmulatorTrainingFromConfig
     # 128 samples with zero error, then a partial batch of 1 sample with a squared error of 100
     for batch_size, value in ((128, 0.0), (1, 100.0)):
-        metrics = {"mse_loss": torch.tensor(value), "max_value_absolute_error": torch.tensor(value)}
+        metrics = {"mse_loss": torch.tensor(value), "some_other_metric": torch.tensor(value)}
         consolidator.running_consolidation(runner, metrics, batch_size)  # type: ignore[arg-type]
     consolidator.consolidation(runner)  # type: ignore[arg-type]
     assert runner.running_validation_metrics == {}
     assert runner.validation_metrics["mse_loss"].values == [pytest.approx(100 / 129)]
     # metrics that are not sample-averaged losses are a plain mean over batches
-    assert runner.validation_metrics["max_value_absolute_error"].values == [pytest.approx(50.0)]
+    assert runner.validation_metrics["some_other_metric"].values == [pytest.approx(50.0)]
+
+
+def test_crcm_emulator_metrics_use_denormalized_data_but_losses_do_not():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas"]),
+            model=CRCMEmulatorModelConfig(
+                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+            ),
+            training=CRCMEmulatorTrainingConfig(device="cpu"),
+        )
+        runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+        dataset = CRCMEmulatorMockDataset(
+            num_samples=2, num_input_channels=2, num_output_channels=1, tile_size=128, coarsen_factor=4
+        )
+        runner.dataset = dataset
+        runner.init_unet()
+        seen: dict[str, torch.Tensor] = {}
+
+        def record(target: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+            seen["target"] = target
+            return target.amax(dim=(0, 2, 3))
+
+        runner.evaluation_step(next(iter(td.DataLoader(dataset, 2))), {"record": record})
+        assert seen["target"].min() >= 243.15
+        assert seen["target"].max() <= 303.15
+        assert set(runner.running_validation_metrics) >= {"tas/record", "mse_loss"}

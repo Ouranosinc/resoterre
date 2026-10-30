@@ -84,7 +84,7 @@ class GCMToZarrFromConfig:
     config : CRCMEmulatorConfig
         CRCM emulator configuration object.
     initialize_zarr : bool, optional
-        Whether to initialize the zarr dataset for each year and month in the preprocessing range.
+        Whether to initialize the zarr datasets.
     """
 
     def __init__(self, config: CRCMEmulatorConfig, initialize_zarr: bool = False):

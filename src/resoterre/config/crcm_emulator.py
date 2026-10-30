@@ -66,6 +66,8 @@ class CRCMEmulatorPathsConfig(BaseConfig):
         Path to the directory containing emission data.
     crcm_data : Path | None
         Path to the directory containing CRCM data.
+    baselines_out_dirs : dict[str, Path]
+        Dictionary mapping baseline names to their respective output directories.
     """
 
     output: Path | None = None
@@ -74,6 +76,7 @@ class CRCMEmulatorPathsConfig(BaseConfig):
     gcm_data: Path | None = None
     emission_data: Path | None = None
     crcm_data: Path | None = None
+    baselines_out_dirs: dict[str, Path] = Field(default_factory=dict)
 
 
 class CRCMEmulatorSourcePreprocessingConfig(BaseConfig):
@@ -254,16 +257,20 @@ class CRCMEmulatorTrainingConfig(BaseConfig):
         Number of threads to use during training.
     figure_every_n_steps : int
         Log a training figure to Comet ML every this many training steps, 0 disables the training figures.
+    validation_metrics : list[str]
+        Names of the extra metrics reported during validation, in addition to the losses
+        (e.g., "max_value_absolute_error").
     """
 
     nb_of_epochs: int = 10
     device: str = "cpu"
     figure_every_n_steps: int = Field(default=10, ge=0)
+    # TODO: metrics to be different per variable so a dict instead of a list
+    validation_metrics: list[str] = Field(default_factory=lambda: ["max_value_absolute_error"])
     # TODO: not used, consider removing
     num_threads: int = 2
 
 
-# TODO: not used, consider removing
 class CRCMEmulatorInferenceConfig(BaseConfig):
     """
     Inference settings of the CRCM emulator.
@@ -276,11 +283,15 @@ class CRCMEmulatorInferenceConfig(BaseConfig):
         List of inference periods. Each period has the form [start_datetime, end_datetime].
     device : str | None
         Device to use for inference with the trained emulator (e.g., "cpu", "cuda").
+    test_metrics : list[str]
+        Names of the extra metrics reported when evaluating on the test data, in addition to the losses
+        (e.g., "max_value_absolute_error").
     """
 
     variables: list[str] = Field(default_factory=list)
     periods: list[list[datetime]] | None = None
     device: str | None = None
+    test_metrics: list[str] = Field(default_factory=lambda: ["max_value_absolute_error"])
 
 
 class CRCMEmulatorDebugConfig(BaseConfig):

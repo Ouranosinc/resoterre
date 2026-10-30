@@ -82,7 +82,12 @@ def validate_cmip6_data(data: np.ndarray, variable_name: str) -> bool:
     """
     variable_handler = cmip6_variables[variable_name]
     is_valid = True
-    if data.min() < variable_handler.min:
+    if variable_handler.min is None:
+        logger.warning(
+            "Minimum value for variable '%s' is not defined.",
+            variable_name,
+        )
+    elif data.min() < variable_handler.min:
         is_valid = False
         logger.warning(
             "Data for variable '%s' contains values below the minimum allowed value of %s. Minimum value found: %s",
@@ -90,7 +95,12 @@ def validate_cmip6_data(data: np.ndarray, variable_name: str) -> bool:
             variable_handler.min,
             data.min(),
         )
-    if data.max() > variable_handler.max:
+    if variable_handler.max is None:
+        logger.warning(
+            "Maximum value for variable '%s' is not defined.",
+            variable_name,
+        )
+    elif data.max() > variable_handler.max:
         is_valid = False
         logger.warning(
             "Data for variable '%s' contains values above the maximum allowed value of %s. Maximum value found: %s",
@@ -98,7 +108,12 @@ def validate_cmip6_data(data: np.ndarray, variable_name: str) -> bool:
             variable_handler.max,
             data.max(),
         )
-    if data.mean() < variable_handler.mean_min or data.mean() > variable_handler.mean_max:
+    if variable_handler.mean_min is None or variable_handler.mean_max is None:
+        logger.warning(
+            "Mean value range for variable '%s' is not fully defined.",
+            variable_name,
+        )
+    elif data.mean() < variable_handler.mean_min or data.mean() > variable_handler.mean_max:
         is_valid = False
         logger.warning(
             "Data for variable '%s' has a mean value of %s, which is outside the expected range of [%s, %s]",

@@ -74,6 +74,35 @@ def gradient_norms(model: torch.nn.Module) -> dict[str, dict[str, float] | float
     return {"layers": layers_norm, "total": total_norm}
 
 
+def with_split(metrics: dict[str, Any], split: str) -> dict[str, Any]:
+    """
+    Add the data split to the name of each metric, so that splits do not overwrite each other on the logger.
+
+    The split is added in front of the last part of the name, so that the grouping done on ``/`` is kept
+    (``tas/rmse`` becomes ``tas/validation_rmse``, ``loss`` becomes ``validation_loss``).
+
+    Parameters
+    ----------
+    metrics : dict[str, Any]
+        Metrics by name.
+    split : str
+        Name of the split (e.g. "training", "validation" or "test").
+
+    Returns
+    -------
+    dict[str, Any]
+        Metrics renamed with the split. Names that already contain the split are left unchanged.
+    """
+    renamed = {}
+    for name, value in metrics.items():
+        if split in name.lower():
+            renamed[name] = value
+            continue
+        group, separator, last = name.rpartition("/")
+        renamed[f"{group}{separator}{split}_{last}"] = value
+    return renamed
+
+
 def extract_pth_epoch(p: Path) -> int:
     """
     Extract epoch from a saved pth file named ``<experiment_name>_epoch_<epoch>_<latest|best>.pth``.
@@ -435,7 +464,12 @@ class NNTraining(ABC):
                 epoch=epoch,
                 return_true_for=self.training_metrics_monitor,
             )
-            self.experiment_logger.log_metrics(self.metrics.last_values(), step=self.total_iterations, epoch=epoch)
+            training_values = {
+                k: v for k, v in self.metrics.last_values().items() if k not in self.validation_metrics_monitor
+            }
+            self.experiment_logger.log_metrics(
+                with_split(training_values, "training"), step=self.total_iterations, epoch=epoch
+            )
             self._log_training_step(identifier=f"end_of_training_step_epoch_{epoch}", inline=False, force=new_minima)
         self.total_samples += len(self.train_data_loader.dataset)
 
@@ -473,7 +507,7 @@ class NNTraining(ABC):
             The current epoch number.
         """
         metrics = {k: v for k, v in self.metrics.last_values().items() if k in self.validation_metrics_monitor}
-        self.experiment_logger.log_metrics(metrics, step=self.total_iterations, epoch=epoch)
+        self.experiment_logger.log_metrics(with_split(metrics, "validation"), step=self.total_iterations, epoch=epoch)
         for key, value in metrics.items():
             if self.validation_metric_mode != "min":
                 raise NotImplementedError()  # There is also no current arguments for the mode of secondary metrics.
@@ -500,7 +534,9 @@ class NNTraining(ABC):
             for key, timeseries in self.validation_metrics.items()
             if timeseries.values
         }
-        self.experiment_logger.log_metrics(validation_metrics_summary, epoch=epoch)
+        self.experiment_logger.log_metrics(
+            with_split(validation_metrics_summary, "validation"), step=self.total_iterations, epoch=epoch
+        )
 
     def validation_loop(self, epoch: int) -> None:
         """
@@ -560,7 +596,8 @@ class NNTraining(ABC):
         -------
         dict
             A dictionary containing training results such as start and end dates, elapsed time,
-            number of parameters, number of epochs, number of iterations, and best validation metrics.
+            number of parameters, number of epochs, number of iterations, best validation metrics (``MinVal``) and the
+            validation metrics of the latest epoch (``LastVal``).
         """
         num_params = sum(p.numel() for model in self.models.values() for p in model.parameters())
         if self.last_epoch_end_time is None or self.start_time is None:
@@ -576,6 +613,9 @@ class NNTraining(ABC):
         for loss_name, metric_minimum in self.best_validation_metrics.items():
             d[f"MinVal {loss_name}"] = metric_minimum.value
             d[f"MinVal {loss_name} Epoch"] = metric_minimum.epoch
+        for metric_name, timeseries in self.validation_metrics.items():
+            if timeseries.values:
+                d[f"LastVal {metric_name}"] = float(np.mean(timeseries.values))
         return d
 
     def save_results_json(self) -> None:

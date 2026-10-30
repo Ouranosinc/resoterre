@@ -7,6 +7,8 @@ paths:
   gcm_data: /Path/to/GCMs
   emission_data: /Path/to/GHGs
   crcm_data: /Path/to/MRCC5-CMIP6
+  baselines_out_dirs:
+    interpolation: /Path/to/baseline/interpolation
 
 preprocessing:
   # Simulations shared by GCM and CRCM preprocessing
@@ -32,6 +34,8 @@ preprocessing:
       - vas
       - va
       - zg
+      - pr
+      - tas
     nan_replacement: true
     allow_overwrite: false
   crcm:
@@ -62,6 +66,7 @@ data:
     - ta850
     - ta700
     - ta500
+    - tas
     - uas
     - ua850
     - ua700
@@ -71,6 +76,7 @@ data:
     - va700
     - va500
     - psl
+    - pr
   crcm_variables:
     - tas
   training_periods:
@@ -120,6 +126,18 @@ training:
   num_threads: 2
   device: cuda
   figure_every_n_steps: 10 # Comet ML training figure frequency, 0 to disable
+  validation_metrics: # extra metrics reported during validation, in addition to the losses
+    - max_value_absolute_error
+    - rmse
+    - ccc
+    - wasserstein_distance
+
+inference:
+  test_metrics: # extra metrics reported when evaluating on the test data, in addition to the losses
+    - max_value_absolute_error
+    - rmse
+    - ccc
+    - wasserstein_distance
 
 debug:
   crcm_figures:
