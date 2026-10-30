@@ -5,7 +5,7 @@ Read-only: opens the preprocessed GCM and CRCM zarr stores listed in the config 
 PASS or FAIL. Exits with status 1 if any check fails.
 
 To run:
-python check_cftime_dates.py --config Path/to/config.yaml
+python 05_check_cftime_dates.py --config Path/to/config.yaml
 """
 
 import argparse
