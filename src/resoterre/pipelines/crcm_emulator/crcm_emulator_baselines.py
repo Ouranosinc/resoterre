@@ -102,6 +102,37 @@ class InterpolationBaseline:
         )
         return bool(expected.any() and np.all(is_computed[:, expected] == 1))
 
+    def pending_chunks(self, gcm_simulation: list[str], chunk_indices: list[tuple[int, int]]) -> list[tuple[int, int]]:
+        """
+        Select the chunks containing validation or test time steps that are not computed yet.
+
+        Parameters
+        ----------
+        gcm_simulation : list[str]
+            List containing the GCM name, emission scenario, and ensemble member.
+        chunk_indices : list[tuple[int, int]]
+            Inclusive (start, end) time indices of the chunks.
+
+        Returns
+        -------
+        list[tuple[int, int]]
+            Chunks that still need to be computed.
+        """
+        xarray_dataset = xarray.open_zarr(self.baseline_zarr_path(gcm_simulation))
+        try:
+            time_values_cftime = convert_list_of_datetimes_to_cftime(xarray_dataset["time"].values)
+            is_computed = xarray_dataset["is_computed"].values
+        finally:
+            xarray_dataset.close()
+        periods = self.config.data.validation_periods + self.config.data.test_periods
+        pending = np.array(
+            [
+                any(start <= datetime(x.year, x.month, x.day) <= end for start, end in periods)
+                for x in time_values_cftime
+            ]
+        ) & ~np.all(is_computed == 1, axis=0)
+        return [(start, end) for start, end in chunk_indices if pending[start : end + 1].any()]
+
     def evaluate(self, metric_names: list[str], split: str = "test") -> dict[str, float]:
         """
         Evaluate the computed baseline against the CRCM data over the validation or test periods.
@@ -183,7 +214,7 @@ class InterpolationBaseline:
                 baseline_dataset.close()
         return consolidation(running_metrics)
 
-    def initialize_zarr(self, simulations: list[list[str]] | None = None) -> None:
+    def initialize_zarr(self, simulations: list[list[str]] | None = None, overwrite: bool = True) -> None:
         """
         Initialize the zarr dataset for each GCM simulation in the preprocessing range.
 
@@ -191,6 +222,8 @@ class InterpolationBaseline:
         ----------
         simulations : list[list[str]] | None
             GCM simulations to initialize. If None, all the simulations of the preprocessing configuration.
+        overwrite : bool
+            If False, existing zarr datasets are kept so that a partially computed baseline can be resumed.
         """
         if self.config.preprocessing.gcm.path is None:
             raise ValueError("config.preprocessing.gcm.path is None")
@@ -200,8 +233,8 @@ class InterpolationBaseline:
             raise ValueError("CRCM preprocessing end datetime must be specified.")
         for gcm_simulation in simulations if simulations is not None else self.config.preprocessing.simulations:
             path_output = self.baseline_zarr_path(gcm_simulation)
-            # if path_output.exists() and False:  # Consider having an overwrite check in yaml config
-            #     raise FileExistsError(f"Output file already exists: {path_output}")
+            if path_output.exists() and not overwrite:
+                continue
             crcm_emulator_output_format(
                 path_output=path_output,
                 start_datetime=self.config.preprocessing.crcm.start_datetime,
@@ -228,6 +261,8 @@ class InterpolationBaseline:
         """
         ds = xarray.open_dataset(self.baseline_zarr_path(gcm_simulation))
         time_values = ds["time"].values
+        is_computed = ds["is_computed"].values
+        variable_names = list(ds["variable_names"].values)
         ds.close()
         time_values_cftime = convert_list_of_datetimes_to_cftime(time_values)
         dates_tuples = [(x.year, x.month, x.day) for x in time_values_cftime]
@@ -268,6 +303,8 @@ class InterpolationBaseline:
             item_date = (item["year"].item(), item["month"].item(), item["day"].item())
             k = dates_tuples.index(item_date)
             for variable_name in self.config.data.crcm_variables:
+                if is_computed[variable_names.index(variable_name), k] == 1:
+                    continue
                 j = dataset.gcm_variables.index(variable_name)
                 data = item["input_first_block"][j, :, :]
                 # Bilinear interpolation

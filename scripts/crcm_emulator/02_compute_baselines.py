@@ -70,7 +70,7 @@ def main(config_path: Path, force: bool = False, workers: int = 1) -> None:
         for simulation in config.preprocessing.simulations:
             if simulation not in simulations:
                 print(f"Skipping simulation (baseline already computed): {simulation}")
-    baseline.initialize_zarr(simulations)
+    baseline.initialize_zarr(simulations, overwrite=force)
     if config.preprocessing.gcm.start_datetime is None:
         raise ValueError("GCM start_datetime must be specified in the configuration.")
     if config.preprocessing.gcm.end_datetime is None:
@@ -84,7 +84,11 @@ def main(config_path: Path, force: bool = False, workers: int = 1) -> None:
             chunk_size=config.preprocessing.chunk_size,
             chunks_per_task=config.preprocessing.chunks_per_task,
         )
-        tasks.extend((simulation, chunk_idx_start, chunk_idx_end) for chunk_idx_start, chunk_idx_end in chunk_indices)
+        pending_chunk_indices = baseline.pending_chunks(simulation, chunk_indices)
+        print(f"{simulation}: {len(pending_chunk_indices)}/{len(chunk_indices)} chunks left to compute")
+        tasks.extend(
+            (simulation, chunk_idx_start, chunk_idx_end) for chunk_idx_start, chunk_idx_end in pending_chunk_indices
+        )
     print(f"Computing {len(tasks)} chunks with {workers} worker(s)")
     if workers <= 1:
         for i, task in enumerate(tasks):
