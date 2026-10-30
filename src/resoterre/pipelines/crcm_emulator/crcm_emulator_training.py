@@ -85,6 +85,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             "MSELoss": nn.MSELoss(),
             "SSIMLoss": MultiScaleStructuralSimilarityIndexMeasure(data_range=(-1.0, 1.0)),
         }
+        self.diagnostic_figure_mapping = {"tas/bias_map": "nd_plot_reverse_i"}
 
     def build_dataset(self, time_periods: list[list[datetime]]) -> CRCMEmulatorDataset:
         """
@@ -307,6 +308,8 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             target_physical = denormalize_crcm(target_data, variable_names)
             output_physical = denormalize_crcm(output, variable_names)
             for name, metric_function in metric_functions.items():
+                # ToDo: there will most likely be variable specific metrics. Suggestion: have a
+                #       metric_function.per_variable boolean flag and handle accordingly in the update.
                 metrics.update(
                     per_variable_metrics(name, metric_function(target_physical, output_physical), variable_names)
                 )
@@ -390,7 +393,11 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             return
         consolidated = consolidation(self.running_validation_metrics)
         self.running_validation_metrics = {}
-        self.validation_metrics.add_concurrent_values(None, consolidated)
+        single_values_metrics = {key: value for key, value in consolidated.items() if isinstance(value, (float, int))}
+        self.validation_metrics.add_concurrent_values(None, single_values_metrics)
+        self.validation_diagnostics.update(
+            {key: value for key, value in consolidated.items() if not isinstance(value, (float, int))}
+        )
 
     def validation_loop(self, epoch: int) -> None:
         """

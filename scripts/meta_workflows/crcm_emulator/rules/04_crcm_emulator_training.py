@@ -43,6 +43,7 @@ if __name__ == "__main__":
             "matplotlib.pyplot",
             "numcodecs",
             "pyproj",
+            "urllib3.connectionpool",
         ],
     )
 

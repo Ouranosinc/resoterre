@@ -1,5 +1,6 @@
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -10,6 +11,7 @@ from resoterre.data_generators.mock_torch_dataset import mock_torch_dataloader
 from resoterre.logging_utils import start_root_logger
 from resoterre.ml import training_utils
 from resoterre.ml.neural_networks_basic import LinearReLU
+from resoterre.pipelines.crcm_emulator.experiment_logger import CometMLLogger
 
 
 def test_nn_training_init():
@@ -529,3 +531,18 @@ def test_nn_training_call_gpu():
 def test_with_split():
     result = training_utils.with_split({"tas/rmse": 1.0, "loss": 2.0, "(ValidationLoss)": 3.0}, "validation")
     assert result == {"tas/validation_rmse": 1.0, "validation_loss": 2.0, "(ValidationLoss)": 3.0}
+
+
+def test_log_validation_metrics_to_experiment_local_figure():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        dummy_experiment_logger_config = SimpleNamespace(disabled=True, offline_directory=Path(tmp_dir))
+
+        dummy_class = SimpleNamespace(
+            validation_metrics={},
+            experiment_logger=CometMLLogger(config=dummy_experiment_logger_config),  # type: ignore[arg-type]
+            validation_diagnostics={"tas/bias_map": torch.tensor([[1, 2], [3, 4]])},
+            diagnostic_figure_mapping={"tas/bias_map": "nd_plot_reverse_i"},
+            total_iterations=0,
+        )
+        training_utils.NNTraining.log_validation_metrics_to_experiment(dummy_class, epoch=1)  # type: ignore[arg-type]
+        assert Path(tmp_dir, "validation_tas-bias_map-0.png").is_file()
