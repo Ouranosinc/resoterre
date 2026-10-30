@@ -1,4 +1,29 @@
-"""Metrics of the CRCM emulator."""
+"""
+Metrics of the CRCM emulator.
+
+Notes
+-----
+Adding new metrics:
+
+1. Define a new class inheriting from ``Metric``. (in this module)
+
+   a. Set the ``name`` attribute to the desired metric name.
+   b. Set the ``reduction`` attribute (if a new consolidation is required, implement it in ``running_consolidation``).
+
+      - ``sample_mean``: The result of the __call__ function will be averaged over all batches, weighted by batch size.
+      - ``batch_mean``: The result of the __call__ function will be averaged over all batches, no weighting.
+      - ``max``: The maximum value over all batches.
+      - ``min``: The minimum value over all batches.
+      - ``sum``: The sum over all batches.
+
+2. Implement the ``__call__`` method to compute the metric for a batch of data.
+3. If special final consolidation is required, implement it in ``consolidation``.
+4. Add the metric to AVAILABLE_METRICS (in this module)
+5. If this is a diagnostic that will output a figure, specify the figure type in ``self.diagnostic_figure_mapping`` in
+   ``crcm_emulator_training.py``.
+
+   a. New figure types should be added to the figure dispatcher in ``plot_utils.py``.
+"""
 
 import math
 from abc import ABC, abstractmethod
@@ -245,6 +270,37 @@ class BiasMap(Metric):
         return (output - target_data).mean(dim=0)
 
 
+class MeanBias(Metric):
+    """
+    Mean bias between the target and the output.
+
+    Notes
+    -----
+    Computed on each image of each variable, then averaged over the batch, which leaves one value per variable.
+    """
+
+    name = "mean_bias"
+    reduction = "sample_mean"
+
+    def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the metric.
+
+        Parameters
+        ----------
+        target_data : torch.Tensor
+            The ground truth data.
+        output : torch.Tensor
+            The model output data.
+
+        Returns
+        -------
+        torch.Tensor
+            Metric of each variable, of shape (variables,), computed on the tensors' device.
+        """
+        return (per_image_and_variable(output) - per_image_and_variable(target_data)).mean(dim=-1).mean(dim=0)
+
+
 class CCC(Metric):
     """
     Lin's concordance correlation coefficient between the target and the output.
@@ -337,6 +393,7 @@ AVAILABLE_METRICS: dict[str, type[Metric]] = {
     CCC.name: CCC,
     WassersteinDistance.name: WassersteinDistance,
     BiasMap.name: BiasMap,
+    MeanBias.name: MeanBias,
 }
 
 
