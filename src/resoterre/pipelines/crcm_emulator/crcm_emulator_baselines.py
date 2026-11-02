@@ -1,7 +1,6 @@
 """Workflow components for computing baselines for the CRCM emulation task."""
 
 import logging
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -10,10 +9,7 @@ import xarray
 from scipy.ndimage import zoom
 
 from resoterre.config import CRCMEmulatorConfig
-from resoterre.data_management.cftime_utils import (
-    convert_list_of_datetimes_to_cftime,
-    overlap_periods_from_dates_and_periods,
-)
+from resoterre.data_management.cftime_utils import convert_list_of_datetimes_to_cftime
 from resoterre.datasets.cmip6.cmip6_utils import gcm_calendars
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
@@ -177,6 +173,10 @@ class InterpolationBaseline:
         """
         Process a chunk of interpolation baseline data for the given GCM simulation.
 
+        Days of the chunk that fall in the validation or test periods, and are computed for every variable in both the
+        GCM and the CRCM preprocessed data, are interpolated from the GCM data. Each zarr dataset is opened once, and
+        each variable is written once per contiguous run of days.
+
         Parameters
         ----------
         gcm_simulation : list[str]
@@ -186,57 +186,107 @@ class InterpolationBaseline:
         chunk_idx_end : int
             End index of the chunk.
         """
-        ds = xarray.open_dataset(self.baseline_zarr_path(gcm_simulation))
-        time_values = ds["time"].values
-        ds.close()
-        time_values_cftime = convert_list_of_datetimes_to_cftime(time_values)
-        dates_tuples = [(x.year, x.month, x.day) for x in time_values_cftime]
-        chunk_dates_tuples = dates_tuples[chunk_idx_start : chunk_idx_end + 1]
-        # Need to find the intersection of dates_tuples[chunk_idx_start:chunk_idx_end+1] with val and test periods
-        overlap_periods = overlap_periods_from_dates_and_periods(
-            [datetime(*x) for x in chunk_dates_tuples],
-            self.config.data.validation_periods + self.config.data.test_periods,
-        )
-        if not overlap_periods:
-            logger.warning("No overlapping periods found for the specified chunk.")
-            return
         if self.config.preprocessing.gcm.path is None:
             raise ValueError("GCM preprocessing path is not specified in the configuration.")
         if self.config.preprocessing.crcm.path is None:
             raise ValueError("CRCM preprocessing path is not specified in the configuration.")
-        dataset = CRCMEmulatorDataset(
-            path_gcm_preprocessing=self.config.preprocessing.gcm.path,
-            path_crcm_preprocessing=self.config.preprocessing.crcm.path,
-            simulations=[gcm_simulation],
-            gcm_variables=self.config.data.crcm_variables,  # Assuming match between gcm and crcm surface variables.
-            crcm_variables=self.config.data.crcm_variables,
-            time_periods=overlap_periods,
-            normalize=False,
-            max_open_datasets=self.config.data.max_open_datasets,
-        )
-        if not len(dataset):
-            logger.warning("No data found in the dataset for the specified chunk.")
+        path_baseline = self.baseline_zarr_path(gcm_simulation)
+        with xarray.open_zarr(path_baseline) as ds_baseline:
+            baseline_dates = _date_tuples(ds_baseline["time"].values)
+        periods = [
+            ((start.year, start.month, start.day), (end.year, end.month, end.day))
+            for start, end in self.config.data.validation_periods + self.config.data.test_periods
+        ]
+        chunk_days = {
+            baseline_dates[k]: k
+            for k in range(chunk_idx_start, min(chunk_idx_end, len(baseline_dates) - 1) + 1)
+            if any(start <= baseline_dates[k] <= end for start, end in periods)
+        }
+        if not chunk_days:
+            logger.warning("No overlapping periods found for the specified chunk.")
             return
-        item_0 = dataset[0]
-        dataset_initial_datetime = (item_0["year"].item(), item_0["month"].item(), item_0["day"].item())
-        start_idx = chunk_dates_tuples.index(dataset_initial_datetime)
 
-        for i, _ in enumerate(range(chunk_idx_start, chunk_idx_end + 1)):
-            if (i < start_idx) or (i - start_idx >= len(dataset)):
-                continue
-            item = dataset[i - start_idx]
-            item_date = (item["year"].item(), item["month"].item(), item["day"].item())
-            k = dates_tuples.index(item_date)
-            for variable_name in self.config.data.crcm_variables:
-                j = dataset.gcm_variables.index(variable_name)
-                data = item["input_first_block"][j, :, :]
-                # Bilinear interpolation
-                data_interpolated = zoom(
-                    data, zoom=self.config.data.coarsen_factor, order=1, grid_mode=True, mode="grid-mirror"
-                )
+        gcm_str = "_".join(gcm_simulation)
+        variable_names = self.config.data.crcm_variables
+        path_gcm = Path(self.config.preprocessing.gcm.path, f"crcm_emulator_input_{gcm_str}.zarr")
+        path_crcm = Path(self.config.preprocessing.crcm.path, f"crcm_emulator_output_{gcm_str}.zarr")
+        with xarray.open_zarr(path_gcm) as ds_gcm, xarray.open_zarr(path_crcm) as ds_crcm:
+            gcm_idx = _computed_days(ds_gcm, variable_names, list(chunk_days))
+            crcm_idx = _computed_days(ds_crcm, variable_names, list(chunk_days))
+            days = [day for day in chunk_days if day in gcm_idx and day in crcm_idx]
+            if not days:
+                logger.warning("No data found in the dataset for the specified chunk.")
+                return
+            gcm_time_idx = [gcm_idx[day] for day in days]
+            gcm_data = {name: ds_gcm[name].isel(time=gcm_time_idx).values.astype(np.float32) for name in variable_names}
+
+        baseline_idx = np.array([chunk_days[day] for day in days])
+        # Split into runs of consecutive days, each written in a single call.
+        runs = np.split(np.arange(len(days)), np.flatnonzero(np.diff(baseline_idx) != 1) + 1)
+        for variable_name, data in gcm_data.items():
+            nan_mask = np.isnan(data)
+            if np.any(nan_mask):
+                logger.warning("NaN values found in GCM variable %s. Replacing with 0.", variable_name)
+                data[nan_mask] = 0.0
+            # Bilinear interpolation
+            data_interpolated = np.stack(
+                [
+                    zoom(day_data, zoom=self.config.data.coarsen_factor, order=1, grid_mode=True, mode="grid-mirror")
+                    for day_data in data
+                ]
+            )
+            for run in runs:
                 write_crcm_time_slice_of_data(
-                    path_output=self.baseline_zarr_path(gcm_simulation),
+                    path_output=path_baseline,
                     variable_name=variable_name,
-                    data=data_interpolated[np.newaxis, :, :],  # reintroducing time dimension
-                    time_slice=slice(k, k + 1),
+                    data=data_interpolated[run],
+                    time_slice=slice(int(baseline_idx[run[0]]), int(baseline_idx[run[-1]]) + 1),
                 )
+
+
+def _date_tuples(time_values: np.ndarray) -> list[tuple[int, int, int]]:
+    """
+    Convert time values to (year, month, day) tuples.
+
+    Parameters
+    ----------
+    time_values : np.ndarray
+        Time values, as numpy datetime64 or cftime objects.
+
+    Returns
+    -------
+    list[tuple[int, int, int]]
+        Date of each time value.
+    """
+    return [(x.year, x.month, x.day) for x in convert_list_of_datetimes_to_cftime(list(time_values))]
+
+
+def _computed_days(
+    dataset: xarray.Dataset, variable_names: list[str], days: list[tuple[int, int, int]]
+) -> dict[tuple[int, int, int], int]:
+    """
+    Find the time index of each requested day that is computed for every variable of a preprocessed zarr dataset.
+
+    Parameters
+    ----------
+    dataset : xarray.Dataset
+        Preprocessed zarr dataset, with ``variable_names`` and ``is_computed`` coordinates.
+    variable_names : list[str]
+        Variables that must be computed.
+    days : list[tuple[int, int, int]]
+        Requested days, as (year, month, day) tuples.
+
+    Returns
+    -------
+    dict[tuple[int, int, int], int]
+        Time index in the dataset of each requested day that is present and computed for every variable.
+    """
+    date_idx = {day: k for k, day in enumerate(_date_tuples(dataset["time"].values))}
+    present = {day: date_idx[day] for day in days if day in date_idx}
+    if not present:
+        return {}
+    first, last = min(present.values()), max(present.values())
+    names_in_dataset = dataset["variable_names"].values.tolist()
+    variable_idx = [names_in_dataset.index(name) for name in variable_names]
+    computed = dataset["is_computed"][variable_idx, first : last + 1].values.all(axis=0)
+    return {day: k for day, k in present.items() if computed[k - first]}

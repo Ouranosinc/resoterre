@@ -4,6 +4,7 @@ from typing import Any
 
 import numpy as np
 import pytest
+import xarray
 
 from resoterre.config import (
     CRCMEmulatorConfig,
@@ -15,6 +16,7 @@ from resoterre.config import (
 from resoterre.pipelines.crcm_emulator import crcm_emulator_baselines
 from resoterre.pipelines.crcm_emulator.crcm_emulator_baselines import InterpolationBaseline
 from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import (
+    crcm_emulator_input_format,
     crcm_emulator_output_format,
     write_crcm_time_slice_of_data,
 )
@@ -106,3 +108,50 @@ def test_evaluate_invalid_split(tmp_path, monkeypatch, split, match):
     baseline = _baseline(tmp_path, monkeypatch, computed_days=[])
     with pytest.raises(ValueError, match=match):
         baseline.evaluate(["rmse"], split=split)
+
+
+def test_run(tmp_path):
+    simulation_str = "_".join(SIMULATION)
+    start, end = datetime(2000, 1, 1), datetime(2000, 1, 10)
+    config = CRCMEmulatorConfig(
+        paths=CRCMEmulatorPathsConfig(baselines_out_dirs={"interpolation": tmp_path / "baseline"}),
+        preprocessing=CRCMEmulatorPreprocessingConfig(
+            simulations=[SIMULATION],
+            chunk_size=2,
+            gcm=CRCMEmulatorSourcePreprocessingConfig(path=tmp_path, start_datetime=start, end_datetime=end),
+            crcm=CRCMEmulatorSourcePreprocessingConfig(path=tmp_path, start_datetime=start, end_datetime=end),
+        ),
+        data=CRCMEmulatorDataConfig(
+            crcm_variables=["tas"],
+            tile_size=TILE_SIZE,
+            coarsen_factor=2,
+            validation_periods=[[datetime(2000, 1, 2), datetime(2000, 1, 3)]],
+            test_periods=[[datetime(2000, 1, 6), datetime(2000, 1, 9)]],
+        ),
+    )
+    path_gcm = tmp_path / f"crcm_emulator_input_{simulation_str}.zarr"
+    path_crcm = tmp_path / f"crcm_emulator_output_{simulation_str}.zarr"
+    crcm_emulator_input_format(path_gcm, start, end, ["tas"], "test", tile_size=TILE_SIZE, coarsen_factor=2)
+    crcm_emulator_output_format(
+        path_output=path_crcm,
+        start_datetime=start,
+        end_datetime=end,
+        expected_variables=["tas"],
+        institution="test",
+        tile_size=TILE_SIZE,
+    )
+    # GCM fields are constant at 10 times the day of the month (NaN on day 2); day 7 is missing in the CRCM data.
+    for day in range(1, 11):
+        value = np.nan if day == 2 else 10.0 * day
+        write_crcm_time_slice_of_data(path_gcm, "tas", np.full((1, 2, 2), value), slice(day - 1, day))
+        if day != 7:
+            write_crcm_time_slice_of_data(path_crcm, "tas", np.zeros((1, TILE_SIZE, TILE_SIZE)), slice(day - 1, day))
+
+    baseline = InterpolationBaseline(config, initialize_zarr=True)
+    baseline.run(SIMULATION, 0, 9)
+
+    with xarray.open_zarr(baseline.baseline_zarr_path(SIMULATION)) as ds:
+        np.testing.assert_array_equal(np.flatnonzero(ds["is_computed"].values[0]) + 1, [2, 3, 6, 8, 9])
+        expected = {2: 0.0, 3: 30.0, 6: 60.0, 8: 80.0, 9: 90.0}
+        for day, value in expected.items():
+            np.testing.assert_allclose(ds["tas"].values[day - 1], np.full((TILE_SIZE, TILE_SIZE), value))
