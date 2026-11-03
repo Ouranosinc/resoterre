@@ -18,7 +18,8 @@ from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulator
 from resoterre.logging_utils import CustomLogging
 from resoterre.ml.network_manager import NeuralNetworksManager
 from resoterre.ml.neural_networks_unet import UNet
-from resoterre.ml.training_utils import NNTraining
+from resoterre.ml.training_utils import NNTraining, with_split
+from resoterre.pipelines.crcm_emulator.crcm_emulator_baselines import InterpolationBaseline
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 from resoterre.pipelines.crcm_emulator.experiment_logger import config_to_experiment_parameters
 from resoterre.pipelines.crcm_emulator.metrics import (
@@ -80,6 +81,8 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         # per metric: (weighted sum, total weight), kept as tensors on the device until consolidation()
         self.running_validation_metrics: dict[str, tuple[torch.Tensor, float]] = {}
         self.validation_metric_functions = build_metrics(self.config.training.validation_metrics)
+        # Interpolation baseline metrics, computed once, re-logged at each validation (see score_interpolation_baseline)
+        self.interpolation_baseline_metrics: dict[str, float] = {}
         self.init_unet()
         self.loss_functions = {
             "MSELoss": nn.MSELoss(),
@@ -485,18 +488,121 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         results["config"] = self.config_dict()
         return results
 
-    def training_loop(self) -> None:
+    def training_loop(self, test: bool = False) -> None:
         """
         Execute the main training loop for the model.
+
+        Parameters
+        ----------
+        test : bool
+            Whether to evaluate the best model on the test data once training is done (see ``test``).
 
         Notes
         -----
         Trains until ``training.nb_of_epochs`` epochs are completed in total, so a trainer whose state was
         restored with ``load_state`` only trains the remaining epochs.
         """
+        self.score_interpolation_baseline()
         for _ in range(self.epoch_counter, self.config.training.nb_of_epochs):
             self(epoch=self.epoch_counter + 1, device=self.config.training.device)
+        if test:
+            self.test()
         self.close()
+
+    def test(self) -> dict[str, float]:
+        """
+        Evaluate the model once on the test data, and log the metrics to Comet ML.
+
+        The best checkpoint in ``paths.output`` is evaluated, or the current model if there is none. The metrics are
+        ``inference.test_metrics`` (in addition to the losses), logged as e.g. ``tas/test_rmse`` at the current
+        step, along with ``test_checkpoint_epoch``, the epoch of the evaluated model.
+
+        Returns
+        -------
+        dict[str, float]
+            One consolidated value per metric over the test data, empty if there are no test data.
+        """
+        try:
+            _, test_data_loader = self.build_test_data_loader()
+        except ValueError as error:
+            logger.warning("Model not tested: %s", error)
+            return {}
+        step, epoch = self.total_iterations, self.epoch_counter
+        try:
+            if self.config.paths.output is None:
+                raise FileNotFoundError("paths.output is not set")
+            self.load_state(self.config.paths.output, tag="best")
+            self.to_device(self.config.inference.device or self.config.training.device)
+        except FileNotFoundError:
+            logger.warning("No best checkpoint found, testing the current model.")
+        results = self.evaluate(test_data_loader, build_metrics(self.config.inference.test_metrics), desc="Test")
+        self.experiment_logger.log_metrics(
+            {**with_split(results, "test"), "test_checkpoint_epoch": self.epoch_counter}, step=step, epoch=epoch
+        )
+        logger.info("Test results (epoch %d): %s", self.epoch_counter, results)
+        return results
+
+    def score_interpolation_baseline(self) -> None:
+        """
+        Score the precomputed interpolation baseline on the validation and test data, and log it to Comet ML.
+
+        Only done when ``training.log_interpolation_baseline`` is set and Comet ML logging is active. The baseline is
+        scored with ``training.validation_metrics`` on the validation periods and ``inference.test_metrics`` on the
+        test periods, and logged as ``interpolation_baseline/<split>/<variable>/<metric>``. A split that cannot be
+        scored (no baseline under ``paths.baselines_out_dirs.interpolation``, missing days, no period) is skipped
+        with a warning; the baseline is never computed here.
+        """
+        self.interpolation_baseline_metrics = {}
+        if not self.config.training.log_interpolation_baseline or self.experiment_logger.experiment is None:
+            return
+        if not self.config.paths.baselines_out_dirs.get("interpolation"):
+            logger.warning("Interpolation baseline not scored: no paths.baselines_out_dirs.interpolation in config")
+            return
+        baseline = InterpolationBaseline(self.config)
+        paths = [baseline.baseline_zarr_path(x) for x in self.config.preprocessing.simulations]
+        missing = [str(path) for path in paths if not path.is_dir()]
+        if not paths or missing:
+            logger.warning("Interpolation baseline not scored, missing: %s", ", ".join(missing) or "simulations")
+            return
+        for split, metric_names in (
+            ("validation", self.config.training.validation_metrics),
+            ("test", self.config.inference.test_metrics),
+        ):
+            try:
+                results = baseline.evaluate(metric_names, split=split)
+            except (KeyError, RuntimeError, ValueError) as error:
+                logger.warning("Interpolation baseline not scored on the %s data: %s", split, error)
+                continue
+            self.interpolation_baseline_metrics.update(
+                {f"interpolation_baseline/{split}/{name}": value for name, value in results.items()}
+            )
+        self.log_interpolation_baseline_metrics(epoch=self.epoch_counter)
+
+    def log_interpolation_baseline_metrics(self, epoch: int) -> None:
+        """
+        Log the interpolation baseline metrics at the current step, so that they form a constant line in Comet ML.
+
+        Parameters
+        ----------
+        epoch : int
+            The current epoch number.
+        """
+        if self.interpolation_baseline_metrics:
+            self.experiment_logger.log_metrics(
+                self.interpolation_baseline_metrics, step=self.total_iterations, epoch=epoch
+            )
+
+    def log_validation_metrics_to_experiment(self, epoch: int) -> None:
+        """
+        Log the consolidated validation metrics, and the interpolation baseline metrics, to the experiment logger.
+
+        Parameters
+        ----------
+        epoch : int
+            The current epoch number.
+        """
+        super().log_validation_metrics_to_experiment(epoch)
+        self.log_interpolation_baseline_metrics(epoch)
 
     def output_training_figures(
         self, input_data: torch.Tensor, target_data: torch.Tensor, output_data: torch.Tensor

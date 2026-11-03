@@ -260,6 +260,10 @@ class CRCMEmulatorTrainingConfig(BaseConfig):
     validation_metrics : list[str]
         Names of the extra metrics reported during validation, in addition to the losses
         (e.g., "max_value_absolute_error").
+    log_interpolation_baseline : bool
+        Score the precomputed interpolation baseline (``paths.baselines_out_dirs.interpolation``) at the start of
+        training and log it to Comet ML, as a constant line next to the validation metrics. The baseline is only
+        scored, never computed: it is skipped with a warning if missing or incomplete.
     """
 
     nb_of_epochs: int = 10
@@ -267,6 +271,7 @@ class CRCMEmulatorTrainingConfig(BaseConfig):
     figure_every_n_steps: int = Field(default=10, ge=0)
     # TODO: metrics to be different per variable so a dict instead of a list
     validation_metrics: list[str] = Field(default_factory=lambda: ["max_value_absolute_error"])
+    log_interpolation_baseline: bool = False
     # TODO: not used, consider removing
     num_threads: int = 2
 

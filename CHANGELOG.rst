@@ -10,6 +10,7 @@ Contributors: Contributors: Francis Charette-Migneault (:user:`fmigneault`), Bla
 
 Changes
 ^^^^^^^
+* Optionally score the precomputed interpolation baseline at the start of training and log it to Comet ML as constant lines (``training.log_interpolation_baseline``), and evaluate the best checkpoint once on the test data at the end of ``03_train.py``, logging the test metrics to Comet ML. (:issue:`174`, :pull:`176`).
 * Score the precomputed interpolation baseline against ``inference.test_metrics`` on the validation and test periods; ``02_compute_baselines.py`` is renamed ``02_score_baselines.py`` and only evaluates, the baseline itself is computed with the snakemake workflow. ``InterpolationBaseline.run`` now reads the GCM zarr directly and writes contiguous runs of days instead of one day at a time, and ``InterpolationBaseline.evaluate`` reads samples with parallel data loader workers. (:issue:`174`, :pull:`176`).
 * Add a ``metrics`` module for the CRCM emulator with configurable validation and test metrics selected by name (``training.validation_metrics``, ``inference.test_metrics``): ``max_value_absolute_error``, ``rmse``, ``ccc`` and ``wasserstein_distance``, computed on denormalized data, reported for each variable (e.g. ``tas/rmse``), with a per-metric aggregation (``reduction``), and refactor the trainer and ``04_inference.py`` to share one evaluation path. (:issue:`156`, :pull:`162`).
 * Add interpolation baseline workflow (``03_baseline.smk``) for the CRCM emulator (:issue:`122`, :pull:`160`)
