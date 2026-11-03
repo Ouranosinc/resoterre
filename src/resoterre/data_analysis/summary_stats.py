@@ -304,7 +304,8 @@ def summarize_data(
     statistics and forcing statistics, and writes them to ``normalization_stats_climate_vars_{years}.csv``
     and ``normalization_stats_forcings_{years}.csv`` in ``output_dir``, where ``years`` comes from
     ``period_years``. Every row starts with the ``gcm``, ``scenario``, ``member``, and ``periods``
-    it was computed for, so simulations of several GCMs share the same files.
+    it was computed for, so simulations of several GCMs share the same files. When one member has
+    several scenarios, extra rows with ``scenario`` ``all`` pool those scenarios.
 
     Parameters
     ----------
@@ -334,6 +335,7 @@ def summarize_data(
 
     frames: list[pd.DataFrame] = []
     forcing_frames: list[pd.DataFrame] = []
+    sims_by_member: dict[tuple[str, str], list[str]] = {}
     for gcm, scenario, member in simulations:
         sim = f"{gcm}_{scenario}_{member}"
         if sim not in data_gcm:
@@ -343,6 +345,18 @@ def summarize_data(
         frames.append(compute_climate_var_stats(data_gcm[sim], dataset.gcm_variables, run, "gcm"))
         frames.append(compute_climate_var_stats(data_crcm[sim], dataset.crcm_variables, run, "crcm"))
         forcing_frames.append(compute_forcings_stats(data_gcm[sim], run))
+        sims_by_member.setdefault((gcm, member), []).append(sim)
+
+    for (gcm, member), sims in sims_by_member.items():
+        if len(sims) < 2:
+            continue
+        logger.info("Summarizing %s %s over %s, pooling %s", gcm, member, periods, sims)
+        run = {"gcm": gcm, "scenario": "all", "member": member, "periods": periods}
+        gcm_data = xr.concat([data_gcm[sim] for sim in sims], dim="time")
+        crcm_data = xr.concat([data_crcm[sim] for sim in sims], dim="time")
+        frames.append(compute_climate_var_stats(gcm_data, dataset.gcm_variables, run, "gcm"))
+        frames.append(compute_climate_var_stats(crcm_data, dataset.crcm_variables, run, "crcm"))
+        forcing_frames.append(compute_forcings_stats(gcm_data, run))
 
     if not frames:
         raise ValueError(f"No simulations have valid days in {periods}.")

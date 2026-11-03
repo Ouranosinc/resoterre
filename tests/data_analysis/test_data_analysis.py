@@ -301,6 +301,47 @@ def test_summarize_data(tmp_path):
     assert list(written_forcings.columns) == list(forcing_df.columns)
 
 
+def test_summarize_data_pools_scenarios_of_one_member(tmp_path):
+    historical_gcm = _daily_dataset("ta850", "2000-01-01", 4)
+    historical_crcm = _daily_dataset("tas", "2000-01-01", 4)
+    ssp_gcm = _daily_dataset("ta850", "2001-01-01", 4)
+    ssp_crcm = _daily_dataset("tas", "2001-01-01", 4)
+    ssp_gcm["ta850"] = ssp_gcm["ta850"] + 10
+    ssp_crcm["tas"] = ssp_crcm["tas"] + 10
+    sims = ["CNRM-ESM2-1_historical_r1i1p1f2", "CNRM-ESM2-1_ssp245_r1i1p1f2"]
+    dataset = _FakeEmulatorDataset(
+        valid_idx=[(sim, i, i) for sim in sims for i in range(4)],
+        stores={
+            "gcm": {sims[0]: historical_gcm, sims[1]: ssp_gcm},
+            "crcm": {sims[0]: historical_crcm, sims[1]: ssp_crcm},
+        },
+        gcm_variables=["ta850"],
+        crcm_variables=["tas"],
+    )
+    periods = [
+        [np.datetime64("2000-01-01"), np.datetime64("2000-01-02")],
+        [np.datetime64("2001-01-01"), np.datetime64("2001-01-02")],
+    ]
+
+    stats_df, forcing_df = summarize_data(
+        dataset,
+        tmp_path,
+        periods,
+        [["CNRM-ESM2-1", "historical", "r1i1p1f2"], ["CNRM-ESM2-1", "ssp245", "r1i1p1f2"]],
+    )
+
+    pooled = np.array([0.0, 1.0, 10.0, 11.0])
+    climate = stats_df[stats_df["scenario"] == "all"]
+    assert list(climate["model"]) == ["gcm", "crcm"]
+    assert set(climate["n_time_steps"]) == {4}
+    for _, row in climate.iterrows():
+        _assert_summary(row, pooled)
+    forcing = forcing_df[forcing_df["scenario"] == "all"].iloc[0]
+    # Forcings keep the first day of each year: 0 in 2000 and 10 in 2001.
+    _assert_summary(forcing, np.array([0.0, 10.0]))
+    assert set(stats_df["scenario"]) == {"historical", "ssp245", "all"}
+
+
 def test_summarize_data_writes_all_gcms_to_one_file_and_overwrites_reruns(tmp_path):
     dataset = _member_dataset(["CNRM-ESM2-1_historical_r1i1p1f2", "MPI-ESM1-2-HR_historical_r1i1p1f1"])
     simulations = [["CNRM-ESM2-1", "historical", "r1i1p1f2"], ["MPI-ESM1-2-HR", "historical", "r1i1p1f1"]]
