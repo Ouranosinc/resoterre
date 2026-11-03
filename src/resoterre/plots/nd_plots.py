@@ -93,6 +93,39 @@ def nd_fig_plot(
     nd_ax_plot(ax, fig, plot_data, title=title, vmin=vmin, vmax=vmax, reverse_i=reverse_i)
 
 
+def nd_plot(
+    plot_data: np.ndarray,
+    title: str,
+    vmin: float | None = None,
+    vmax: float | None = None,
+    reverse_i: bool = False,
+) -> plt.Figure:
+    """
+    Display a plot of n-dimensional data.
+
+    Parameters
+    ----------
+    plot_data : np.ndarray
+        The n-dimensional data to plot. Can be 0D (scalar), 1D (vector), or 2D (matrix).
+    title : str
+        The title for the plot.
+    vmin : float, optional
+        The minimum value for the color scale (only for 2D data).
+    vmax : float, optional
+        The maximum value for the color scale (only for 2D data).
+    reverse_i : bool, optional
+        Whether to reverse the order of the first dimension (only for 2D data).
+
+    Returns
+    -------
+    plt.Figure
+        The Matplotlib Figure containing the plot.
+    """
+    fig = plt.figure()
+    nd_fig_plot(fig, plot_data, title, vmin=vmin, vmax=vmax, reverse_i=reverse_i)
+    return fig
+
+
 def nd_save_plot(
     figure_file: Path | str,
     plot_data: np.ndarray,
