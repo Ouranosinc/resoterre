@@ -541,7 +541,9 @@ def test_log_validation_metrics_to_experiment_local_figure():
             validation_metrics={},
             experiment_logger=CometMLLogger(config=dummy_experiment_logger_config),  # type: ignore[arg-type]
             validation_diagnostics={"tas/bias_map": torch.tensor([[1, 2], [3, 4]])},
-            diagnostic_figure_mapping={"tas/bias_map": "nd_plot_reverse_i"},
+            diagnostic_figure_mapping={
+                "tas/bias_map": {"figure_type": "nd_plot", "figure_kwargs": {"reverse_i": True}}
+            },
             total_iterations=0,
         )
         training_utils.NNTraining.log_validation_metrics_to_experiment(dummy_class, epoch=1)  # type: ignore[arg-type]

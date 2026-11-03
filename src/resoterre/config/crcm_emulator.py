@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from pydantic import Field
 
@@ -294,6 +295,24 @@ class CRCMEmulatorInferenceConfig(BaseConfig):
     test_metrics: list[str] = Field(default_factory=lambda: ["max_value_absolute_error"])
 
 
+class CRCMEmulatorPlotConfig(BaseConfig):
+    """
+    Plotting settings of the CRCM emulator.
+
+    Attributes
+    ----------
+    metric_mapping : dict[str, dict[str, Any]]
+        Mapping of metrics to their plotting configurations.
+    variable_mapping : dict[str, dict[str, Any]]
+        Mapping of variables to their plotting configurations.
+    """
+
+    metric_mapping: dict[str, dict[str, Any]] = Field(
+        default_factory=lambda: {"bias_map": {"figure_type": "nd_plot", "kwargs": {"reverse_i": True}}}
+    )
+    variable_mapping: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+
 class CRCMEmulatorDebugConfig(BaseConfig):
     """
     Debugging figures produced during preprocessing.
@@ -358,6 +377,7 @@ class CRCMEmulatorConfig(BaseConfig):
     training: CRCMEmulatorTrainingConfig = Field(default_factory=CRCMEmulatorTrainingConfig)
     # TODO: not used, consider removing
     inference: CRCMEmulatorInferenceConfig = Field(default_factory=CRCMEmulatorInferenceConfig)
+    plot: CRCMEmulatorPlotConfig = Field(default_factory=CRCMEmulatorPlotConfig)
     debug: CRCMEmulatorDebugConfig = Field(default_factory=CRCMEmulatorDebugConfig)
     analysis: CRCMEmulatorAnalysisConfig = Field(default_factory=CRCMEmulatorAnalysisConfig)
     logger: ExperimentLoggerConfig | None = None

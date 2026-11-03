@@ -19,10 +19,9 @@ Adding new metrics:
 2. Implement the ``__call__`` method to compute the metric for a batch of data.
 3. If special final consolidation is required, implement it in ``consolidation``.
 4. Add the metric to AVAILABLE_METRICS (in this module)
-5. If this is a diagnostic that will output a figure, specify the figure type in ``self.diagnostic_figure_mapping`` in
-   ``crcm_emulator_training.py``.
+5. If this is a diagnostic that will output a figure, specify the figure type in ``CRCMEmulatorPlotConfig``.
 
-   a. New figure types should be added to the figure dispatcher in ``plot_utils.py``.
+   a. New figure types should be added to the figure dispatcher in ``plots/utils.py``.
 """
 
 import math
