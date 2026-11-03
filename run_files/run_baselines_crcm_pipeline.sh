@@ -13,6 +13,7 @@
 # Runs the snakemake baseline workflow (scripts/meta_workflows/crcm_emulator/rules/03_baseline.smk), one job per chunk.
 # Manifests and logs are written to <workflow_dir>; chunks with an existing manifest are skipped when resubmitting.
 
+# time taken: ~ 1 hour on mila cluster
 set -euo pipefail
 
 CONFIG_FILE=$(realpath "${1:?Usage: sbatch run_files/run_baselines_crcm_pipeline.sh <config_file.yaml> <workflow_dir>}")

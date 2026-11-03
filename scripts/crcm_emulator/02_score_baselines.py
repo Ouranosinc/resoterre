@@ -3,7 +3,7 @@ Evaluate the CRCM emulator baselines from a YAML configuration.
 
 Run::
 
-    python scripts/crcm_emulator/02_compute_baselines.py \
+    python scripts/crcm_emulator/02_score_baselines.py \
         --config configs/crcm_emulator/crcm_emulator_cnrm_ssp245.yaml``
 
 The baseline zarr datasets must already be computed, e.g. with the snakemake workflow
