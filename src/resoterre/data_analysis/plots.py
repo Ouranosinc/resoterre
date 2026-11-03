@@ -257,32 +257,42 @@ def visualize_range_and_mean(
     output_dir: Path | str,
     range_and_mean_groups: dict[str, str],
     surface_variables: dict[str, str],
+    group_by_family: bool = True,
 ) -> None:
     """
     Plot min–max range and mean, one figure per variable family.
 
     The figure for each family comes from ``range_and_mean_groups``. Any family
-    that is not listed, such as ``psl``, is written to its own file.
+    that is not listed, such as ``psl``, is written to its own file. Rows are labelled
+    by scenario, or by the full simulation name when several simulations share a scenario.
 
     Parameters
     ----------
     stats_df : pandas.DataFrame
-        Summary statistics including ``min``, ``max``, and ``mean``.
+        Summary statistics including ``gcm``, ``scenario``, ``member``, ``model``, ``variable``,
+        ``min``, ``max``, and ``mean``.
     output_dir : Path | str
         Directory where the plots are written.
     range_and_mean_groups : dict[str, str]
         Variable family mapped to the figure it shares.
     surface_variables : dict[str, str]
         Surface variable mapped onto the stem of its pressure-level counterpart.
+    group_by_family : bool, optional
+        If False, write one figure per variable instead, which suits variables with unrelated
+        scales and names that end in digits, such as the forcings ``CO2`` and ``CFC12``.
     """
     logger.info("Visualizing range and mean")
     output_dir = Path(output_dir)
 
     plot_df = stats_df.copy()
-    plot_df["sim_short"] = plot_df["sim"].map(scenario_from_sim)
-    plot_df["group"] = plot_df["variable"].map(
-        lambda variable: range_and_mean_group(variable, range_and_mean_groups, surface_variables)
-    )
+    sims = plot_df["gcm"] + "_" + plot_df["scenario"] + "_" + plot_df["member"]
+    plot_df["sim_short"] = sims.map(sim_labels(sims))
+    if group_by_family:
+        plot_df["group"] = plot_df["variable"].map(
+            lambda variable: range_and_mean_group(variable, range_and_mean_groups, surface_variables)
+        )
+    else:
+        plot_df["group"] = plot_df["variable"]
     plot_df = plot_df.sort_values(["group", "variable", "sim_short"]).reset_index(drop=True)
 
     for group_id, group_df in plot_df.groupby("group", sort=False):
@@ -292,6 +302,8 @@ def visualize_range_and_mean(
 def visualize_temporal_mean_and_sample(
     data_gcm: dict[str, xr.Dataset],
     data_crcm: dict[str, xr.Dataset],
+    vars_gcm: list[str],
+    vars_crcm: list[str],
     output_dir: Path | str,
 ) -> None:
     """
@@ -306,6 +318,10 @@ def visualize_temporal_mean_and_sample(
         GCM data keyed by simulation name.
     data_crcm : dict[str, xarray.Dataset]
         CRCM data keyed by simulation name.
+    vars_gcm : list[str]
+        GCM variables to plot.
+    vars_crcm : list[str]
+        CRCM variables to plot.
     output_dir : Path | str
         Directory where the plots are written.
     """
@@ -318,12 +334,11 @@ def visualize_temporal_mean_and_sample(
     requests: list[tuple[str, str, str, str]] = []
     lazy_fields: list[xr.DataArray] = []
     for sim in data_gcm:
-        for model, store in (("gcm", data_gcm), ("crcm", data_crcm)):
+        for model, store, vars in (("gcm", data_gcm, vars_gcm), ("crcm", data_crcm, vars_crcm)):
             if sim not in store:
                 continue
             ds = store[sim]
-            for var in ds.data_vars:
-                var = str(var)
+            for var in vars:
                 sample, date_label = first_sample(sim, model, var, data_gcm, data_crcm)
                 requests.append((sim, model, var, date_label))
                 lazy_fields.extend((ds[var].mean("time", skipna=True), sample))
