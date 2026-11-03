@@ -180,7 +180,8 @@ class NNTraining(ABC):
         self.metrics = MultiTimeseries()
         self.validation_metrics = MultiTimeseries()
         self.validation_diagnostics: dict[str, Any] = {}
-        self.diagnostic_figure_mapping: dict[str, str] = {}
+        # ToDo: this structure is getting quite complex, perhaps it needs a class
+        self.diagnostic_figure_mapping: dict[str, dict[str, Any]] = {}
 
         self.best_validation_metrics: dict[str, MetricMinimum] = {}
 
@@ -543,7 +544,10 @@ class NNTraining(ABC):
         for key, nd_array in self.validation_diagnostics.items():
             # ToDo: Some diagnostic data should also be saved to disk for later use in publication figures.
             figure = figure_dispatcher(
-                figure_type=self.diagnostic_figure_mapping[key], data=nd_array.numpy(), title=f"validation-{key}"
+                figure_type=self.diagnostic_figure_mapping[key]["figure_type"],
+                data=nd_array.numpy(),
+                title=f"validation-{key}",
+                figure_kwargs=self.diagnostic_figure_mapping[key].get("figure_kwargs", {}),
             )
             self.experiment_logger.log_figure(figure, name=f"validation_{key}", step=self.total_iterations)
 

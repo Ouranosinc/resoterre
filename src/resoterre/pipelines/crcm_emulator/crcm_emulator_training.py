@@ -88,7 +88,12 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             "MSELoss": nn.MSELoss(),
             "SSIMLoss": MultiScaleStructuralSimilarityIndexMeasure(data_range=(-1.0, 1.0)),
         }
-        self.diagnostic_figure_mapping = {"tas/bias_map": "nd_plot_reverse_i"}
+        # ToDo: this may have to be expanded for variable-specific figure mappings
+        for variable_name in config.data.crcm_variables:
+            for metric_name in config.training.validation_metrics:
+                diagnostic_key = f"{variable_name}/{metric_name}"
+                if metric_name in self.config.plot.metric_mapping:
+                    self.diagnostic_figure_mapping[diagnostic_key] = self.config.plot.metric_mapping[metric_name]
 
     def build_dataset(self, time_periods: list[list[datetime]]) -> CRCMEmulatorDataset:
         """

@@ -1,13 +1,24 @@
 """General plotting utilities for Resoterre."""
 
+from typing import Any
+
 import matplotlib.pyplot as plt
 import numpy as np
 
 from resoterre.plots.nd_plots import nd_plot
 
 
-# ToDo: add additional arguments or handle arbitrary figure kwargs?
-def figure_dispatcher(figure_type: str, data: np.ndarray, title: str) -> plt.Figure:
+FIGURE_FUNCTIONS = {
+    "nd_plot": nd_plot,
+}
+
+
+def figure_dispatcher(
+    figure_type: str,
+    data: np.ndarray,
+    title: str,
+    figure_kwargs: dict[str, Any] | None = None,
+) -> plt.Figure:
     """
     Dispatch the appropriate figure creation function based on the figure type.
 
@@ -19,14 +30,17 @@ def figure_dispatcher(figure_type: str, data: np.ndarray, title: str) -> plt.Fig
         The data to be plotted.
     title : str
         The title of the figure.
+    figure_kwargs : dict[str, Any], optional
+        Additional keyword arguments to pass to the figure creation function.
 
     Returns
     -------
     plt.Figure
         The created figure.
     """
-    if figure_type == "nd_plot":
-        return nd_plot(plot_data=data, title=title)
-    elif figure_type == "nd_plot_reverse_i":
-        return nd_plot(plot_data=data, title=title, reverse_i=True)
-    raise ValueError(f"Unsupported figure type: {figure_type}")
+    try:
+        plot_fn = FIGURE_FUNCTIONS[figure_type]
+    except KeyError:
+        supported = ", ".join(FIGURE_FUNCTIONS.keys())
+        raise ValueError(f"Unsupported figure type: {figure_type}. Supported types are: {supported}") from None
+    return plot_fn(plot_data=data, title=title, **(figure_kwargs or {}))
