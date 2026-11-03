@@ -61,6 +61,7 @@ def _baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, computed_days: li
             crcm_variables=["tas"],
             tile_size=TILE_SIZE,
             batch_size=2,
+            num_workers=0,
             validation_periods=[],
             test_periods=[[datetime(2000, 1, 2), datetime(2000, 1, 4)]],
         ),

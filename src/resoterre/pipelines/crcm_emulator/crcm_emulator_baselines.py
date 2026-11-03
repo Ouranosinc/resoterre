@@ -4,24 +4,17 @@ import logging
 from pathlib import Path
 
 import numpy as np
-import torch
 import xarray
 from scipy.ndimage import zoom
 
 from resoterre.config import CRCMEmulatorConfig
-from resoterre.data_management.cftime_utils import convert_list_of_datetimes_to_cftime
 from resoterre.datasets.cmip6.cmip6_utils import gcm_calendars
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
+from resoterre.pipelines.crcm_emulator.baseline_evaluation import date_tuples, evaluate_precomputed_predictions
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import (
     crcm_emulator_output_format,
     write_crcm_time_slice_of_data,
-)
-from resoterre.pipelines.crcm_emulator.metrics import (
-    build_metrics,
-    consolidation,
-    per_variable_metrics,
-    running_consolidation,
 )
 
 
@@ -104,47 +97,17 @@ class InterpolationBaseline:
         )
         if not len(dataset):
             raise ValueError(f"No {split} samples match {split}_periods and the selected variables.")
-        metrics = build_metrics(metric_names)
-        simulations_by_name = {"_".join(x): x for x in self.config.preprocessing.simulations}
-        baseline_datasets: dict[str, xarray.Dataset] = {}
-        baseline_date_idx: dict[str, dict[tuple[int, int, int], int]] = {}
-        running_metrics: dict[str, tuple[torch.Tensor, float]] = {}
-        batch_size = self.config.data.batch_size
-        try:
-            for batch_start in range(0, len(dataset), batch_size):
-                targets, outputs = [], []
-                for idx in range(batch_start, min(batch_start + batch_size, len(dataset))):
-                    item = dataset[idx]
-                    gcm_str = dataset.valid_idx[idx][0]
-                    if gcm_str not in baseline_datasets:
-                        baseline_datasets[gcm_str] = xarray.open_zarr(
-                            self.baseline_zarr_path(simulations_by_name[gcm_str])
-                        )
-                        time_values_cftime = convert_list_of_datetimes_to_cftime(
-                            list(baseline_datasets[gcm_str]["time"].values)
-                        )
-                        baseline_date_idx[gcm_str] = {
-                            (x.year, x.month, x.day): k for k, x in enumerate(time_values_cftime)
-                        }
-                    k = baseline_date_idx[gcm_str][(item["year"].item(), item["month"].item(), item["day"].item())]
-                    if not np.all(baseline_datasets[gcm_str]["is_computed"][:, k].values == 1):
-                        raise RuntimeError(f"Baseline of {gcm_str} is not computed for time index {k}.")
-                    targets.append(item["target"])
-                    outputs.append(
-                        np.stack([baseline_datasets[gcm_str][name].isel(time=k).values for name in variable_names])
-                    )
-                target_tensor = torch.from_numpy(np.stack(targets)).float()
-                output_tensor = torch.from_numpy(np.stack(outputs)).float()
-                batch_metrics = {}
-                for name, metric_function in metrics.items():
-                    batch_metrics.update(
-                        per_variable_metrics(name, metric_function(target_tensor, output_tensor), variable_names)
-                    )
-                running_consolidation(running_metrics, batch_metrics, batch_size=target_tensor.shape[0])
-        finally:
-            for baseline_dataset in baseline_datasets.values():
-                baseline_dataset.close()
-        return consolidation(running_metrics)
+        return evaluate_precomputed_predictions(
+            dataset,
+            {"_".join(x): self.baseline_zarr_path(x) for x in self.config.preprocessing.simulations},
+            variable_names,
+            metric_names,
+            batch_size=self.config.data.batch_size,
+            num_workers=self.config.data.num_workers,
+            prefetch_factor=self.config.data.prefetch_factor,
+            device=self.config.inference.device or self.config.training.device,
+            desc=f"Baseline {split}",
+        )
 
     def initialize_zarr(self) -> None:
         """Initialize the zarr dataset for each GCM simulation in the preprocessing range."""
@@ -192,7 +155,7 @@ class InterpolationBaseline:
             raise ValueError("CRCM preprocessing path is not specified in the configuration.")
         path_baseline = self.baseline_zarr_path(gcm_simulation)
         with xarray.open_zarr(path_baseline) as ds_baseline:
-            baseline_dates = _date_tuples(ds_baseline["time"].values)
+            baseline_dates = date_tuples(ds_baseline["time"].values)
         periods = [
             ((start.year, start.month, start.day), (end.year, end.month, end.day))
             for start, end in self.config.data.validation_periods + self.config.data.test_periods
@@ -244,23 +207,6 @@ class InterpolationBaseline:
                 )
 
 
-def _date_tuples(time_values: np.ndarray) -> list[tuple[int, int, int]]:
-    """
-    Convert time values to (year, month, day) tuples.
-
-    Parameters
-    ----------
-    time_values : np.ndarray
-        Time values, as numpy datetime64 or cftime objects.
-
-    Returns
-    -------
-    list[tuple[int, int, int]]
-        Date of each time value.
-    """
-    return [(x.year, x.month, x.day) for x in convert_list_of_datetimes_to_cftime(list(time_values))]
-
-
 def _computed_days(
     dataset: xarray.Dataset, variable_names: list[str], days: list[tuple[int, int, int]]
 ) -> dict[tuple[int, int, int], int]:
@@ -281,7 +227,7 @@ def _computed_days(
     dict[tuple[int, int, int], int]
         Time index in the dataset of each requested day that is present and computed for every variable.
     """
-    date_idx = {day: k for k, day in enumerate(_date_tuples(dataset["time"].values))}
+    date_idx = {day: k for k, day in enumerate(date_tuples(dataset["time"].values))}
     present = {day: date_idx[day] for day in days if day in date_idx}
     if not present:
         return {}
