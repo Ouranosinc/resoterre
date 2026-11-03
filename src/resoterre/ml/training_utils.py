@@ -21,7 +21,7 @@ from resoterre.logging_utils import CustomLogging, logging_delay_sequence, reada
 from resoterre.ml.ml_loops import MinimaTracker
 from resoterre.ml.ml_utils import log_device_info
 from resoterre.pipelines.crcm_emulator.experiment_logger import CometMLLogger
-from resoterre.plots.plot_utils import figure_dispatcher
+from resoterre.plots.utils import figure_dispatcher
 
 
 logger = CustomLogging(caller=logging.getLogger(__name__))
