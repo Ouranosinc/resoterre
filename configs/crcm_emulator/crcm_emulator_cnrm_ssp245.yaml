@@ -127,17 +127,19 @@ training:
   device: cuda
   figure_every_n_steps: 10 # Comet ML training figure frequency, 0 to disable
   validation_metrics: # extra metrics reported during validation, in addition to the losses
-    - max_value_absolute_error
     - rmse
     - ccc
     - wasserstein_distance
+    - bias_map
+    - mean_bias
 
 inference:
   test_metrics: # extra metrics reported when evaluating on the test data, in addition to the losses
-    - max_value_absolute_error
     - rmse
     - ccc
     - wasserstein_distance
+    - bias_map
+    - mean_bias
 
 debug:
   crcm_figures:

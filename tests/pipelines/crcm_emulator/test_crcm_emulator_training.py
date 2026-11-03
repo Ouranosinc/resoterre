@@ -246,6 +246,8 @@ def test_crcm_emulator_test_evaluation_reports_test_metrics():
             runner = make_runner(config.training)
             runner.load_state(Path(tmp_dir), tag="latest")
             results = runner.evaluate(test_data_loader, build_metrics(test_metrics))
+            # float and int are used to identify scalar metrics
+            assert all(isinstance(v, (int, float)) for v in results.values())
             assert set(results) == expected
             assert runner.running_validation_metrics == {}
             assert len(runner.validation_metrics) == 0

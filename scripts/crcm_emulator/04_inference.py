@@ -39,11 +39,16 @@ def main(config_path: Path, checkpoint: str = "latest") -> None:
     runner.load_state(output_directory, tag=checkpoint)
     runner.to_device(config.training.device)
     results = runner.evaluate(test_data_loader, build_metrics(config.inference.test_metrics), desc="Test")
+    single_valued_results = {k: v for k, v in results.items() if isinstance(v, (int, float))}
 
     output_path = Path(output_directory, f"{config.experiment_name}_test_results.json")
     with output_path.open("w") as f:
-        json.dump({"epoch": runner.epoch_counter, "nb_of_samples": len(test_dataset), "metrics": results}, f, indent=4)
-    print(json.dumps(results, indent=4))
+        json.dump(
+            {"epoch": runner.epoch_counter, "nb_of_samples": len(test_dataset), "metrics": single_valued_results},
+            f,
+            indent=4,
+        )
+    print(json.dumps(single_valued_results, indent=4))
     print(f"Test results saved to {output_path}")
 
 
