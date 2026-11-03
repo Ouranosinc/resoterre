@@ -10,11 +10,11 @@ The baseline zarr datasets must already be computed, e.g. with the snakemake wor
 ``scripts/meta_workflows/crcm_emulator/rules/03_baseline.smk``. The baseline is evaluated on ``data.test_periods`` with
 ``inference.test_metrics`` and the results are written to
 ``<paths.baselines_out_dirs[interpolation]>/interpolation_baseline_test_results.json``; the validation periods are
-scored the same way and saved to ``interpolation_baseline_validation_results.json``.
+scored the same way and saved to ``interpolation_baseline_validation_results.json``. If found, training reuses
+these files (``training.log_interpolation_baseline``) instead of scoring the baseline again.
 """
 
 import argparse
-import json
 from pathlib import Path
 
 from resoterre.pipelines.crcm_emulator.crcm_emulator_baselines import InterpolationBaseline
@@ -40,11 +40,7 @@ def main(config_path: Path) -> None:
         print(f"Baseline {split} metrics:")
         for name, value in results.items():
             print(f"{name}: {value}")
-        output_path = Path(
-            config.paths.baselines_out_dirs["interpolation"], f"interpolation_baseline_{split}_results.json"
-        )
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(json.dumps({"metrics": results}, indent=2))
+        output_path = baseline.save_results(results, split)
         print(f"Saved baseline {split} results to {output_path}")
 
 

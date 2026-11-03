@@ -88,7 +88,11 @@ trained model's metrics), separately for the validation and test periods. Result
 
 ### 4. Compare with training in Comet ML
 
-Set `training.log_interpolation_baseline: true` to score the baseline at the start of every training (the baseline is
-only scored, never computed; training goes on with a warning if it is missing). Its validation (`training.validation_metrics`)
-and test (`inference.test_metrics`) metrics are logged as `interpolation_baseline/<split>/<variable>/<metric>`, again at
-every validation, so they show as flat lines next to the model's curves. Scoring takes as long as step 3.
+Set `training.log_interpolation_baseline: true` to log the baseline scores at the start of every training. Its
+validation (`training.validation_metrics`) and test (`inference.test_metrics`) metrics are logged as
+`<variable>/interpolation_baseline_<split>_<metric>` (e.g. `tas/interpolation_baseline_validation_rmse`), next to the
+model's `tas/validation_rmse`. They are logged again at every validation, so they show as flat lines.
+
+The scores are read from the JSON files of step 3. If a file is missing or lacks a metric, the baseline is scored at the
+start of training (as long as step 3) and the file is saved for the next training. The baseline is never computed;
+training goes on with a warning if it is missing. Delete the JSON files after recomputing the baseline.

@@ -544,39 +544,79 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
 
     def score_interpolation_baseline(self) -> None:
         """
-        Score the precomputed interpolation baseline on the validation and test data, and log it to Comet ML.
+        Get the scores of the interpolation baseline on the validation and test data, and log them to Comet ML.
 
-        Only done when ``training.log_interpolation_baseline`` is set and Comet ML logging is active. The baseline is
-        scored with ``training.validation_metrics`` on the validation periods and ``inference.test_metrics`` on the
-        test periods, and logged as ``interpolation_baseline/<split>/<variable>/<metric>``. A split that cannot be
-        scored (no baseline under ``paths.baselines_out_dirs.interpolation``, missing days, no period) is skipped
-        with a warning; the baseline is never computed here.
+        Only done when ``training.log_interpolation_baseline`` is set and Comet ML logging is active. The scores are
+        ``training.validation_metrics`` on the validation periods and ``inference.test_metrics`` on the test periods,
+        logged as ``<variable>/interpolation_baseline_<split>_<metric>``, next to the model's metrics (e.g.
+        ``tas/interpolation_baseline_validation_rmse`` next to ``tas/validation_rmse``). They are read from the JSON
+        files saved in ``paths.baselines_out_dirs.interpolation`` (e.g. by ``02_score_baselines.py``); if missing or
+        incomplete, the precomputed baseline is scored and the JSON file is saved for the next training. A split that
+        cannot be scored (no baseline zarr, missing days, no period) is skipped with a warning; the baseline is never
+        computed here.
         """
         self.interpolation_baseline_metrics = {}
-        if not self.config.training.log_interpolation_baseline or self.experiment_logger.experiment is None:
+        if not self.config.training.log_interpolation_baseline:
+            return
+        if self.experiment_logger.experiment is None:
+            logger.warning("Interpolation baseline not scored: Comet ML logging is disabled")
             return
         if not self.config.paths.baselines_out_dirs.get("interpolation"):
             logger.warning("Interpolation baseline not scored: no paths.baselines_out_dirs.interpolation in config")
             return
         baseline = InterpolationBaseline(self.config)
-        paths = [baseline.baseline_zarr_path(x) for x in self.config.preprocessing.simulations]
-        missing = [str(path) for path in paths if not path.is_dir()]
-        if not paths or missing:
-            logger.warning("Interpolation baseline not scored, missing: %s", ", ".join(missing) or "simulations")
-            return
         for split, metric_names in (
             ("validation", self.config.training.validation_metrics),
             ("test", self.config.inference.test_metrics),
         ):
-            try:
-                results = baseline.evaluate(metric_names, split=split)
-            except (KeyError, RuntimeError, ValueError) as error:
-                logger.warning("Interpolation baseline not scored on the %s data: %s", split, error)
-                continue
-            self.interpolation_baseline_metrics.update(
-                {f"interpolation_baseline/{split}/{name}": value for name, value in results.items()}
-            )
+            results = baseline.load_results(metric_names, split)
+            if results is not None:
+                logger.info("Interpolation baseline %s scores read from %s", split, baseline.results_json_path(split))
+            else:
+                results = self._score_interpolation_baseline_split(baseline, metric_names, split)
+            if results:
+                self.interpolation_baseline_metrics.update(with_split(results, f"interpolation_baseline_{split}"))
         self.log_interpolation_baseline_metrics(epoch=self.epoch_counter)
+
+    def _score_interpolation_baseline_split(
+        self, baseline: InterpolationBaseline, metric_names: list[str], split: str
+    ) -> dict[str, float]:
+        """
+        Score the precomputed interpolation baseline on a data split, and save the scores for the next training.
+
+        Parameters
+        ----------
+        baseline : InterpolationBaseline
+            The interpolation baseline.
+        metric_names : list[str]
+            Names of the metrics.
+        split : str
+            Either "test" or "validation".
+
+        Returns
+        -------
+        dict[str, float]
+            The scores by name (``<variable>/<metric>``), empty if the baseline cannot be scored.
+        """
+        missing = [
+            str(path)
+            for path in (baseline.baseline_zarr_path(x) for x in self.config.preprocessing.simulations)
+            if not path.is_dir()
+        ]
+        if not self.config.preprocessing.simulations or missing:
+            logger.warning("Interpolation baseline not scored, missing: %s", ", ".join(missing) or "simulations")
+            return {}
+        logger.warning("No saved interpolation baseline %s scores, scoring the baseline", split)
+        try:
+            results = baseline.evaluate(metric_names, split=split)
+        except (KeyError, RuntimeError, ValueError) as error:
+            logger.warning("Interpolation baseline not scored on the %s data: %s", split, error)
+            return {}
+        try:
+            baseline.save_results(results, split)
+        except OSError as error:
+            logger.warning("Interpolation baseline %s scores not saved: %s", split, error)
+        return results
 
     def log_interpolation_baseline_metrics(self, epoch: int) -> None:
         """

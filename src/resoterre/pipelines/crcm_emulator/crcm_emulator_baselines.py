@@ -1,5 +1,6 @@
 """Workflow components for computing baselines for the CRCM emulation task."""
 
+import json
 import logging
 from pathlib import Path
 
@@ -57,6 +58,73 @@ class InterpolationBaseline:
         if not self.config.paths.baselines_out_dirs.get("interpolation", ""):
             raise ValueError("interpolation not found in config.paths.baselines_out_dirs")
         return Path(self.config.paths.baselines_out_dirs["interpolation"], f"{model_str}.zarr")
+
+    def results_json_path(self, split: str) -> Path:
+        """
+        Get the path to the JSON file with the scores of the interpolation baseline on a data split.
+
+        Parameters
+        ----------
+        split : str
+            Either "test" or "validation".
+
+        Returns
+        -------
+        Path
+            Path to ``interpolation_baseline_<split>_results.json`` in ``paths.baselines_out_dirs.interpolation``.
+        """
+        if not self.config.paths.baselines_out_dirs.get("interpolation", ""):
+            raise ValueError("interpolation not found in config.paths.baselines_out_dirs")
+        return Path(
+            self.config.paths.baselines_out_dirs["interpolation"], f"interpolation_baseline_{split}_results.json"
+        )
+
+    def load_results(self, metric_names: list[str], split: str) -> dict[str, float] | None:
+        """
+        Load the saved scores of the interpolation baseline on a data split (see ``save_results``).
+
+        Parameters
+        ----------
+        metric_names : list[str]
+            Names of the metrics needed.
+        split : str
+            Either "test" or "validation".
+
+        Returns
+        -------
+        dict[str, float] | None
+            The scores of ``metric_names`` for each variable of ``data.crcm_variables`` (``<variable>/<metric>``), or
+            None if there are no saved scores or if some of these are missing.
+        """
+        path = self.results_json_path(split)
+        if not path.is_file():
+            return None
+        saved = json.loads(path.read_text()).get("metrics", {})
+        names = [f"{variable}/{metric}" for variable in self.config.data.crcm_variables for metric in metric_names]
+        if any(name not in saved for name in names):
+            return None
+        return {name: saved[name] for name in names}
+
+    def save_results(self, results: dict[str, float], split: str) -> Path:
+        """
+        Save the scores of the interpolation baseline on a data split, e.g. as returned by ``evaluate``.
+
+        Parameters
+        ----------
+        results : dict[str, float]
+            Scores by name (``<variable>/<metric>``).
+        split : str
+            Either "test" or "validation".
+
+        Returns
+        -------
+        Path
+            Path to the saved JSON file.
+        """
+        path = self.results_json_path(split)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"metrics": results}, indent=2))
+        return path
 
     def evaluate(self, metric_names: list[str], split: str = "test") -> dict[str, float]:
         """
