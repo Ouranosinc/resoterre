@@ -79,8 +79,8 @@ Samples are read in parallel by `data.num_workers` data loader workers (request 
 batches of `data.batch_size`, and the metrics are computed on `inference.device` (or `training.device` if unset). Without
 a GPU, set `inference.device: cpu` and drop `--gres`.
 
-The baseline is compared with the CRCM data using `inference.test_metrics` (in physical units, consolidated like the
-trained model's metrics), separately for the validation and test periods. Results are written to
+The baseline is compared with the CRCM data in physical units, consolidated like the trained model's metrics: with
+`training.validation_metrics` on the validation periods and `inference.test_metrics` on the test periods. Results are written to
 `paths.baselines_out_dirs.interpolation`:
 
 - `interpolation_baseline_validation_results.json`

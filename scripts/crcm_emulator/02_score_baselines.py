@@ -7,11 +7,11 @@ Run::
         --config configs/crcm_emulator/crcm_emulator_cnrm_ssp245.yaml``
 
 The baseline zarr datasets must already be computed, e.g. with the snakemake workflow
-``scripts/meta_workflows/crcm_emulator/rules/03_baseline.smk``. The baseline is evaluated on ``data.test_periods`` with
-``inference.test_metrics`` and the results are written to
-``<paths.baselines_out_dirs[interpolation]>/interpolation_baseline_test_results.json``; the validation periods are
-scored the same way and saved to ``interpolation_baseline_validation_results.json``. If found, training reuses
-these files (``training.log_interpolation_baseline``) instead of scoring the baseline again.
+``scripts/meta_workflows/crcm_emulator/rules/03_baseline.smk``. The baseline is evaluated on ``data.validation_periods``
+with ``training.validation_metrics`` and on ``data.test_periods`` with ``inference.test_metrics``, as for the trained
+model. The results are written to
+``<paths.baselines_out_dirs[interpolation]>/interpolation_baseline_<split>_results.json``. If found, training
+reuses these files (``training.log_interpolation_baseline``) instead of scoring the baseline again.
 """
 
 import argparse
@@ -32,11 +32,12 @@ def main(config_path: Path) -> None:
     """
     config = crcm_emulator_parse_config(config_path)
     baseline = InterpolationBaseline(config)
-    for split in ("validation", "test"):
+    splits = (("validation", config.training.validation_metrics), ("test", config.inference.test_metrics))
+    for split, metric_names in splits:
         if not getattr(config.data, f"{split}_periods"):
             print(f"data.{split}_periods is empty, skipping {split} evaluation.")
             continue
-        results = baseline.evaluate(config.inference.test_metrics, split=split)
+        results = baseline.evaluate(metric_names, split=split)
         print(f"Baseline {split} metrics:")
         for name, value in results.items():
             print(f"{name}: {value}")
