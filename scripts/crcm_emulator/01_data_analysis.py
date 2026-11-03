@@ -255,6 +255,16 @@ def main() -> None:
     logger.info("Running components: %s", sorted(components))
 
     # ===== LOAD DATASET =====
+    logger.info("Loading dataset with following arguments:")
+    logger.info("path_gcm_preprocessing: %s", config.preprocessing.gcm.path)
+    logger.info("path_crcm_preprocessing: %s", config.preprocessing.crcm.path)
+    logger.info("simulations: %s", config.preprocessing.simulations)
+    logger.info("gcm_variables: %s", config.data.gcm_variables)
+    logger.info("crcm_variables: %s", config.preprocessing.crcm.variables)
+    logger.info("start_datetime: %s", config.preprocessing.crcm.start_datetime)
+    logger.info("end_datetime: %s", config.preprocessing.crcm.end_datetime)
+    logger.info("training_periods: %s", config.data.training_periods)
+    logger.info("experiment_name: %s", config.experiment_name)
     dataset = CRCMEmulatorDataset(
         path_gcm_preprocessing=str(config.preprocessing.gcm.path),
         path_crcm_preprocessing=str(config.preprocessing.crcm.path),

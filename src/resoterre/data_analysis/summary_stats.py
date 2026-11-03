@@ -347,6 +347,7 @@ def summarize_data(
         forcing_frames.append(compute_forcings_stats(data_gcm[sim], run))
         sims_by_member.setdefault((gcm, member), []).append(sim)
 
+    # Pool scenarios for each member
     for (gcm, member), sims in sims_by_member.items():
         if len(sims) < 2:
             continue
