@@ -8,7 +8,7 @@ paths:
   emission_data: /Path/to/GHGs
   crcm_data: /Path/to/MRCC5-CMIP6
   baselines_out_dirs:
-    interpolation: /Path/to/baseline/interpolation
+    interpolation: /Path/to/baseline/interpolation # should be absolute path
 
 preprocessing:
   # Simulations shared by GCM and CRCM preprocessing
@@ -131,6 +131,7 @@ training:
     - rmse
     - ccc
     - wasserstein_distance
+  log_interpolation_baseline: true # score the precomputed interpolation baseline and log it to Comet ML
 
 inference:
   test_metrics: # extra metrics reported when evaluating on the test data, in addition to the losses

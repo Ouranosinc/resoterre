@@ -18,6 +18,9 @@ To add a new package, add package name to both `environment-dev.yml` and `pyproj
 
 On Slurm, training and inference are run with `sbatch run_files/run_train_crcm_pipeline.sh <config.yaml>`.
 
+Once training is done, `03_train.py` evaluates the best checkpoint once on `data.test_periods` with
+`inference.test_metrics`, and logs the results to Comet ML (e.g. `tas/test_rmse`, plus `test_checkpoint_epoch`).
+
 ## Interpolation baseline
 
 The baseline bilinearly interpolates the GCM fields of `data.crcm_variables` by `data.coarsen_factor` to the CRCM grid,
@@ -82,3 +85,10 @@ trained model's metrics), separately for the validation and test periods. Result
 
 - `interpolation_baseline_validation_results.json`
 - `interpolation_baseline_test_results.json`
+
+### 4. Compare with training in Comet ML
+
+Set `training.log_interpolation_baseline: true` to score the baseline at the start of every training (the baseline is
+only scored, never computed; training goes on with a warning if it is missing). Its validation (`training.validation_metrics`)
+and test (`inference.test_metrics`) metrics are logged as `interpolation_baseline/<split>/<variable>/<metric>`, again at
+every validation, so they show as flat lines next to the model's curves. Scoring takes as long as step 3.

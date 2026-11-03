@@ -1,4 +1,8 @@
-"""Scoring of predictions precomputed in zarr datasets, such as baselines, against the CRCM data."""
+"""
+Scoring of predictions precomputed in zarr datasets, such as baselines, against the CRCM data.
+
+Currently used by the interpolation baseline, to be used by other baselines in the future.
+"""
 
 from pathlib import Path
 from typing import Any

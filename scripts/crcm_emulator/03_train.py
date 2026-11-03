@@ -59,7 +59,7 @@ def main(config_path: Path, resume: str = "latest") -> None:
             if resume == "best":
                 raise
             print("No checkpoint found, training from scratch.")
-    trainer.training_loop()
+    trainer.training_loop(test=True)
 
 
 if __name__ == "__main__":
