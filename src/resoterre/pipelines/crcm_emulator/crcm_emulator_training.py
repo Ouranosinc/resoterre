@@ -88,6 +88,12 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             "MSELoss": nn.MSELoss(),
             "SSIMLoss": MultiScaleStructuralSimilarityIndexMeasure(data_range=(-1.0, 1.0)),
         }
+        # ToDo: this may have to be expanded for variable-specific figure mappings
+        for variable_name in config.data.crcm_variables:
+            for metric_name in config.training.validation_metrics:
+                diagnostic_key = f"{variable_name}/{metric_name}"
+                if metric_name in self.config.plot.metric_mapping:
+                    self.diagnostic_figure_mapping[diagnostic_key] = self.config.plot.metric_mapping[metric_name]
 
     def build_dataset(self, time_periods: list[list[datetime]]) -> CRCMEmulatorDataset:
         """
@@ -310,6 +316,8 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             target_physical = denormalize_crcm(target_data, variable_names)
             output_physical = denormalize_crcm(output, variable_names)
             for name, metric_function in metric_functions.items():
+                # ToDo: there will most likely be variable specific metrics. Suggestion: have a
+                #       metric_function.per_variable boolean flag and handle accordingly in the update.
                 metrics.update(
                     per_variable_metrics(name, metric_function(target_physical, output_physical), variable_names)
                 )
@@ -393,7 +401,11 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             return
         consolidated = consolidation(self.running_validation_metrics)
         self.running_validation_metrics = {}
-        self.validation_metrics.add_concurrent_values(None, consolidated)
+        single_values_metrics = {key: value for key, value in consolidated.items() if isinstance(value, (float, int))}
+        self.validation_metrics.add_concurrent_values(None, single_values_metrics)
+        self.validation_diagnostics.update(
+            {key: value for key, value in consolidated.items() if not isinstance(value, (float, int))}
+        )
 
     def validation_loop(self, epoch: int) -> None:
         """

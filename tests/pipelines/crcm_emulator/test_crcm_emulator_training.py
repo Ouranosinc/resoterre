@@ -246,6 +246,8 @@ def test_crcm_emulator_test_evaluation_reports_test_metrics():
             runner = make_runner(config.training)
             runner.load_state(Path(tmp_dir), tag="latest")
             results = runner.evaluate(test_data_loader, build_metrics(test_metrics))
+            # float and int are used to identify scalar metrics
+            assert all(isinstance(v, (int, float)) for v in results.values())
             assert set(results) == expected
             assert runner.running_validation_metrics == {}
             assert len(runner.validation_metrics) == 0
@@ -319,6 +321,7 @@ def test_crcm_emulator_consolidation_weights_losses_by_batch_size():
     runner = SimpleNamespace(
         running_validation_metrics={},
         validation_metrics=MultiTimeseries(),
+        validation_diagnostics={},
     )
     consolidator = crcm_emulator_training.CRCMEmulatorTrainingFromConfig
     # 128 samples with zero error, then a partial batch of 1 sample with a squared error of 100
