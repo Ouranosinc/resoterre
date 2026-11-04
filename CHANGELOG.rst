@@ -10,20 +10,9 @@ Contributors: Contributors: Francis Charette-Migneault (:user:`fmigneault`), Bla
 
 Changes
 ^^^^^^^
-<<<<<<< HEAD
 * Add normalization statistics for forcings (linear vars) in the CRCM emulator data analysis. Pool CRCM emulator summary statistics across the scenarios of each member (:issue:`172`, :pull:`179`).
-* Add bias map and mean bias metrics to the CRCM emulator validation (:issue:`102`, :pull:`171`)
-* Optionally log the interpolation baseline scores to Comet ML as constant lines during training (``training.log_interpolation_baseline``), e.g. ``tas/interpolation_baseline_validation_rmse``, read from the saved scores or else scored and saved at the start of training, and evaluate the best checkpoint once on the test data at the end of ``03_train.py``, logging the test metrics to Comet ML. (:issue:`174`, :pull:`176`).
-* Score the precomputed interpolation baseline against ``inference.test_metrics`` on the validation and test periods; ``02_compute_baselines.py`` is renamed ``02_score_baselines.py`` and only evaluates, the baseline itself is computed with the snakemake workflow. ``InterpolationBaseline.run`` now reads the GCM zarr directly and writes contiguous runs of days instead of one day at a time, and ``InterpolationBaseline.evaluate`` reads samples with parallel data loader workers. (:issue:`174`, :pull:`176`).
-=======
-<<<<<<< HEAD
 * Speed up the interpolation baseline: ``InterpolationBaseline.run`` writes contiguous runs of days instead of one day at a time, and ``InterpolationBaseline.evaluate`` scores it with parallel data loader workers; ``02_compute_baselines.py`` is renamed ``02_score_baselines.py``, which only scores the baseline (computed with the snakemake workflow) and saves the scores as JSON. Optionally log these scores to Comet ML during training (``training.log_interpolation_baseline``, e.g. ``tas/interpolation_baseline_validation_rmse``), scoring the baseline only if no saved scores are found, and evaluate the best checkpoint once on the test data at the end of ``03_train.py``. (:issue:`174`, :pull:`176`).
 * Add bias map and mean bias metrics to the CRCM emulator validation (:issue:`102`, :pull:`171`)
-* Add normalization statistics for forcings (linear vars) in the CRCM emulator data analysis (:issue:`172`, :pull:`179`).
-=======
-* Add normalization statistics for forcings (linear vars) in the CRCM emulator data analysis. Pool CRCM emulator summary statistics across the scenarios of each member.
->>>>>>> eeec76c (fixing memory issues on xr.concat, pooling stats using intermediate vals instead)
->>>>>>> 2266eb6 (fixing memory issues on xr.concat, pooling stats using intermediate vals instead)
 * Add a ``metrics`` module for the CRCM emulator with configurable validation and test metrics selected by name (``training.validation_metrics``, ``inference.test_metrics``): ``max_value_absolute_error``, ``rmse``, ``ccc`` and ``wasserstein_distance``, computed on denormalized data, reported for each variable (e.g. ``tas/rmse``), with a per-metric aggregation (``reduction``), and refactor the trainer and ``04_inference.py`` to share one evaluation path. (:issue:`156`, :pull:`162`).
 * Add interpolation baseline workflow (``03_baseline.smk``) for the CRCM emulator (:issue:`122`, :pull:`160`)
 * Add a SLURM run script and a test-set evaluation script (``03_inference.py``) for the CRCM emulator, and improve the training pipeline with best and latest checkpoints, resuming training, Comet ML figures, ``tqdm`` progress bars and fewer GPU to CPU synchronizations. (:issue:`150`, :issue:`151`, :issue:`158`, :pull:`159`).
