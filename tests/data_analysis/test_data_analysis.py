@@ -262,10 +262,6 @@ def test_summarize_data(tmp_path):
         "max",
         "range",
         "trend_per_year",
-<<<<<<< HEAD
-=======
-        " ",
->>>>>>> 2266eb6 (fixing memory issues on xr.concat, pooling stats using intermediate vals instead)
         "n",
         "sum",
         "sumsq",
@@ -292,10 +288,6 @@ def test_summarize_data(tmp_path):
         "min",
         "max",
         "range",
-<<<<<<< HEAD
-=======
-        " ",
->>>>>>> 2266eb6 (fixing memory issues on xr.concat, pooling stats using intermediate vals instead)
         "n",
         "sum",
         "sumsq",
