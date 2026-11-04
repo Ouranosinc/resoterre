@@ -28,6 +28,7 @@ from resoterre.data_analysis.summary_stats import (
     compute_forcings_stats,
     filter_data,
     period_years,
+    pool_scenarios,
     select_data_by_indices,
     summarize_data,
 )
@@ -261,6 +262,10 @@ def test_summarize_data(tmp_path):
         "max",
         "range",
         "trend_per_year",
+        " ",
+        "n",
+        "sum",
+        "sumsq",
     ]
     assert list(forcing_df.iloc[0][["gcm", "scenario", "member", "periods", "model", "variable"]]) == [
         "CNRM-ESM2-1",
@@ -284,6 +289,10 @@ def test_summarize_data(tmp_path):
         "min",
         "max",
         "range",
+        " ",
+        "n",
+        "sum",
+        "sumsq",
     ]
     assert list(zip(stats_df["model"], stats_df["variable"], strict=True)) == [("gcm", "ta850"), ("crcm", "tas")]
     assert set(stats_df["periods"]) == {periods}
@@ -331,15 +340,15 @@ def test_summarize_data_pools_scenarios_of_one_member(tmp_path):
     )
 
     pooled = np.array([0.0, 1.0, 10.0, 11.0])
-    climate = stats_df[stats_df["scenario"] == "all"]
+    climate = stats_df[stats_df["scenario"] == "historical+ssp245"]
     assert list(climate["model"]) == ["gcm", "crcm"]
     assert set(climate["n_time_steps"]) == {4}
     for _, row in climate.iterrows():
         _assert_summary(row, pooled)
-    forcing = forcing_df[forcing_df["scenario"] == "all"].iloc[0]
+    forcing = forcing_df[forcing_df["scenario"] == "historical+ssp245"].iloc[0]
     # Forcings keep the first day of each year: 0 in 2000 and 10 in 2001.
     _assert_summary(forcing, np.array([0.0, 10.0]))
-    assert set(stats_df["scenario"]) == {"historical", "ssp245", "all"}
+    assert set(stats_df["scenario"]) == {"historical", "ssp245", "historical+ssp245"}
 
 
 def test_summarize_data_writes_all_gcms_to_one_file_and_overwrites_reruns(tmp_path):
@@ -865,6 +874,63 @@ def test_compute_stats_and_forcings_stats_match_numpy():
     forcing = compute_forcings_stats(ds, run)
     # Forcings keep the first value of each year: 400 in 2000 and 410 in 2001.
     _assert_summary(forcing.iloc[0], np.array([400.0, 410.0]))
+
+
+def test_pool_scenarios():
+    def scenario_ds(dates: list[str], tas: list[list[float]], co2: list[float]) -> xr.Dataset:
+        return xr.Dataset(
+            {"tas": (("time", "y"), np.array(tas)), "CO2": ("time", co2)},
+            coords={"time": pd.to_datetime(dates), "y": [0, 1]},
+        )
+
+    # Unequal sample sizes and a NaN, so averaging the per-scenario means would give the wrong answer.
+    historical = scenario_ds(
+        ["2000-01-01", "2001-01-01", "2002-01-01"], [[1.0, np.nan], [2.0, 3.0], [4.0, 5.0]], [300.0, 310.0, 320.0]
+    )
+    ssp = scenario_ds(["2015-01-01"], [[20.0, 30.0]], [400.0])
+    runs = {
+        name: {"gcm": "CNRM-ESM2-1", "scenario": name, "member": member, "periods": "p"}
+        for name, member in (("historical", "r1"), ("ssp245", "r1"))
+    }
+    single_scenario_run = {"gcm": "CNRM-ESM2-1", "scenario": "historical", "member": "r2", "periods": "p"}
+
+    climate = pool_scenarios(
+        pd.concat(
+            [
+                compute_climate_var_stats(historical, ["tas"], runs["historical"], "gcm"),
+                compute_climate_var_stats(ssp, ["tas"], runs["ssp245"], "gcm"),
+                compute_climate_var_stats(historical, ["tas"], single_scenario_run, "gcm"),
+            ],
+            ignore_index=True,
+        )
+    )
+    forcing = pool_scenarios(
+        pd.concat(
+            [
+                compute_forcings_stats(historical, runs["historical"]),
+                compute_forcings_stats(ssp, runs["ssp245"]),
+                compute_forcings_stats(historical, single_scenario_run),
+            ],
+            ignore_index=True,
+        )
+    )
+
+    pooled_climate = climate[climate["scenario"] == "historical+ssp245"]
+    assert len(pooled_climate) == 1
+    assert pooled_climate.iloc[0]["member"] == "r1"
+    assert pooled_climate.iloc[0]["n"] == 7
+    assert pooled_climate.iloc[0]["n_time_steps"] == 4
+    assert np.isnan(pooled_climate.iloc[0]["pct_non_nan_values"])
+    _assert_summary(pooled_climate.iloc[0], np.array([1.0, 2.0, 3.0, 4.0, 5.0, 20.0, 30.0]))
+
+    pooled_forcing = forcing[forcing["scenario"] == "historical+ssp245"]
+    assert len(pooled_forcing) == 1
+    assert pooled_forcing.iloc[0]["n_years"] == 4
+    assert np.isnan(pooled_forcing.iloc[0]["trend_per_year"])
+    _assert_summary(pooled_forcing.iloc[0], np.array([300.0, 310.0, 320.0, 400.0]))
+
+    assert len(climate) == len(forcing) == 4
+    assert list(climate.columns) == list(compute_climate_var_stats(ssp, ["tas"], runs["ssp245"], "gcm").columns)
 
 
 def test_compute_stats_summary_matches_numpy():

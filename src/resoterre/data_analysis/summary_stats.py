@@ -230,6 +230,10 @@ def compute_climate_var_stats(
                 "min": vmin,
                 "max": vmax,
                 "range": vmax - vmin,
+                " ": "",
+                "n": count,
+                "sum": stats["sum"],
+                "sumsq": stats["sumsq"],
             }
         )
 
@@ -286,9 +290,55 @@ def compute_forcings_stats(data: xr.Dataset, run: dict[str, str]) -> pd.DataFram
                 "max": vmax,
                 "range": vmax - vmin,
                 "trend_per_year": np.polyfit(years, values, 1)[0] if len(years) > 1 else np.nan,
+                " ": "",
+                "n": np.isfinite(values).sum(),
+                "sum": np.nansum(values),
+                "sumsq": np.nansum(values**2),
             }
         )
     return pd.DataFrame(rows)
+
+
+def pool_scenarios(stats: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute pooled statistics for each member, model, and variable across multiple scenarios.
+
+    Values ``n``, ``sum``, and ``sumsq`` are reused from ``compute_climate_var_stats`` and
+    ``compute_forcings_stats``, so the statistics are not recomputed from the raw data.
+
+    Parameters
+    ----------
+    stats : pandas.DataFrame
+        Per-scenario statistics from ``compute_climate_var_stats`` or ``compute_forcings_stats``.
+
+    Returns
+    -------
+    pandas.DataFrame
+        ``stats`` followed by one pooled row per member, model, and variable with more than one scenario.
+    """
+    if stats.empty:
+        return stats
+    summed = [col for col in ("n_time_steps", "n_years", "n", "sum", "sumsq") if col in stats]
+    pooled = (
+        stats.groupby(["gcm", "member", "periods", "model", "variable"], sort=False)
+        .agg(
+            scenario=("scenario", lambda s: "+".join(sorted(s))),
+            n_scenarios=("scenario", "size"),
+            min=("min", "min"),
+            max=("max", "max"),
+            **{col: (col, "sum") for col in summed},
+        )
+        .reset_index()
+    )
+    pooled = pooled[pooled.pop("n_scenarios") > 1]
+    pooled["mean"] = pooled["sum"] / pooled["n"]
+    variance = pooled["sumsq"] / pooled["n"] - pooled["mean"] ** 2
+    if (variance < 0).any():
+        logger.warning("Negative pooled variance for %s; reporting NaN std", list(pooled.loc[variance < 0, "variable"]))
+    pooled["std"] = np.sqrt(variance.where(variance >= 0))
+    pooled["range"] = pooled["max"] - pooled["min"]
+    pooled[" "] = ""
+    return pd.concat([stats, pooled], ignore_index=True)[stats.columns]
 
 
 def summarize_data(
@@ -305,7 +355,7 @@ def summarize_data(
     and ``normalization_stats_forcings_{years}.csv`` in ``output_dir``, where ``years`` comes from
     ``period_years``. Every row starts with the ``gcm``, ``scenario``, ``member``, and ``periods``
     it was computed for, so simulations of several GCMs share the same files. When one member has
-    several scenarios, extra rows with ``scenario`` ``all`` pool those scenarios.
+    several scenarios, extra rows with ``scenario`` such as ``historical+ssp245`` pool those scenarios.
 
     Parameters
     ----------
@@ -333,41 +383,27 @@ def summarize_data(
     data_gcm, data_crcm = filter_data(dataset, time_periods)
     periods = ";".join(f"{_day_key(start)}/{_day_key(end)}" for start, end in time_periods)
 
-    frames: list[pd.DataFrame] = []
+    climate_var_frames: list[pd.DataFrame] = []
     forcing_frames: list[pd.DataFrame] = []
-    sims_by_member: dict[tuple[str, str], list[str]] = {}
     for gcm, scenario, member in simulations:
         sim = f"{gcm}_{scenario}_{member}"
         if sim not in data_gcm:
             continue
         logger.info("Summarizing %s over %s with %s days", sim, periods, data_gcm[sim].sizes["time"])
         run = {"gcm": gcm, "scenario": scenario, "member": member, "periods": periods}
-        frames.append(compute_climate_var_stats(data_gcm[sim], dataset.gcm_variables, run, "gcm"))
-        frames.append(compute_climate_var_stats(data_crcm[sim], dataset.crcm_variables, run, "crcm"))
+        climate_var_frames.append(compute_climate_var_stats(data_gcm[sim], dataset.gcm_variables, run, "gcm"))
+        climate_var_frames.append(compute_climate_var_stats(data_crcm[sim], dataset.crcm_variables, run, "crcm"))
         forcing_frames.append(compute_forcings_stats(data_gcm[sim], run))
-        sims_by_member.setdefault((gcm, member), []).append(sim)
 
-    # Pool scenarios for each member
-    for (gcm, member), sims in sims_by_member.items():
-        if len(sims) < 2:
-            continue
-        logger.info("Summarizing %s %s over %s, pooling %s", gcm, member, periods, sims)
-        run = {"gcm": gcm, "scenario": "all", "member": member, "periods": periods}
-        gcm_data = xr.concat([data_gcm[sim] for sim in sims], dim="time")
-        crcm_data = xr.concat([data_crcm[sim] for sim in sims], dim="time")
-        frames.append(compute_climate_var_stats(gcm_data, dataset.gcm_variables, run, "gcm"))
-        frames.append(compute_climate_var_stats(crcm_data, dataset.crcm_variables, run, "crcm"))
-        forcing_frames.append(compute_forcings_stats(gcm_data, run))
-
-    if not frames:
+    if not climate_var_frames:
         raise ValueError(f"No simulations have valid days in {periods}.")
 
-    stats_df = pd.concat(frames, ignore_index=True)
-    forcing_df = pd.concat(forcing_frames, ignore_index=True)
+    climate_var_df = pool_scenarios(pd.concat(climate_var_frames, ignore_index=True))
+    forcing_df = pool_scenarios(pd.concat(forcing_frames, ignore_index=True))
     years = period_years(time_periods)
-    write_dataframe_to_csv(stats_df, output_dir, f"normalization_stats_climate_vars_{years}")
+    write_dataframe_to_csv(climate_var_df, output_dir, f"normalization_stats_climate_vars_{years}")
     write_dataframe_to_csv(forcing_df, output_dir, f"normalization_stats_forcings_{years}")
-    return stats_df, forcing_df
+    return climate_var_df, forcing_df
 
 
 def describe_stores(dataset: EmulatorDatasetLike) -> pd.DataFrame:
