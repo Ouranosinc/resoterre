@@ -24,15 +24,12 @@ for variable_name in ["hus", "ta"]:
 _stats_shortcut: dict[str, dict[str, float]] = {}
 
 for csv_import_line in csv_data:
-    if csv_import_line["model"] == "scalar":
-        # Scalar (greenhouse gas) inputs trend over time, so the normalization range spans all simulations (historical
-        # and future) rather than mean +/- 3 std of the first period.
+    if csv_import_line["model"] == "forcing":
+        # Forcing (greenhouse gas) inputs trend over time, so the normalization range spans the full min/max rather
+        # than mean +/- 3 std.
         variable_name = csv_import_line["variable"]
         variable_min = float(csv_import_line["min"])
         variable_max = float(csv_import_line["max"])
-        if variable_name in _stats_shortcut:
-            variable_min = min(variable_min, _stats_shortcut[variable_name]["min"])
-            variable_max = max(variable_max, _stats_shortcut[variable_name]["max"])
         _stats_shortcut[variable_name] = {
             "min": variable_min,
             "max": variable_max,

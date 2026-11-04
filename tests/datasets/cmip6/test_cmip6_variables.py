@@ -9,7 +9,7 @@ def test_import_values_from_csv():
     assert cmip6_variables.cmip6_variables["va1000"].max is None
 
 
-def test_scalar_variables_span_all_simulations():
+def test_forcing_variables_use_min_max():
     co2 = cmip6_variables.cmip6_variables["CO2"]
-    assert co2.normalize_min == pytest.approx(397.55, abs=0.01)
-    assert co2.normalize_max == pytest.approx(399.95, abs=0.01)
+    assert co2.normalize_min == pytest.approx(313.01, abs=0.01)
+    assert co2.normalize_max == pytest.approx(561.43, abs=0.01)

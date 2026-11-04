@@ -335,10 +335,14 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         for emission_name in ["CO2", "CH4", "N2O", "CFC12", "CFC11_eq"]:
             emission_value = xarray_dataset_gcm[emission_name][gcm_idx].values
             if self.normalize:
-                emission_value = normalize(
-                    emission_value,
-                    valid_min=cmip6_variables[emission_name].normalize_min,
-                    valid_max=cmip6_variables[emission_name].normalize_max,
+                emission_value = np.clip(
+                    normalize(
+                        emission_value,
+                        valid_min=cmip6_variables[emission_name].normalize_min,
+                        valid_max=cmip6_variables[emission_name].normalize_max,
+                    ),
+                    -1.0,
+                    1.0,
                 )
             emission_data[emission_name] = emission_value
         xarray_dataset_gcm.close()
