@@ -10,6 +10,7 @@ Contributors: Contributors: Francis Charette-Migneault (:user:`fmigneault`), Bla
 
 Changes
 ^^^^^^^
+* Speed up the interpolation baseline: ``InterpolationBaseline.run`` writes contiguous runs of days instead of one day at a time, and ``InterpolationBaseline.evaluate`` scores it with parallel data loader workers; ``02_compute_baselines.py`` is renamed ``02_score_baselines.py``, which only scores the baseline (computed with the snakemake workflow) and saves the scores as JSON. Optionally log these scores to Comet ML during training (``training.log_interpolation_baseline``, e.g. ``tas/interpolation_baseline_validation_rmse``), scoring the baseline only if no saved scores are found, and evaluate the best checkpoint once on the test data at the end of ``03_train.py``. (:issue:`174`, :pull:`176`).
 * Add bias map and mean bias metrics to the CRCM emulator validation (:issue:`102`, :pull:`171`)
 * Add a ``metrics`` module for the CRCM emulator with configurable validation and test metrics selected by name (``training.validation_metrics``, ``inference.test_metrics``): ``max_value_absolute_error``, ``rmse``, ``ccc`` and ``wasserstein_distance``, computed on denormalized data, reported for each variable (e.g. ``tas/rmse``), with a per-metric aggregation (``reduction``), and refactor the trainer and ``04_inference.py`` to share one evaluation path. (:issue:`156`, :pull:`162`).
 * Add interpolation baseline workflow (``03_baseline.smk``) for the CRCM emulator (:issue:`122`, :pull:`160`)
