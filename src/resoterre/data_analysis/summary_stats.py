@@ -230,10 +230,6 @@ def compute_climate_var_stats(
                 "min": vmin,
                 "max": vmax,
                 "range": vmax - vmin,
-<<<<<<< HEAD
-=======
-                " ": "",
->>>>>>> 2266eb6 (fixing memory issues on xr.concat, pooling stats using intermediate vals instead)
                 "n": count,
                 "sum": stats["sum"],
                 "sumsq": stats["sumsq"],
@@ -293,10 +289,6 @@ def compute_forcings_stats(data: xr.Dataset, run: dict[str, str]) -> pd.DataFram
                 "max": vmax,
                 "range": vmax - vmin,
                 "trend_per_year": np.polyfit(years, values, 1)[0] if len(years) > 1 else np.nan,
-<<<<<<< HEAD
-=======
-                " ": "",
->>>>>>> 2266eb6 (fixing memory issues on xr.concat, pooling stats using intermediate vals instead)
                 "n": np.isfinite(values).sum(),
                 "sum": np.nansum(values),
                 "sumsq": np.nansum(values**2),
@@ -343,10 +335,6 @@ def pool_scenarios(stats: pd.DataFrame) -> pd.DataFrame:
         logger.warning("Negative pooled variance for %s; reporting NaN std", list(pooled.loc[variance < 0, "variable"]))
     pooled["std"] = np.sqrt(variance.where(variance >= 0))
     pooled["range"] = pooled["max"] - pooled["min"]
-<<<<<<< HEAD
-=======
-    pooled[" "] = ""
->>>>>>> 2266eb6 (fixing memory issues on xr.concat, pooling stats using intermediate vals instead)
     return pd.concat([stats, pooled], ignore_index=True)[stats.columns]
 
 
