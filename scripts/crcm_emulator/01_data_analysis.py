@@ -73,7 +73,7 @@ def main() -> None:
     stats_df = summarize_data(
         dataset=dataset,
         output_dir=output_dir,
-        time_periods=config.data.training_periods,
+        time_periods=list(config.data.training_periods.values()),
     )
 
     visualize_range_and_mean(

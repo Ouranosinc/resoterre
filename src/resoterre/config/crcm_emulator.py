@@ -148,12 +148,12 @@ class CRCMEmulatorDataConfig(BaseConfig):
         List of GCM variables to use for training the emulator.
     crcm_variables : list[str]
         List of CRCM variables to use for training the emulator.
-    training_periods : list[list[datetime]]
-        List of training periods. Each period has the form [start_datetime, end_datetime].
-    validation_periods : list[list[datetime]]
-        List of validation periods. Each period has the form [start_datetime, end_datetime].
-    test_periods : list[list[datetime]]
-        List of test periods. Each period has the form [start_datetime, end_datetime].
+    training_periods : dict[str, list[datetime]]
+        Named training periods, keyed by a user-chosen label. Each period has the form [start_datetime, end_datetime].
+    validation_periods : dict[str, list[datetime]]
+        Named validation periods, keyed by a user-chosen label. Each period has the form [start_datetime, end_datetime].
+    test_periods : dict[str, list[datetime]]
+        Named test periods, keyed by a user-chosen label. Each period has the form [start_datetime, end_datetime].
     batch_size : int
         Batch size for training the emulator.
     num_workers : int
@@ -168,9 +168,9 @@ class CRCMEmulatorDataConfig(BaseConfig):
     coarsen_factor: int | None = 4
     gcm_variables: list[str] = Field(default_factory=list)
     crcm_variables: list[str] = Field(default_factory=list)
-    training_periods: list[list[datetime]] = Field(default_factory=list)
-    validation_periods: list[list[datetime]] = Field(default_factory=list)
-    test_periods: list[list[datetime]] = Field(default_factory=list)
+    training_periods: dict[str, list[datetime]] = Field(default_factory=dict)
+    validation_periods: dict[str, list[datetime]] = Field(default_factory=dict)
+    test_periods: dict[str, list[datetime]] = Field(default_factory=dict)
     batch_size: int = 32
     num_workers: int = 2
     prefetch_factor: int = 4
@@ -254,6 +254,10 @@ class CRCMEmulatorTrainingConfig(BaseConfig):
         Number of epochs for training the emulator.
     device : str
         Device to use for training the emulator (e.g., "cpu", "cuda").
+    seed : int, optional
+        Random seed for the Python, NumPy and PyTorch random number generators, set when the trainer is created
+        (weight initialization and data shuffling). None leaves the generators unseeded. Runs on a GPU may still
+        differ slightly because of non-deterministic kernels.
     num_threads : int
         Number of threads to use during training.
     figure_every_n_steps : int
@@ -269,6 +273,7 @@ class CRCMEmulatorTrainingConfig(BaseConfig):
 
     nb_of_epochs: int = 10
     device: str = "cpu"
+    seed: int | None = 42
     figure_every_n_steps: int = Field(default=10, ge=0)
     # TODO: metrics to be different per variable so a dict instead of a list
     validation_metrics: list[str] = Field(default_factory=lambda: ["max_value_absolute_error"])

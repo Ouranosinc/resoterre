@@ -2,8 +2,10 @@
 
 import logging
 import math
+import random
+from collections.abc import Sized
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,6 +16,7 @@ from torchmetrics.image import MultiScaleStructuralSimilarityIndexMeasure
 from tqdm import tqdm
 
 from resoterre.config import CRCMEmulatorConfig
+from resoterre.data_management.timeseries import MultiTimeseries
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
 from resoterre.logging_utils import CustomLogging
 from resoterre.ml.network_manager import NeuralNetworksManager
@@ -52,6 +55,11 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         # ToDo: choose between self.config.paths.output and self.config.paths.models
         if self.config.experiment_name is None:
             raise ValueError("Experiment name must be specified in the configuration.")
+        seed = self.config.training.seed
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
+            torch.manual_seed(seed)
         super().__init__(
             experiment_name=self.config.experiment_name,
             path_models=self.config.paths.output,
@@ -59,7 +67,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             validation_metrics_monitor=["validation_loss"],
             logger_config=self.config.logger,
         )
-        self.dataset = self.build_dataset(self.config.data.training_periods)
+        self.dataset = self.build_dataset(list(self.config.data.training_periods.values()))
         if len(self.dataset) > 0:
             self.train_data_loader = self.build_data_loader(self.dataset, shuffle=True)
             logger.info(
@@ -67,14 +75,25 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
                 len(self.dataset),
                 self.config.data.batch_size,
             )
-        self.validation_dataset = self.build_dataset(self.config.data.validation_periods)
-        if len(self.validation_dataset) > 0:
-            self.validation_data_loader = self.build_data_loader(self.validation_dataset, shuffle=False)
+        # one dataset and data loader per key of data.validation_periods, metrics are reported by key
+        self.validation_datasets: dict[str, CRCMEmulatorDataset] = {}
+        self.validation_data_loaders: dict[str, td.DataLoader[Any]] = {}
+        for key, period in self.config.data.validation_periods.items():
+            validation_dataset = self.build_dataset([period])
+            if len(validation_dataset) == 0:
+                logger.warning("No validation samples match validation_periods['%s'], it is skipped.", key)
+                continue
+            self.validation_datasets[key] = validation_dataset
+            self.validation_data_loaders[key] = self.build_data_loader(validation_dataset, shuffle=False)
             logger.info(
-                "Initialized validation DataLoader with %d samples, batch size %d",
-                len(self.validation_dataset),
+                "Initialized validation DataLoader '%s' with %d samples, batch size %d",
+                key,
+                len(validation_dataset),
                 self.config.data.batch_size,
             )
+        if self.validation_data_loaders:
+            # the base class only runs the validation loop when a validation data loader is set
+            self.validation_data_loader = next(iter(self.validation_data_loaders.values()))
         if self.config.data.coarsen_factor is None:
             raise ValueError("Coarsen factor must be specified in the configuration.")
         self.validation_figure_data: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
@@ -91,9 +110,10 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         # ToDo: this may have to be expanded for variable-specific figure mappings
         for variable_name in config.data.crcm_variables:
             for metric_name in config.training.validation_metrics:
-                diagnostic_key = f"{variable_name}/{metric_name}"
                 if metric_name in self.config.plot.metric_mapping:
-                    self.diagnostic_figure_mapping[diagnostic_key] = self.config.plot.metric_mapping[metric_name]
+                    for key in self.config.data.validation_periods:
+                        diagnostic_key = f"{variable_name}/{metric_name}_{key}"
+                        self.diagnostic_figure_mapping[diagnostic_key] = self.config.plot.metric_mapping[metric_name]
 
     def build_dataset(self, time_periods: list[list[datetime]]) -> CRCMEmulatorDataset:
         """
@@ -151,26 +171,32 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             pin_memory=True,
         )
 
-    def build_test_data_loader(self) -> tuple[CRCMEmulatorDataset, td.DataLoader[Any]]:
+    def build_test_data_loaders(self) -> dict[str, td.DataLoader[Any]]:
         """
-        Build the test dataset and its data loader from ``data.test_periods``.
+        Build one test data loader per key of ``data.test_periods``.
 
         Returns
         -------
-        tuple[CRCMEmulatorDataset, td.DataLoader]
-            The test dataset and its data loader.
+        dict[str, td.DataLoader]
+            The test data loaders by key (the dataset is ``loader.dataset``). Keys without samples are skipped.
 
         Raises
         ------
         ValueError
-            If no test period is configured, or if no sample matches the test periods.
+            If no test period is configured, or if no sample matches any of the test periods.
         """
         if not self.config.data.test_periods:
             raise ValueError("Set data.test_periods in the configuration.")
-        test_dataset = self.build_dataset(self.config.data.test_periods)
-        if len(test_dataset) == 0:
+        data_loaders = {}
+        for key, period in self.config.data.test_periods.items():
+            test_dataset = self.build_dataset([period])
+            if len(test_dataset) == 0:
+                logger.warning("No test samples match test_periods['%s'], it is skipped.", key)
+                continue
+            data_loaders[key] = self.build_data_loader(test_dataset, shuffle=False)
+        if not data_loaders:
             raise ValueError("No test samples match test_periods and the selected variables.")
-        return test_dataset, self.build_data_loader(test_dataset, shuffle=False)
+        return data_loaders
 
     def init_unet(self) -> None:
         """
@@ -372,6 +398,32 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         self.running_validation_metrics = {}
         return results
 
+    def evaluate_by_key(
+        self, data_loaders: dict[str, td.DataLoader[Any]], metric_functions: dict[str, Any], desc: str = "Evaluation"
+    ) -> dict[str, float]:
+        """
+        Evaluate the model on each dataset, e.g. the test periods, and report the metrics by key.
+
+        Parameters
+        ----------
+        data_loaders : dict[str, td.DataLoader]
+            Data loaders by key.
+        metric_functions : dict[str, Any]
+            Extra metrics to compute, by name, in addition to the losses (see ``build_metrics``).
+        desc : str
+            Description of the progress bar.
+
+        Returns
+        -------
+        dict[str, float]
+            One consolidated value per metric and key, named ``<metric>_<key>`` (e.g. ``tas/rmse_historical``).
+        """
+        results: dict[str, float] = {}
+        for key, data_loader in data_loaders.items():
+            key_results = self.evaluate(data_loader, metric_functions, desc=f"{desc} {key}")
+            results.update({f"{name}_{key}": value for name, value in key_results.items()})
+        return results
+
     def running_consolidation(self, metrics: dict[str, torch.Tensor], batch_size: int) -> None:
         """
         Fold the metrics of one validation batch into the running statistics.
@@ -389,9 +441,14 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         """
         running_consolidation(self.running_validation_metrics, metrics, batch_size)
 
-    def consolidation(self) -> None:
+    def consolidation(self, key: str = "") -> None:
         """
         Consolidate the running statistics into one value per metric in ``self.validation_metrics``.
+
+        Parameters
+        ----------
+        key : str
+            Key of the validation period, appended to the metric names (``<metric>_<key>``) when given.
 
         Notes
         -----
@@ -401,23 +458,46 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             return
         consolidated = consolidation(self.running_validation_metrics)
         self.running_validation_metrics = {}
-        single_values_metrics = {key: value for key, value in consolidated.items() if isinstance(value, (float, int))}
+        suffix = f"_{key}" if key else ""
+        single_values_metrics = {
+            f"{name}{suffix}": value for name, value in consolidated.items() if isinstance(value, (float, int))
+        }
         self.validation_metrics.add_concurrent_values(None, single_values_metrics)
         self.validation_diagnostics.update(
-            {key: value for key, value in consolidated.items() if not isinstance(value, (float, int))}
+            {f"{name}{suffix}": value for name, value in consolidated.items() if not isinstance(value, (float, int))}
         )
 
     def validation_loop(self, epoch: int) -> None:
         """
-        Perform the validation loop over the entire validation dataset.
+        Perform the validation loop over each validation dataset, by key of ``data.validation_periods``.
 
         Parameters
         ----------
         epoch : int
             The current epoch number.
+
+        Notes
+        -----
+        Metrics are consolidated by key, e.g. ``validation_loss_historical``. ``validation_loss``, the sample-weighted
+        mean of the losses over the keys, is the monitored metric.
         """
-        self.running_validation_metrics = {}
-        super().validation_loop(epoch)
+        self.set_eval_mode()
+        self.validation_metrics = MultiTimeseries()
+        if not self.validation_data_loaders:
+            raise ValueError("Validation data loaders are not set.")
+        first_data_loader = self.validation_data_loader
+        for key, data_loader in self.validation_data_loaders.items():
+            self.running_validation_metrics = {}
+            # _log_validation_step reports on the current data loader
+            self.validation_data_loader = data_loader
+            for i, item in enumerate(tqdm(data_loader, desc=f"Validation {key} epoch {epoch}", leave=False)):
+                self.validation_step(item)
+                self._log_validation_step(i=i + 1, identifier=f"end_of_validation_step_epoch_{epoch}", inline=False)
+            self.consolidation(key)
+        self.validation_data_loader = first_data_loader
+        self.validation_consolidate()
+        self.update_validation_metrics(epoch=epoch)
+        self.log_validation_metrics_to_experiment(epoch=epoch)
 
     def _log_validation_step(self, i: int, identifier: str, inline: bool = True) -> None:
         """
@@ -454,8 +534,11 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         This function should update self.metrics with consolidated validation metrics
         e.g. self.metrics.add_concurrent_values(self.metrics.last_time(), dict_of_aggregates)
         """
-        self.consolidation()
-        validation_loss = np.mean(self.validation_metrics["loss"].values).item()
+        keys = list(self.validation_data_loaders)
+        weights = [len(cast(Sized, self.validation_data_loaders[key].dataset)) for key in keys]
+        losses = [self.validation_metrics[f"loss_{key}"].values[-1] for key in keys]
+        validation_loss = float(np.average(losses, weights=weights))
+        self.validation_metrics.add_concurrent_values(None, {"loss": validation_loss})
         self.metrics.add_concurrent_values(self.metrics.last_time(), {"validation_loss": validation_loss})
         self.output_validation_figures()
 
@@ -526,16 +609,18 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         Evaluate the model once on the test data, and log the metrics to Comet ML.
 
         The best checkpoint in ``paths.output`` is evaluated, or the current model if there is none. The metrics are
-        ``inference.test_metrics`` (in addition to the losses), logged as e.g. ``tas/test_rmse`` at the current
-        step, along with ``test_checkpoint_epoch``, the epoch of the evaluated model.
+        ``inference.test_metrics`` (in addition to the losses), logged by key of ``data.test_periods`` as e.g.
+        ``tas/test_rmse_historical`` at the current step, along with ``test_checkpoint_epoch``, the epoch of the
+        evaluated model.
 
         Returns
         -------
         dict[str, float]
-            One consolidated value per metric over the test data, empty if there are no test data.
+            One consolidated value per metric and key (``<metric>_<key>``) over the test data, empty if there are no
+            test data.
         """
         try:
-            _, test_data_loader = self.build_test_data_loader()
+            test_data_loaders = self.build_test_data_loaders()
         except ValueError as error:
             logger.warning("Model not tested: %s", error)
             return {}
@@ -547,7 +632,9 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             self.to_device(self.config.inference.device or self.config.training.device)
         except FileNotFoundError:
             logger.warning("No best checkpoint found, testing the current model.")
-        results = self.evaluate(test_data_loader, build_metrics(self.config.inference.test_metrics), desc="Test")
+        results = self.evaluate_by_key(
+            test_data_loaders, build_metrics(self.config.inference.test_metrics), desc="Test"
+        )
         self.experiment_logger.log_metrics(
             {**with_split(results, "test"), "test_checkpoint_epoch": self.epoch_counter}, step=step, epoch=epoch
         )
@@ -560,8 +647,9 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
 
         Only done when ``training.log_interpolation_baseline`` is set and Comet ML logging is active. The scores are
         ``training.validation_metrics`` on the validation periods and ``inference.test_metrics`` on the test periods,
-        logged as ``<variable>/interpolation_baseline_<split>_<metric>``, next to the model's metrics (e.g.
-        ``tas/interpolation_baseline_validation_rmse`` next to ``tas/validation_rmse``). They are read from the JSON
+        logged as ``<variable>/interpolation_baseline_<split>_<metric>_<key>``, next to the model's metrics (e.g.
+        ``tas/interpolation_baseline_validation_rmse_historical`` next to
+        ``tas/validation_rmse_historical``). They are read from the JSON
         files saved in ``paths.baselines_out_dirs.interpolation`` (e.g. by ``02_score_baselines.py``); if missing or
         incomplete, the precomputed baseline is scored and the JSON file is saved for the next training. A split that
         cannot be scored (no baseline zarr, missing days, no period) is skipped with a warning; the baseline is never
@@ -608,7 +696,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         Returns
         -------
         dict[str, float]
-            The scores by name (``<variable>/<metric>``), empty if the baseline cannot be scored.
+            The scores by name (``<variable>/<metric>_<key>``), empty if the baseline cannot be scored.
         """
         missing = [
             str(path)
