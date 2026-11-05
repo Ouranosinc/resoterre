@@ -143,6 +143,7 @@ def daily_time_index(ds: xr.Dataset) -> xr.CFTimeIndex:
 
 # Same dates after 1582-10-15; which name a file uses depends on the tool that wrote it.
 _gregorian_calendars = {"standard", "gregorian", "proleptic_gregorian"}
+_365_aliases = {"365_day": "noleap", "366_day": "all_leap"}
 
 
 def same_calendar(calendar_a: str, calendar_b: str) -> bool:
@@ -159,8 +160,10 @@ def same_calendar(calendar_a: str, calendar_b: str) -> bool:
     Returns
     -------
     bool
-        True if the names are equal, or are both standard, gregorian or proleptic_gregorian.
+         True if the names match after resolving CF aliases, or are both Gregorian calendars.
     """
+    calendar_a = _365_aliases.get(calendar_a, calendar_a)
+    calendar_b = _365_aliases.get(calendar_b, calendar_b)
     return calendar_a == calendar_b or {calendar_a, calendar_b} <= _gregorian_calendars
 
 

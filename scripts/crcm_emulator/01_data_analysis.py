@@ -67,7 +67,7 @@ def main() -> None:
     logger.info({k: len(v) for k, v in dataset.valid_time_idx.items()})
 
     # ===== SUMMARIZE DATA =====
-    logger.info("Summarizing data for training periods: %s", config.training_periods)
+    logger.info("Summarizing data for training periods: %s", config.data.training_periods)
 
     stats_df = summarize_data(
         dataset=dataset,
@@ -75,7 +75,7 @@ def main() -> None:
         time_periods=config.data.training_periods,
     )
 
-    logger.info("Visualizing range and mean for training periods: %s", config.training_periods)
+    logger.info("Visualizing range and mean for training periods: %s", config.data.training_periods)
     visualize_range_and_mean(
         stats_df=stats_df,
         output_dir=output_dir,
