@@ -93,14 +93,20 @@ class InterpolationBaseline:
         Returns
         -------
         dict[str, float] | None
-            The scores of ``metric_names`` for each variable of ``data.crcm_variables`` (``<variable>/<metric>``), or
-            None if there are no saved scores or if some of these are missing.
+            The scores of ``metric_names`` for each variable of ``data.crcm_variables`` and each key of the periods of
+            the split (``<variable>/<metric>_<key>``), or None if there are no saved scores or if some of these are
+            missing.
         """
         path = self.results_json_path(split)
         if not path.is_file():
             return None
         saved = json.loads(path.read_text()).get("metrics", {})
-        names = [f"{variable}/{metric}" for variable in self.config.data.crcm_variables for metric in metric_names]
+        names = [
+            f"{variable}/{metric}_{key}"
+            for key in getattr(self.config.data, f"{split}_periods")
+            for variable in self.config.data.crcm_variables
+            for metric in metric_names
+        ]
         if any(name not in saved for name in names):
             return None
         return {name: saved[name] for name in names}
@@ -112,7 +118,7 @@ class InterpolationBaseline:
         Parameters
         ----------
         results : dict[str, float]
-            Scores by name (``<variable>/<metric>``).
+            Scores by name (``<variable>/<metric>_<key>``).
         split : str
             Either "test" or "validation".
 
@@ -128,7 +134,7 @@ class InterpolationBaseline:
 
     def evaluate(self, metric_names: list[str], split: str = "test") -> dict[str, float]:
         """
-        Evaluate the computed baseline against the CRCM data over the validation or test periods.
+        Evaluate the computed baseline against the CRCM data over the validation or test periods, by key.
 
         Parameters
         ----------
@@ -140,8 +146,8 @@ class InterpolationBaseline:
         Returns
         -------
         dict[str, float]
-            One consolidated value per metric and variable (``<variable>/<metric>``), in physical units, computed in
-            the same way as for the trained model.
+            One consolidated value per metric, variable and key of the periods (``<variable>/<metric>_<key>``), in
+            physical units, computed in the same way as for the trained model.
         """
         if split not in ("test", "validation"):
             raise ValueError("split must be 'test' or 'validation'.")
@@ -153,29 +159,33 @@ class InterpolationBaseline:
         if self.config.preprocessing.crcm.path is None:
             raise ValueError("CRCM preprocessing path is not specified in the configuration.")
         variable_names = self.config.data.crcm_variables
-        dataset = CRCMEmulatorDataset(
-            path_gcm_preprocessing=self.config.preprocessing.gcm.path,
-            path_crcm_preprocessing=self.config.preprocessing.crcm.path,
-            simulations=self.config.preprocessing.simulations,
-            gcm_variables=variable_names,
-            crcm_variables=variable_names,
-            time_periods=periods,
-            normalize=False,
-            max_open_datasets=self.config.data.max_open_datasets,
-        )
-        if not len(dataset):
-            raise ValueError(f"No {split} samples match {split}_periods and the selected variables.")
-        return evaluate_precomputed_predictions(
-            dataset,
-            {"_".join(x): self.baseline_zarr_path(x) for x in self.config.preprocessing.simulations},
-            variable_names,
-            metric_names,
-            batch_size=self.config.data.batch_size,
-            num_workers=self.config.data.num_workers,
-            prefetch_factor=self.config.data.prefetch_factor,
-            device=self.config.inference.device or self.config.training.device,
-            desc=f"Baseline {split}",
-        )
+        results: dict[str, float] = {}
+        for key, period in periods.items():
+            dataset = CRCMEmulatorDataset(
+                path_gcm_preprocessing=self.config.preprocessing.gcm.path,
+                path_crcm_preprocessing=self.config.preprocessing.crcm.path,
+                simulations=self.config.preprocessing.simulations,
+                gcm_variables=variable_names,
+                crcm_variables=variable_names,
+                time_periods=[period],
+                normalize=False,
+                max_open_datasets=self.config.data.max_open_datasets,
+            )
+            if not len(dataset):
+                raise ValueError(f"No {split} samples match {split}_periods['{key}'] and the selected variables.")
+            key_results = evaluate_precomputed_predictions(
+                dataset,
+                {"_".join(x): self.baseline_zarr_path(x) for x in self.config.preprocessing.simulations},
+                variable_names,
+                metric_names,
+                batch_size=self.config.data.batch_size,
+                num_workers=self.config.data.num_workers,
+                prefetch_factor=self.config.data.prefetch_factor,
+                device=self.config.inference.device or self.config.training.device,
+                desc=f"Baseline {split} {key}",
+            )
+            results.update({f"{name}_{key}": value for name, value in key_results.items()})
+        return results
 
     def initialize_zarr(self) -> None:
         """Initialize the zarr dataset for each GCM simulation in the preprocessing range."""
@@ -226,7 +236,7 @@ class InterpolationBaseline:
             baseline_dates = date_tuples(ds_baseline["time"].values)
         periods = [
             ((start.year, start.month, start.day), (end.year, end.month, end.day))
-            for start, end in self.config.data.validation_periods + self.config.data.test_periods
+            for start, end in [*self.config.data.validation_periods.values(), *self.config.data.test_periods.values()]
         ]
         chunk_days = {
             baseline_dates[k]: k

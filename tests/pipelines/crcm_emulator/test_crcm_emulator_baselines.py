@@ -62,8 +62,8 @@ def _baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, computed_days: li
             tile_size=TILE_SIZE,
             batch_size=2,
             num_workers=0,
-            validation_periods=[],
-            test_periods=[[datetime(2000, 1, 2), datetime(2000, 1, 4)]],
+            validation_periods={},
+            test_periods={"test": [datetime(2000, 1, 2), datetime(2000, 1, 4)]},
         ),
     )
     baseline = InterpolationBaseline(config)
@@ -93,7 +93,7 @@ def test_evaluate(tmp_path, monkeypatch):
     results = baseline.evaluate(["rmse", "max_value_absolute_error"], split="test")
     # Errors of 1, 2 and 3 in batches of 2 and 1: the mean is 2 only if batches are weighted by their size, and a
     # baseline taken from a shifted day would be at least 7 off.
-    assert results == pytest.approx({"tas/rmse": 2.0, "tas/max_value_absolute_error": 2.0})
+    assert results == pytest.approx({"tas/rmse_test": 2.0, "tas/max_value_absolute_error_test": 2.0})
 
 
 def test_evaluate_baseline_not_computed(tmp_path, monkeypatch):
@@ -126,8 +126,8 @@ def test_run(tmp_path):
             crcm_variables=["tas"],
             tile_size=TILE_SIZE,
             coarsen_factor=2,
-            validation_periods=[[datetime(2000, 1, 2), datetime(2000, 1, 3)]],
-            test_periods=[[datetime(2000, 1, 6), datetime(2000, 1, 9)]],
+            validation_periods={"val": [datetime(2000, 1, 2), datetime(2000, 1, 3)]},
+            test_periods={"test": [datetime(2000, 1, 6), datetime(2000, 1, 9)]},
         ),
     )
     path_gcm = tmp_path / f"crcm_emulator_input_{simulation_str}.zarr"

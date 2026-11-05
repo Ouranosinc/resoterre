@@ -103,14 +103,14 @@ def test_crcm_emulator_logger_config_from_yaml():
         CRCMEmulatorConfig,
         {
             "experiment_name": "test",
-            "data": {"training_periods": [["2000-01-01", "2000-12-31T23:00:00"]]},
+            "data": {"training_periods": {"all": ["2000-01-01", "2000-12-31T23:00:00"]}},
             "logger": {"disabled": True, "tags": ["a"]},
         },
     )
     assert config.logger is not None
     assert config.logger.disabled
     assert config.logger.tags == ["a"]
-    assert config.data.training_periods[0][0].year == 2000
+    assert config.data.training_periods["all"][0].year == 2000
 
 
 def test_crcm_emulator_nested_config_from_yaml():

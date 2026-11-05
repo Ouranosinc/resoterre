@@ -80,24 +80,24 @@ data:
   crcm_variables:
     - tas
   training_periods:
-    -
+    historical:
       - "1951-01-01"
       - "1984-12-31"
-    -
+    future:
       - "2015-01-01"
       - "2069-12-31"
   validation_periods:
-    -
+    historical:
       - "1985-01-01"
       - "1999-12-31"
-    -
+    future:
       - "2070-01-01"
       - "2084-12-31"
   test_periods:
-    -
+    historical:
       - "2000-01-01"
       - "2014-12-31"
-    -
+    future:
       - "2085-01-01"
       - "2100-12-31"
   batch_size: 128
@@ -125,6 +125,7 @@ training:
   nb_of_epochs: 10
   num_threads: 2
   device: cuda
+  seed: 42 # random seed for weight initialization and data shuffling, null to disable
   figure_every_n_steps: 10 # Comet ML training figure frequency, 0 to disable
   validation_metrics: # extra metrics reported during validation, in addition to the losses
     - rmse

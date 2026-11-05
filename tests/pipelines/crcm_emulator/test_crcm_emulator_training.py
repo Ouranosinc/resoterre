@@ -1,5 +1,6 @@
 import json
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -56,16 +57,17 @@ def test_crcm_emulator_training():
             coarsen_factor=config.data.coarsen_factor,
         )
         runner.train_data_loader = td.DataLoader(runner.dataset, runner.config.data.batch_size, shuffle=True)
-        runner.validation_dataset = CRCMEmulatorMockDataset(
+        validation_dataset = CRCMEmulatorMockDataset(
             num_samples=16,
             num_input_channels=2,
             num_output_channels=2,
             tile_size=config.data.tile_size,
             coarsen_factor=config.data.coarsen_factor,
         )
-        runner.validation_data_loader = td.DataLoader(
-            runner.validation_dataset, runner.config.data.batch_size, shuffle=False
-        )
+        runner.validation_data_loaders = {
+            "val": td.DataLoader(validation_dataset, runner.config.data.batch_size, shuffle=False)
+        }
+        runner.validation_data_loader = runner.validation_data_loaders["val"]
         runner.init_unet()
 
         runner(epoch=1, device=runner.config.training.device)
@@ -76,7 +78,9 @@ def test_crcm_emulator_training():
         assert Path(config.paths.output, "test_epoch_001_best.pth").is_file()
         results = json.loads(Path(config.paths.output, "test_training_results.json").read_text())
         assert "LastVal loss" in results
-        assert "LastVal mse_loss" in results
+        assert "LastVal loss_val" in results
+        assert results["BestVal loss_val"] == results["LastVal loss_val"]  # a single epoch is the best epoch
+        assert "LastVal mse_loss_val" in results
         assert not list(Path(config.paths.output).glob("training_visualization_*.png"))
 
 
@@ -103,8 +107,9 @@ def test_crcm_emulator_training_resume():
             mock_kwargs = {"num_input_channels": 2, "num_output_channels": 2, "tile_size": 128, "coarsen_factor": 4}
             runner.dataset = CRCMEmulatorMockDataset(num_samples=8, **mock_kwargs)
             runner.train_data_loader = td.DataLoader(runner.dataset, 4, shuffle=True)
-            runner.validation_dataset = CRCMEmulatorMockDataset(num_samples=4, **mock_kwargs)
-            runner.validation_data_loader = td.DataLoader(runner.validation_dataset, 4, shuffle=False)
+            validation_dataset = CRCMEmulatorMockDataset(num_samples=4, **mock_kwargs)
+            runner.validation_data_loaders = {"val": td.DataLoader(validation_dataset, 4, shuffle=False)}
+            runner.validation_data_loader = runner.validation_data_loaders["val"]
             runner.init_unet()
             return runner
 
@@ -227,8 +232,9 @@ def test_crcm_emulator_test_evaluation_reports_test_metrics():
             )
             runner.dataset = CRCMEmulatorMockDataset(num_samples=8, **mock_kwargs)
             runner.train_data_loader = td.DataLoader(runner.dataset, 4, shuffle=True)
-            runner.validation_dataset = CRCMEmulatorMockDataset(num_samples=4, **mock_kwargs)
-            runner.validation_data_loader = td.DataLoader(runner.validation_dataset, 4, shuffle=False)
+            validation_dataset = CRCMEmulatorMockDataset(num_samples=4, **mock_kwargs)
+            runner.validation_data_loaders = {"val": td.DataLoader(validation_dataset, 4, shuffle=False)}
+            runner.validation_data_loader = runner.validation_data_loaders["val"]
             runner.init_unet()
             return runner
 
@@ -253,6 +259,31 @@ def test_crcm_emulator_test_evaluation_reports_test_metrics():
             assert len(runner.validation_metrics) == 0
 
 
+def test_crcm_emulator_training_seed():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+
+        def initial_weights(seed: int | None) -> list[torch.Tensor]:
+            config = CRCMEmulatorConfig(
+                experiment_name="test",
+                paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+                preprocessing=CRCMEmulatorPreprocessingConfig(
+                    gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                    crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+                ),
+                data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas"]),
+                model=CRCMEmulatorModelConfig(
+                    kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+                ),
+                training=CRCMEmulatorTrainingConfig(seed=seed),
+            )
+            runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+            return [p.detach().clone() for p in runner.models["UNet"].parameters()]
+
+        same = [torch.equal(a, b) for a, b in zip(initial_weights(1), initial_weights(1), strict=True)]
+        assert all(same)
+        assert not all(torch.equal(a, b) for a, b in zip(initial_weights(1), initial_weights(2), strict=True))
+
+
 def test_crcm_emulator_build_test_data_loader_requires_test_periods():
     with tempfile.TemporaryDirectory() as tmp_dir:
         config = CRCMEmulatorConfig(
@@ -269,7 +300,7 @@ def test_crcm_emulator_build_test_data_loader_requires_test_periods():
         )
         runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
         with pytest.raises(ValueError, match="test_periods"):
-            runner.build_test_data_loader()
+            runner.build_test_data_loaders()
 
 
 def test_crcm_emulator_validation_figure_logged_to_comet_only():
@@ -292,8 +323,9 @@ def test_crcm_emulator_validation_figure_logged_to_comet_only():
         runner.experiment_logger.experiment = MagicMock()
         mock_kwargs = {"num_input_channels": 2, "num_output_channels": 2, "tile_size": 128, "coarsen_factor": 4}
         runner.dataset = CRCMEmulatorMockDataset(num_samples=8, **mock_kwargs)
-        runner.validation_dataset = CRCMEmulatorMockDataset(num_samples=8, **mock_kwargs)
-        runner.validation_data_loader = td.DataLoader(runner.validation_dataset, 4, shuffle=False)
+        validation_dataset = CRCMEmulatorMockDataset(num_samples=8, **mock_kwargs)
+        runner.validation_data_loaders = {"val": td.DataLoader(validation_dataset, 4, shuffle=False)}
+        runner.validation_data_loader = runner.validation_data_loaders["val"]
         runner.init_unet()
         runner.total_iterations = 7
         runner.to_device("cpu")
@@ -433,14 +465,14 @@ def test_crcm_emulator_interpolation_baseline_skipped(
 def test_crcm_emulator_test_logs_best_checkpoint_metrics(monkeypatch):
     with tempfile.TemporaryDirectory() as tmp_dir:
         runner = _baseline_runner(tmp_dir, False, {})
-        monkeypatch.setattr(runner, "build_test_data_loader", lambda: (None, ["batch"]))
+        monkeypatch.setattr(runner, "build_test_data_loaders", lambda: {"hist": ["batch"]})
         monkeypatch.setattr(runner, "load_state", MagicMock(side_effect=lambda *args, **kwargs: None))
         monkeypatch.setattr(runner, "evaluate", lambda *args, **kwargs: {"tas/rmse": 0.5})
         runner.total_iterations, runner.epoch_counter = 12, 3
-        assert runner.test() == {"tas/rmse": 0.5}
+        assert runner.test() == {"tas/rmse_hist": 0.5}
         runner.load_state.assert_called_once_with(Path(tmp_dir), tag="best")
         call = runner.experiment_logger.experiment.log_metrics.call_args
-        assert call.args[0] == {"tas/test_rmse": 0.5, "test_checkpoint_epoch": 3}
+        assert call.args[0] == {"tas/test_rmse_hist": 0.5, "test_checkpoint_epoch": 3}
         assert call.kwargs["step"] == 12
 
 
@@ -453,11 +485,11 @@ def test_crcm_emulator_test_skipped_without_test_data():
 
 @pytest.mark.parametrize(
     ("saved_metrics", "scored"),
-    [({"tas/rmse": 1.0, "pr/rmse": 2.0, "tas/ccc": 0.5}, False), ({"tas/rmse": 1.0}, True)],
+    [({"tas/rmse_hist": 1.0, "pr/rmse_hist": 2.0, "tas/ccc_hist": 0.5}, False), ({"tas/rmse_hist": 1.0}, True)],
     ids=["complete", "incomplete"],
 )
 def test_crcm_emulator_interpolation_baseline_read_from_json(monkeypatch, saved_metrics, scored):
-    evaluate = MagicMock(return_value={"tas/rmse": 3.0, "pr/rmse": 4.0})
+    evaluate = MagicMock(return_value={"tas/rmse_hist": 3.0, "pr/rmse_hist": 4.0})
     monkeypatch.setattr(crcm_emulator_training.InterpolationBaseline, "evaluate", evaluate)
     with tempfile.TemporaryDirectory() as tmp_dir:
         Path(tmp_dir, "interpolation_baseline_GCM_ssp245_r1.zarr").mkdir()
@@ -466,17 +498,21 @@ def test_crcm_emulator_interpolation_baseline_read_from_json(monkeypatch, saved_
                 json.dumps({"metrics": saved_metrics})
             )
         runner = _baseline_runner(tmp_dir, True, {"interpolation": Path(tmp_dir)})
+        period = {"hist": [datetime(2000, 1, 1), datetime(2000, 1, 2)]}
         runner.config = runner.config.model_copy(
             update={
+                "data": runner.config.data.model_copy(update={"validation_periods": period, "test_periods": period}),
                 "training": runner.config.training.model_copy(update={"validation_metrics": ["rmse"]}),
                 "inference": runner.config.inference.model_copy(update={"test_metrics": ["rmse"]}),
             }
         )
         runner.score_interpolation_baseline()
-        expected = {"tas/rmse": 3.0, "pr/rmse": 4.0} if scored else {"tas/rmse": 1.0, "pr/rmse": 2.0}
+        expected = (
+            {"tas/rmse_hist": 3.0, "pr/rmse_hist": 4.0} if scored else {"tas/rmse_hist": 1.0, "pr/rmse_hist": 2.0}
+        )
         assert evaluate.call_count == (2 if scored else 0)
         assert runner.interpolation_baseline_metrics == {
-            f"{variable}/interpolation_baseline_{split}_rmse": value
+            f"{variable}/interpolation_baseline_{split}_rmse_hist": value
             for split in ("validation", "test")
             for variable, value in zip(("tas", "pr"), expected.values(), strict=True)
         }

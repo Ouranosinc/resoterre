@@ -184,6 +184,8 @@ class NNTraining(ABC):
         self.diagnostic_figure_mapping: dict[str, dict[str, Any]] = {}
 
         self.best_validation_metrics: dict[str, MetricMinimum] = {}
+        # all consolidated validation metrics of the epoch that improved the first monitored metric the most
+        self.best_epoch_validation_metrics: dict[str, float] = {}
 
         self.patience: int | None = None
         self.early_stopping_counter: int = 0
@@ -320,6 +322,7 @@ class NNTraining(ABC):
                 "minimum_validation_loss_model": str(self.minimum_validation_loss_model),
                 "lr_scheduler_state_dicts": {k: v.state_dict() for k, v in self.lr_schedulers.items()},
                 "best_validation_metrics": self.best_validation_metrics,
+                "best_epoch_validation_metrics": self.best_epoch_validation_metrics,
                 "rng_state": torch.get_rng_state(),
                 "cuda_rng_state_all": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
                 "numpy_rng_state": np.random.get_state(),
@@ -382,6 +385,7 @@ class NNTraining(ABC):
         self.total_samples = int(checkpoint.get("total_samples", 0))
         self.minima_tracker = checkpoint.get("minima_tracker", MinimaTracker())
         self.best_validation_metrics = checkpoint.get("best_validation_metrics", {})
+        self.best_epoch_validation_metrics = checkpoint.get("best_epoch_validation_metrics", {})
         self.minimum_validation_loss_model = checkpoint.get("minimum_validation_loss_model", str(input_path))
         if "rng_state" in checkpoint:
             torch.set_rng_state(checkpoint["rng_state"])
@@ -517,6 +521,12 @@ class NNTraining(ABC):
                 raise NotImplementedError()  # There is also no current arguments for the mode of secondary metrics.
             if key not in self.best_validation_metrics or value < self.best_validation_metrics[key].value:
                 self.best_validation_metrics[key] = MetricMinimum(epoch=epoch, value=value)
+                if key == self.validation_metrics_monitor[0]:
+                    self.best_epoch_validation_metrics = {
+                        name: float(np.mean(timeseries.values))
+                        for name, timeseries in self.validation_metrics.items()
+                        if timeseries.values
+                    }
 
     def log_validation_metrics_to_experiment(self, epoch: int) -> None:
         """
@@ -610,7 +620,8 @@ class NNTraining(ABC):
         dict
             A dictionary containing training results such as start and end dates, elapsed time,
             number of parameters, number of epochs, number of iterations, best validation metrics (``MinVal``) and the
-            validation metrics of the latest epoch (``LastVal``).
+            validation metrics of the latest epoch (``LastVal``) and of the best epoch (``BestVal``, the epoch of the
+            first monitored metric's minimum).
         """
         num_params = sum(p.numel() for model in self.models.values() for p in model.parameters())
         if self.last_epoch_end_time is None or self.start_time is None:
@@ -629,6 +640,8 @@ class NNTraining(ABC):
         for metric_name, timeseries in self.validation_metrics.items():
             if timeseries.values:
                 d[f"LastVal {metric_name}"] = float(np.mean(timeseries.values))
+        for metric_name, value in self.best_epoch_validation_metrics.items():
+            d[f"BestVal {metric_name}"] = value
         return d
 
     def save_results_json(self) -> None:
