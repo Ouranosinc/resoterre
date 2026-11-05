@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from resoterre.ml import neural_networks_unet
@@ -82,6 +83,30 @@ def test_unet_to_1x1_forward():
     x_linear = torch.rand((1, 8))
     output = unet(x, x_linear=x_linear)
     assert output.shape == (1, 2, 64, 32)
+
+
+def test_unet_to_1x1_forward_with_linear_embedding():
+    unet = neural_networks_unet.UNet(
+        in_channels=2,
+        out_channels=2,
+        depth=2,
+        go_to_1x1=True,
+        h_in=64,
+        w_in=32,
+        linear_size=7,
+        linear_embedding_sizes=[16, 32],
+    )
+    x = torch.rand((1, 2, 64, 32))
+    x_linear = torch.rand((1, 7))
+    output = unet(x, x_linear=x_linear)
+    output.sum().backward()
+    assert output.shape == (1, 2, 64, 32)
+    assert unet.linear_embedding.sequential_block[0].weight.grad is not None  # embedding is trained with the UNet
+
+
+def test_unet_linear_embedding_requires_1x1():
+    with pytest.raises(ValueError, match="go_to_1x1"):
+        neural_networks_unet.UNet(in_channels=2, out_channels=2, linear_embedding_sizes=[8])
 
 
 def test_unet_last_layer_input_forward():
