@@ -17,8 +17,10 @@ from resoterre.config import CRCMEmulatorConfig
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
 from resoterre.logging_utils import CustomLogging
 from resoterre.ml.network_manager import NeuralNetworksManager
+from resoterre.ml.neural_networks_basic import CyclicalDateEncoding
 from resoterre.ml.neural_networks_unet import UNet
-from resoterre.ml.training_utils import NNTraining
+from resoterre.ml.training_utils import NNTraining, with_split
+from resoterre.pipelines.crcm_emulator.crcm_emulator_baselines import InterpolationBaseline
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 from resoterre.pipelines.crcm_emulator.experiment_logger import config_to_experiment_parameters
 from resoterre.pipelines.crcm_emulator.metrics import (
@@ -76,15 +78,24 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             )
         if self.config.data.coarsen_factor is None:
             raise ValueError("Coarsen factor must be specified in the configuration.")
+        self.date_encoding = CyclicalDateEncoding().to(self.config.training.device)
         self.validation_figure_data: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
         # per metric: (weighted sum, total weight), kept as tensors on the device until consolidation()
         self.running_validation_metrics: dict[str, tuple[torch.Tensor, float]] = {}
         self.validation_metric_functions = build_metrics(self.config.training.validation_metrics)
+        # Interpolation baseline metrics, computed once, re-logged at each validation (see score_interpolation_baseline)
+        self.interpolation_baseline_metrics: dict[str, float] = {}
         self.init_unet()
         self.loss_functions = {
             "MSELoss": nn.MSELoss(),
             "SSIMLoss": MultiScaleStructuralSimilarityIndexMeasure(data_range=(-1.0, 1.0)),
         }
+        # ToDo: this may have to be expanded for variable-specific figure mappings
+        for variable_name in config.data.crcm_variables:
+            for metric_name in config.training.validation_metrics:
+                diagnostic_key = f"{variable_name}/{metric_name}"
+                if metric_name in self.config.plot.metric_mapping:
+                    self.diagnostic_figure_mapping[diagnostic_key] = self.config.plot.metric_mapping[metric_name]
 
     def build_dataset(self, time_periods: list[list[datetime]]) -> CRCMEmulatorDataset:
         """
@@ -191,6 +202,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             w_in=self.config.data.tile_size // self.config.data.coarsen_factor,
             linear_size=7,
             reduction_ratio=self.config.model.reduction_ratio,
+            linear_embedding_sizes=self.config.model.linear_embedding_sizes,
         )
         self.optimizers["UNet"] = NeuralNetworksManager.optimizer_setup(
             self.models["UNet"].parameters(), self.config.optimizer
@@ -248,11 +260,11 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         """
         input_data = item["input_first_block"].to(self.config.training.device)
         target_data = item["target"].to(self.config.training.device)
-        # ToDo: convert month and day to time embeddings, normalize?
-        linear_data = torch.vstack(
-            [item["month"], item["day"], item["CO2"], item["CH4"], item["N2O"], item["CFC12"], item["CFC11_eq"]]
-        ).T
-        linear_data = linear_data.to(self.config.training.device)
+        date_encoding = self.date_encoding(
+            item["month"].to(self.config.training.device), item["day"].to(self.config.training.device)
+        )
+        gases = torch.vstack([item["CO2"], item["CH4"], item["N2O"], item["CFC12"], item["CFC11_eq"]]).T
+        linear_data = torch.cat([date_encoding, gases.to(self.config.training.device)], dim=1)
         output = self.models["UNet"](input_data, x_linear=linear_data)
         return input_data, target_data, output
 
@@ -307,6 +319,8 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             target_physical = denormalize_crcm(target_data, variable_names)
             output_physical = denormalize_crcm(output, variable_names)
             for name, metric_function in metric_functions.items():
+                # ToDo: there will most likely be variable specific metrics. Suggestion: have a
+                #       metric_function.per_variable boolean flag and handle accordingly in the update.
                 metrics.update(
                     per_variable_metrics(name, metric_function(target_physical, output_physical), variable_names)
                 )
@@ -390,7 +404,11 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             return
         consolidated = consolidation(self.running_validation_metrics)
         self.running_validation_metrics = {}
-        self.validation_metrics.add_concurrent_values(None, consolidated)
+        single_values_metrics = {key: value for key, value in consolidated.items() if isinstance(value, (float, int))}
+        self.validation_metrics.add_concurrent_values(None, single_values_metrics)
+        self.validation_diagnostics.update(
+            {key: value for key, value in consolidated.items() if not isinstance(value, (float, int))}
+        )
 
     def validation_loop(self, epoch: int) -> None:
         """
@@ -485,18 +503,161 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         results["config"] = self.config_dict()
         return results
 
-    def training_loop(self) -> None:
+    def training_loop(self, test: bool = False) -> None:
         """
         Execute the main training loop for the model.
+
+        Parameters
+        ----------
+        test : bool
+            Whether to evaluate the best model on the test data once training is done (see ``test``).
 
         Notes
         -----
         Trains until ``training.nb_of_epochs`` epochs are completed in total, so a trainer whose state was
         restored with ``load_state`` only trains the remaining epochs.
         """
+        self.score_interpolation_baseline()
         for _ in range(self.epoch_counter, self.config.training.nb_of_epochs):
             self(epoch=self.epoch_counter + 1, device=self.config.training.device)
+        if test:
+            self.test()
         self.close()
+
+    def test(self) -> dict[str, float]:
+        """
+        Evaluate the model once on the test data, and log the metrics to Comet ML.
+
+        The best checkpoint in ``paths.output`` is evaluated, or the current model if there is none. The metrics are
+        ``inference.test_metrics`` (in addition to the losses), logged as e.g. ``tas/test_rmse`` at the current
+        step, along with ``test_checkpoint_epoch``, the epoch of the evaluated model.
+
+        Returns
+        -------
+        dict[str, float]
+            One consolidated value per metric over the test data, empty if there are no test data.
+        """
+        try:
+            _, test_data_loader = self.build_test_data_loader()
+        except ValueError as error:
+            logger.warning("Model not tested: %s", error)
+            return {}
+        step, epoch = self.total_iterations, self.epoch_counter
+        try:
+            if self.config.paths.output is None:
+                raise FileNotFoundError("paths.output is not set")
+            self.load_state(self.config.paths.output, tag="best")
+            self.to_device(self.config.inference.device or self.config.training.device)
+        except FileNotFoundError:
+            logger.warning("No best checkpoint found, testing the current model.")
+        results = self.evaluate(test_data_loader, build_metrics(self.config.inference.test_metrics), desc="Test")
+        self.experiment_logger.log_metrics(
+            {**with_split(results, "test"), "test_checkpoint_epoch": self.epoch_counter}, step=step, epoch=epoch
+        )
+        logger.info("Test results (epoch %d): %s", self.epoch_counter, results)
+        return results
+
+    def score_interpolation_baseline(self) -> None:
+        """
+        Get the scores of the interpolation baseline on the validation and test data, and log them to Comet ML.
+
+        Only done when ``training.log_interpolation_baseline`` is set and Comet ML logging is active. The scores are
+        ``training.validation_metrics`` on the validation periods and ``inference.test_metrics`` on the test periods,
+        logged as ``<variable>/interpolation_baseline_<split>_<metric>``, next to the model's metrics (e.g.
+        ``tas/interpolation_baseline_validation_rmse`` next to ``tas/validation_rmse``). They are read from the JSON
+        files saved in ``paths.baselines_out_dirs.interpolation`` (e.g. by ``02_score_baselines.py``); if missing or
+        incomplete, the precomputed baseline is scored and the JSON file is saved for the next training. A split that
+        cannot be scored (no baseline zarr, missing days, no period) is skipped with a warning; the baseline is never
+        computed here.
+        """
+        self.interpolation_baseline_metrics = {}
+        if not self.config.training.log_interpolation_baseline:
+            return
+        if self.experiment_logger.experiment is None:
+            logger.warning("Interpolation baseline not scored: Comet ML logging is disabled")
+            return
+        if not self.config.paths.baselines_out_dirs.get("interpolation"):
+            logger.warning("Interpolation baseline not scored: no paths.baselines_out_dirs.interpolation in config")
+            return
+        baseline = InterpolationBaseline(self.config)
+        for split, metric_names in (
+            ("validation", self.config.training.validation_metrics),
+            ("test", self.config.inference.test_metrics),
+        ):
+            results = baseline.load_results(metric_names, split)
+            if results is not None:
+                logger.info("Interpolation baseline %s scores read from %s", split, baseline.results_json_path(split))
+            else:
+                results = self._score_interpolation_baseline_split(baseline, metric_names, split)
+            if results:
+                self.interpolation_baseline_metrics.update(with_split(results, f"interpolation_baseline_{split}"))
+        self.log_interpolation_baseline_metrics(epoch=self.epoch_counter)
+
+    def _score_interpolation_baseline_split(
+        self, baseline: InterpolationBaseline, metric_names: list[str], split: str
+    ) -> dict[str, float]:
+        """
+        Score the precomputed interpolation baseline on a data split, and save the scores for the next training.
+
+        Parameters
+        ----------
+        baseline : InterpolationBaseline
+            The interpolation baseline.
+        metric_names : list[str]
+            Names of the metrics.
+        split : str
+            Either "test" or "validation".
+
+        Returns
+        -------
+        dict[str, float]
+            The scores by name (``<variable>/<metric>``), empty if the baseline cannot be scored.
+        """
+        missing = [
+            str(path)
+            for path in (baseline.baseline_zarr_path(x) for x in self.config.preprocessing.simulations)
+            if not path.is_dir()
+        ]
+        if not self.config.preprocessing.simulations or missing:
+            logger.warning("Interpolation baseline not scored, missing: %s", ", ".join(missing) or "simulations")
+            return {}
+        logger.warning("No saved interpolation baseline %s scores, scoring the baseline", split)
+        try:
+            results = baseline.evaluate(metric_names, split=split)
+        except (KeyError, RuntimeError, ValueError) as error:
+            logger.warning("Interpolation baseline not scored on the %s data: %s", split, error)
+            return {}
+        try:
+            baseline.save_results(results, split)
+        except OSError as error:
+            logger.warning("Interpolation baseline %s scores not saved: %s", split, error)
+        return results
+
+    def log_interpolation_baseline_metrics(self, epoch: int) -> None:
+        """
+        Log the interpolation baseline metrics at the current step, so that they form a constant line in Comet ML.
+
+        Parameters
+        ----------
+        epoch : int
+            The current epoch number.
+        """
+        if self.interpolation_baseline_metrics:
+            self.experiment_logger.log_metrics(
+                self.interpolation_baseline_metrics, step=self.total_iterations, epoch=epoch
+            )
+
+    def log_validation_metrics_to_experiment(self, epoch: int) -> None:
+        """
+        Log the consolidated validation metrics, and the interpolation baseline metrics, to the experiment logger.
+
+        Parameters
+        ----------
+        epoch : int
+            The current epoch number.
+        """
+        super().log_validation_metrics_to_experiment(epoch)
+        self.log_interpolation_baseline_metrics(epoch)
 
     def output_training_figures(
         self, input_data: torch.Tensor, target_data: torch.Tensor, output_data: torch.Tensor

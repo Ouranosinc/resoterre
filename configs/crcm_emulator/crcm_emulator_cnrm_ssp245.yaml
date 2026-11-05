@@ -8,7 +8,7 @@ paths:
   emission_data: /Path/to/GHGs
   crcm_data: /Path/to/MRCC5-CMIP6
   baselines_out_dirs:
-    interpolation: /Path/to/baseline/interpolation
+    interpolation: /Path/to/baseline/interpolation # should be absolute path
 
 preprocessing:
   # Simulations shared by GCM and CRCM preprocessing
@@ -23,7 +23,7 @@ preprocessing:
       - r1i1p1f2
   gcm:
     path: /Path/to/preprocessed/gcm_preprocessing
-    start_datetime: "1950-01-01"
+    start_datetime: "1951-01-01"
     end_datetime: "2100-12-31"
     variables:
       - hus
@@ -127,17 +127,20 @@ training:
   device: cuda
   figure_every_n_steps: 10 # Comet ML training figure frequency, 0 to disable
   validation_metrics: # extra metrics reported during validation, in addition to the losses
-    - max_value_absolute_error
     - rmse
     - ccc
     - wasserstein_distance
+    - bias_map
+    - mean_bias
+  log_interpolation_baseline: true # score the precomputed interpolation baseline and log it to Comet ML
 
 inference:
   test_metrics: # extra metrics reported when evaluating on the test data, in addition to the losses
-    - max_value_absolute_error
     - rmse
     - ccc
     - wasserstein_distance
+    - bias_map
+    - mean_bias
 
 debug:
   crcm_figures:

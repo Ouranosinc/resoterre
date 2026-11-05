@@ -246,6 +246,8 @@ def test_crcm_emulator_test_evaluation_reports_test_metrics():
             runner = make_runner(config.training)
             runner.load_state(Path(tmp_dir), tag="latest")
             results = runner.evaluate(test_data_loader, build_metrics(test_metrics))
+            # float and int are used to identify scalar metrics
+            assert all(isinstance(v, (int, float)) for v in results.values())
             assert set(results) == expected
             assert runner.running_validation_metrics == {}
             assert len(runner.validation_metrics) == 0
@@ -319,6 +321,7 @@ def test_crcm_emulator_consolidation_weights_losses_by_batch_size():
     runner = SimpleNamespace(
         running_validation_metrics={},
         validation_metrics=MultiTimeseries(),
+        validation_diagnostics={},
     )
     consolidator = crcm_emulator_training.CRCMEmulatorTrainingFromConfig
     # 128 samples with zero error, then a partial batch of 1 sample with a squared error of 100
@@ -363,3 +366,119 @@ def test_crcm_emulator_metrics_use_denormalized_data_but_losses_do_not():
         assert seen["target"].min() >= 243.15
         assert seen["target"].max() <= 303.15
         assert set(runner.running_validation_metrics) >= {"tas/record", "mse_loss"}
+
+
+def _baseline_runner(
+    tmp_dir: str, log_interpolation_baseline: bool, baselines_out_dirs: dict[str, Path]
+) -> crcm_emulator_training.CRCMEmulatorTrainingFromConfig:
+    config = CRCMEmulatorConfig(
+        experiment_name="test",
+        paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir), baselines_out_dirs=baselines_out_dirs),
+        preprocessing=CRCMEmulatorPreprocessingConfig(
+            gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+            crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+        ),
+        data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
+        model=CRCMEmulatorModelConfig(kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None),
+        training=CRCMEmulatorTrainingConfig(log_interpolation_baseline=log_interpolation_baseline),
+    )
+    runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+    # Set after init, so that the mock dataset is used
+    preprocessing = runner.config.preprocessing.model_copy(update={"simulations": [["GCM", "ssp245", "r1"]]})
+    runner.config = runner.config.model_copy(update={"preprocessing": preprocessing})
+    runner.experiment_logger.experiment = MagicMock()
+    return runner
+
+
+def test_crcm_emulator_interpolation_baseline_logged_as_constant_line(monkeypatch):
+    scores = {"validation": {"tas/rmse": 1.5}, "test": {"tas/rmse": 2.0}}
+    monkeypatch.setattr(
+        crcm_emulator_training.InterpolationBaseline, "evaluate", lambda self, metric_names, split: scores[split]
+    )
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        Path(tmp_dir, "interpolation_baseline_GCM_ssp245_r1.zarr").mkdir()
+        runner = _baseline_runner(tmp_dir, True, {"interpolation": Path(tmp_dir)})
+        runner.score_interpolation_baseline()
+        runner.total_iterations = 7
+        runner.log_validation_metrics_to_experiment(epoch=1)
+        expected = {"tas/interpolation_baseline_validation_rmse": 1.5, "tas/interpolation_baseline_test_rmse": 2.0}
+        baseline_steps = [
+            call.kwargs["step"]
+            for call in runner.experiment_logger.experiment.log_metrics.call_args_list
+            if call.args[0] == expected
+        ]
+        assert baseline_steps == [0, 7]
+
+
+@pytest.mark.parametrize(
+    ("log_interpolation_baseline", "baselines_out_dirs", "create_zarr"),
+    [(False, None, True), (True, {}, True), (True, None, False)],
+    ids=["disabled", "no_path", "missing_zarr"],
+)
+def test_crcm_emulator_interpolation_baseline_skipped(
+    monkeypatch, log_interpolation_baseline, baselines_out_dirs, create_zarr
+):
+    evaluate = MagicMock()
+    monkeypatch.setattr(crcm_emulator_training.InterpolationBaseline, "evaluate", evaluate)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        dirs = {"interpolation": Path(tmp_dir)} if baselines_out_dirs is None else baselines_out_dirs
+        if create_zarr:
+            Path(tmp_dir, "interpolation_baseline_GCM_ssp245_r1.zarr").mkdir()
+        runner = _baseline_runner(tmp_dir, log_interpolation_baseline, dirs)
+        runner.score_interpolation_baseline()
+        evaluate.assert_not_called()
+        assert runner.interpolation_baseline_metrics == {}
+
+
+def test_crcm_emulator_test_logs_best_checkpoint_metrics(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        runner = _baseline_runner(tmp_dir, False, {})
+        monkeypatch.setattr(runner, "build_test_data_loader", lambda: (None, ["batch"]))
+        monkeypatch.setattr(runner, "load_state", MagicMock(side_effect=lambda *args, **kwargs: None))
+        monkeypatch.setattr(runner, "evaluate", lambda *args, **kwargs: {"tas/rmse": 0.5})
+        runner.total_iterations, runner.epoch_counter = 12, 3
+        assert runner.test() == {"tas/rmse": 0.5}
+        runner.load_state.assert_called_once_with(Path(tmp_dir), tag="best")
+        call = runner.experiment_logger.experiment.log_metrics.call_args
+        assert call.args[0] == {"tas/test_rmse": 0.5, "test_checkpoint_epoch": 3}
+        assert call.kwargs["step"] == 12
+
+
+def test_crcm_emulator_test_skipped_without_test_data():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        runner = _baseline_runner(tmp_dir, False, {})
+        assert runner.test() == {}
+        runner.experiment_logger.experiment.log_metrics.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("saved_metrics", "scored"),
+    [({"tas/rmse": 1.0, "pr/rmse": 2.0, "tas/ccc": 0.5}, False), ({"tas/rmse": 1.0}, True)],
+    ids=["complete", "incomplete"],
+)
+def test_crcm_emulator_interpolation_baseline_read_from_json(monkeypatch, saved_metrics, scored):
+    evaluate = MagicMock(return_value={"tas/rmse": 3.0, "pr/rmse": 4.0})
+    monkeypatch.setattr(crcm_emulator_training.InterpolationBaseline, "evaluate", evaluate)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        Path(tmp_dir, "interpolation_baseline_GCM_ssp245_r1.zarr").mkdir()
+        for split in ("validation", "test"):
+            Path(tmp_dir, f"interpolation_baseline_{split}_results.json").write_text(
+                json.dumps({"metrics": saved_metrics})
+            )
+        runner = _baseline_runner(tmp_dir, True, {"interpolation": Path(tmp_dir)})
+        runner.config = runner.config.model_copy(
+            update={
+                "training": runner.config.training.model_copy(update={"validation_metrics": ["rmse"]}),
+                "inference": runner.config.inference.model_copy(update={"test_metrics": ["rmse"]}),
+            }
+        )
+        runner.score_interpolation_baseline()
+        expected = {"tas/rmse": 3.0, "pr/rmse": 4.0} if scored else {"tas/rmse": 1.0, "pr/rmse": 2.0}
+        assert evaluate.call_count == (2 if scored else 0)
+        assert runner.interpolation_baseline_metrics == {
+            f"{variable}/interpolation_baseline_{split}_rmse": value
+            for split in ("validation", "test")
+            for variable, value in zip(("tas", "pr"), expected.values(), strict=True)
+        }
+        saved = json.loads(Path(tmp_dir, "interpolation_baseline_test_results.json").read_text())["metrics"]
+        assert saved == (expected if scored else saved_metrics)

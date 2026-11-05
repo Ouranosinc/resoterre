@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from pydantic import Field
 
@@ -217,6 +218,9 @@ class CRCMEmulatorModelConfig(BaseConfig):
         Depth of the U-Net.
     reduction_ratio : int | bool | None
         Squeeze-and-excitation reduction ratio of the U-Net.
+    linear_embedding_sizes : list[int] | None
+        Output sizes of the dense network embedding the scalar inputs (date and greenhouse gases) before they are
+        concatenated at the U-Net bottleneck. If None, the scalar inputs are concatenated as is. Defaults to [32, 64].
     """
 
     # TODO: not used, consider removing
@@ -225,6 +229,7 @@ class CRCMEmulatorModelConfig(BaseConfig):
     initial_num_of_hidden_channels: int | None = 16
     depth: int | None = 2
     reduction_ratio: int | bool | None = None
+    linear_embedding_sizes: list[int] | None = [32, 64]
 
 
 class CRCMEmulatorLossConfig(BaseConfig):
@@ -260,6 +265,10 @@ class CRCMEmulatorTrainingConfig(BaseConfig):
     validation_metrics : list[str]
         Names of the extra metrics reported during validation, in addition to the losses
         (e.g., "max_value_absolute_error").
+    log_interpolation_baseline : bool
+        Score the precomputed interpolation baseline (``paths.baselines_out_dirs.interpolation``) at the start of
+        training and log it to Comet ML, as a constant line next to the validation metrics. The baseline is only
+        scored, never computed: it is skipped with a warning if missing or incomplete.
     """
 
     nb_of_epochs: int = 10
@@ -267,6 +276,7 @@ class CRCMEmulatorTrainingConfig(BaseConfig):
     figure_every_n_steps: int = Field(default=10, ge=0)
     # TODO: metrics to be different per variable so a dict instead of a list
     validation_metrics: list[str] = Field(default_factory=lambda: ["max_value_absolute_error"])
+    log_interpolation_baseline: bool = False
     # TODO: not used, consider removing
     num_threads: int = 2
 
@@ -292,6 +302,24 @@ class CRCMEmulatorInferenceConfig(BaseConfig):
     periods: list[list[datetime]] | None = None
     device: str | None = None
     test_metrics: list[str] = Field(default_factory=lambda: ["max_value_absolute_error"])
+
+
+class CRCMEmulatorPlotConfig(BaseConfig):
+    """
+    Plotting settings of the CRCM emulator.
+
+    Attributes
+    ----------
+    metric_mapping : dict[str, dict[str, Any]]
+        Mapping of metrics to their plotting configurations.
+    variable_mapping : dict[str, dict[str, Any]]
+        Mapping of variables to their plotting configurations.
+    """
+
+    metric_mapping: dict[str, dict[str, Any]] = Field(
+        default_factory=lambda: {"bias_map": {"figure_type": "nd_plot", "kwargs": {"reverse_i": True}}}
+    )
+    variable_mapping: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class CRCMEmulatorDebugConfig(BaseConfig):
@@ -358,6 +386,7 @@ class CRCMEmulatorConfig(BaseConfig):
     training: CRCMEmulatorTrainingConfig = Field(default_factory=CRCMEmulatorTrainingConfig)
     # TODO: not used, consider removing
     inference: CRCMEmulatorInferenceConfig = Field(default_factory=CRCMEmulatorInferenceConfig)
+    plot: CRCMEmulatorPlotConfig = Field(default_factory=CRCMEmulatorPlotConfig)
     debug: CRCMEmulatorDebugConfig = Field(default_factory=CRCMEmulatorDebugConfig)
     analysis: CRCMEmulatorAnalysisConfig = Field(default_factory=CRCMEmulatorAnalysisConfig)
     logger: ExperimentLoggerConfig | None = None

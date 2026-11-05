@@ -26,8 +26,13 @@ from resoterre.data_analysis.plots import (
     visualize_temporal_mean_and_sample,
 )
 from resoterre.data_analysis.summary_stats import (
-    compute_stats,
+    check_forcings,
+    compute_climate_var_stats,
+    compute_forcings_stats,
+    describe_stores,
     filter_data,
+    period_years,
+    pool_scenarios,
     select_data_by_indices,
     summarize_data,
 )
@@ -52,6 +57,9 @@ class _FakeEmulatorDataset:
         crcm_variables: list[str],
     ) -> None:
         self.valid_idx = valid_idx
+        self.valid_time_idx: dict[str, list[tuple[int, int]]] = {sim: [] for sim in stores["gcm"]}
+        for sim, gcm_idx, crcm_idx in valid_idx:
+            self.valid_time_idx[sim].append((gcm_idx, crcm_idx))
         self._stores = stores
         self.gcm_variables = gcm_variables
         self.crcm_variables = crcm_variables
@@ -66,6 +74,45 @@ def _days(start: str, periods: int) -> np.ndarray:
 
 def _daily_dataset(var_name: str, start: str, periods: int) -> xr.Dataset:
     return xr.Dataset({var_name: ("time", np.arange(periods, dtype=float))}, coords={"time": _days(start, periods)})
+
+
+@pytest.mark.parametrize("has_pairs", [True, False])  # type: ignore[untyped-decorator]
+def test_store_diagnostics_include_simulations_without_pairs(has_pairs: bool, caplog: pytest.LogCaptureFixture) -> None:
+    """Include unpaired stores and forcings without changing paired-data filtering."""
+    sims = ["CNRM_historical_r1", "CNRM_ssp245_r1"]
+    dataset = _FakeEmulatorDataset(
+        valid_idx=[(sims[0], index, index) for index in range(3)] if has_pairs else [],
+        stores={
+            "gcm": {
+                sim: _daily_dataset("ta850", "2000-01-01", 3).assign(CO2=("time", [value] * 3))
+                for sim, value in zip(sims, (400.0, 410.0), strict=True)
+            },
+            "crcm": {sim: _daily_dataset("tas", "2000-01-01", 3) for sim in sims},
+        },
+        gcm_variables=["ta850"],
+        crcm_variables=["tas"],
+    )
+    caplog.set_level("INFO", logger="resoterre.data_analysis.summary_stats")
+
+    contents = describe_stores(dataset)
+    assert set(zip(contents["sim"], contents["model"], strict=True)) == {
+        (sim, model) for sim in sims for model in ("gcm", "crcm")
+    }
+    assert any(sims[1] in record.message and "0 valid GCM-CRCM pairs" in record.message for record in caplog.records)
+    if not has_pairs:
+        assert all("0 valid GCM-CRCM pairs" in record.message for record in caplog.records)
+
+    forcings = check_forcings(dataset)
+    co2 = forcings[forcings["variable"] == "CO2"].set_index("sim")
+    assert set(co2.index) == set(sims)
+    assert co2["n_time_steps"].tolist() == [3, 3]
+    assert co2["value_start"].tolist() == [400.0, 410.0]
+    assert co2["value_end"].tolist() == [400.0, 410.0]
+    assert co2["is_annual"].all()
+
+    data_gcm, data_crcm = filter_data(dataset)
+    expected = [sims[0]] if has_pairs else []
+    assert list(data_gcm) == list(data_crcm) == expected
 
 
 def test_filter_data_keeps_in_window_days():
@@ -211,24 +258,76 @@ def test_select_data_by_indices_selects_scattered_indices():
     )
 
 
-def test_summarize_data(tmp_path):
+def test_period_years():
+    periods = [
+        [datetime(1970, 1, 1), datetime(1979, 12, 31)],
+        [datetime(2000, 1, 1), datetime(2009, 12, 31)],
+    ]
+
+    assert period_years(periods) == "1970-1979_2000-2009"
+
+
+_TWO_PERIODS = [
+    [datetime(2000, 1, 1), datetime(2000, 1, 2)],
+    [datetime(2000, 1, 4), datetime(2000, 1, 5)],
+]
+
+
+def _member_dataset(sims: list[str]) -> _FakeEmulatorDataset:
     gcm = _daily_dataset("ta850", "2000-01-01", 5)
     crcm = _daily_dataset("tas", "2000-01-01", 5)
-    dataset = _FakeEmulatorDataset(
-        valid_idx=[("sim_a", i, i) for i in range(5)],
-        stores={"gcm": {"sim_a": gcm}, "crcm": {"sim_a": crcm}},
+    return _FakeEmulatorDataset(
+        valid_idx=[(sim, i, i) for sim in sims for i in range(5)],
+        stores={"gcm": dict.fromkeys(sims, gcm), "crcm": dict.fromkeys(sims, crcm)},
         gcm_variables=["ta850"],
         crcm_variables=["tas"],
     )
 
-    stats_df = summarize_data(
+
+def test_summarize_data(tmp_path):
+    dataset = _member_dataset(["CNRM-ESM2-1_historical_r1i1p1f2"])
+
+    stats_df, forcing_df = summarize_data(
         dataset=dataset,
         output_dir=tmp_path,
-        time_periods=[[datetime(2000, 1, 2), datetime(2000, 1, 3)]],
+        time_periods=_TWO_PERIODS,
+        simulations=[["CNRM-ESM2-1", "historical", "r1i1p1f2"]],
     )
 
+    periods = "2000-01-01/2000-01-02;2000-01-04/2000-01-05"
+    # The fake ta850 only has a time dimension, so it is also picked up as a forcing.
+    assert list(forcing_df.columns) == [
+        "gcm",
+        "scenario",
+        "member",
+        "periods",
+        "model",
+        "variable",
+        "n_time_steps",
+        "n_years",
+        "mean",
+        "std",
+        "min",
+        "max",
+        "range",
+        "trend_per_year",
+        "n",
+        "sum",
+        "sumsq",
+    ]
+    assert list(forcing_df.iloc[0][["gcm", "scenario", "member", "periods", "model", "variable"]]) == [
+        "CNRM-ESM2-1",
+        "historical",
+        "r1i1p1f2",
+        periods,
+        "forcing",
+        "ta850",
+    ]
     assert list(stats_df.columns) == [
-        "sim",
+        "gcm",
+        "scenario",
+        "member",
+        "periods",
         "model",
         "variable",
         "n_time_steps",
@@ -238,21 +337,77 @@ def test_summarize_data(tmp_path):
         "min",
         "max",
         "range",
+        "n",
+        "sum",
+        "sumsq",
     ]
     assert list(zip(stats_df["model"], stats_df["variable"], strict=True)) == [("gcm", "ta850"), ("crcm", "tas")]
-    assert set(stats_df["sim"]) == {"sim_a"}
-    assert set(stats_df["n_time_steps"]) == {2}
-    # Filtered days are 2000-01-02 and 2000-01-03, whose values are 1.0 and 2.0.
-    assert stats_df[stats_df["model"] == "crcm"]["mean"].values[0] == pytest.approx(1.5)
-    assert stats_df[stats_df["model"] == "crcm"]["std"].values[0] == pytest.approx(0.5)
-    assert stats_df[stats_df["model"] == "crcm"]["min"].values[0] == pytest.approx(1.0)
-    assert stats_df[stats_df["model"] == "crcm"]["max"].values[0] == pytest.approx(2.0)
-    assert stats_df[stats_df["model"] == "crcm"]["range"].values[0] == pytest.approx(1.0)
-    assert stats_df[stats_df["model"] == "gcm"]["mean"].values[0] == pytest.approx(1.5)
+    assert set(stats_df["periods"]) == {periods}
+    assert set(stats_df["n_time_steps"]) == {4}
+    # Filtered days are 2000-01-01, 2000-01-02, 2000-01-04, and 2000-01-05, whose values are 0, 1, 3, and 4.
+    crcm_stats = stats_df[stats_df["model"] == "crcm"].iloc[0]
+    assert crcm_stats["mean"] == pytest.approx(2.0)
+    assert crcm_stats["std"] == pytest.approx(np.std([0.0, 1.0, 3.0, 4.0]))
+    assert crcm_stats["min"] == pytest.approx(0.0)
+    assert crcm_stats["max"] == pytest.approx(4.0)
 
-    written = pd.read_csv(tmp_path / "simulation_stats.csv")
-    assert len(written) == 2
+    written = pd.read_csv(tmp_path / "normalization_stats_climate_vars_2000-2000_2000-2000.csv")
+    written_forcings = pd.read_csv(tmp_path / "normalization_stats_forcings_2000-2000_2000-2000.csv")
     assert list(written["variable"]) == ["ta850", "tas"]
+    assert list(written_forcings.columns) == list(forcing_df.columns)
+
+
+def test_summarize_data_pools_scenarios_of_one_member(tmp_path):
+    historical_gcm = _daily_dataset("ta850", "2000-01-01", 4)
+    historical_crcm = _daily_dataset("tas", "2000-01-01", 4)
+    ssp_gcm = _daily_dataset("ta850", "2001-01-01", 4)
+    ssp_crcm = _daily_dataset("tas", "2001-01-01", 4)
+    ssp_gcm["ta850"] = ssp_gcm["ta850"] + 10
+    ssp_crcm["tas"] = ssp_crcm["tas"] + 10
+    sims = ["CNRM-ESM2-1_historical_r1i1p1f2", "CNRM-ESM2-1_ssp245_r1i1p1f2"]
+    dataset = _FakeEmulatorDataset(
+        valid_idx=[(sim, i, i) for sim in sims for i in range(4)],
+        stores={
+            "gcm": {sims[0]: historical_gcm, sims[1]: ssp_gcm},
+            "crcm": {sims[0]: historical_crcm, sims[1]: ssp_crcm},
+        },
+        gcm_variables=["ta850"],
+        crcm_variables=["tas"],
+    )
+    periods = [
+        [datetime(2000, 1, 1), datetime(2000, 1, 2)],
+        [datetime(2001, 1, 1), datetime(2001, 1, 2)],
+    ]
+
+    stats_df, forcing_df = summarize_data(
+        dataset,
+        tmp_path,
+        periods,
+        [["CNRM-ESM2-1", "historical", "r1i1p1f2"], ["CNRM-ESM2-1", "ssp245", "r1i1p1f2"]],
+    )
+
+    pooled = np.array([0.0, 1.0, 10.0, 11.0])
+    climate = stats_df[stats_df["scenario"] == "historical+ssp245"]
+    assert list(climate["model"]) == ["gcm", "crcm"]
+    assert set(climate["n_time_steps"]) == {4}
+    for _, row in climate.iterrows():
+        _assert_summary(row, pooled)
+    forcing = forcing_df[forcing_df["scenario"] == "historical+ssp245"].iloc[0]
+    # Forcings keep the first day of each year: 0 in 2000 and 10 in 2001.
+    _assert_summary(forcing, np.array([0.0, 10.0]))
+    assert set(stats_df["scenario"]) == {"historical", "ssp245", "historical+ssp245"}
+
+
+def test_summarize_data_writes_all_gcms_to_one_file_and_overwrites_reruns(tmp_path):
+    dataset = _member_dataset(["CNRM-ESM2-1_historical_r1i1p1f2", "MPI-ESM1-2-HR_historical_r1i1p1f1"])
+    simulations = [["CNRM-ESM2-1", "historical", "r1i1p1f2"], ["MPI-ESM1-2-HR", "historical", "r1i1p1f1"]]
+
+    summarize_data(dataset, tmp_path, _TWO_PERIODS, simulations)
+    stats_df, forcing_df = summarize_data(dataset, tmp_path, _TWO_PERIODS, simulations)
+
+    assert list(stats_df["gcm"]) == ["CNRM-ESM2-1", "CNRM-ESM2-1", "MPI-ESM1-2-HR", "MPI-ESM1-2-HR"]
+    assert list(forcing_df["gcm"]) == ["CNRM-ESM2-1", "MPI-ESM1-2-HR"]
+    assert len(pd.read_csv(tmp_path / "normalization_stats_climate_vars_2000-2000_2000-2000.csv")) == 4
 
 
 def test_summarize_data_raises_when_no_days_in_range(tmp_path):
@@ -270,9 +425,10 @@ def test_summarize_data_raises_when_no_days_in_range(tmp_path):
             dataset=dataset,
             output_dir=tmp_path,
             time_periods=[[datetime(1999, 1, 1), datetime(1999, 1, 31)]],
+            simulations=[["sim", "a", "r1"]],
         )
 
-    assert not (tmp_path / "simulation_stats.csv").exists()
+    assert not list(tmp_path.glob("*.csv"))
 
 
 def _spatial_dataset(
@@ -301,6 +457,8 @@ def test_visualize_temporal_mean_and_sample_writes_pngs(tmp_path):
             "historical": _spatial_dataset("tas", "2000-01-01", 2, offset=1.0),
             "ssp245": _spatial_dataset("tas", "2000-01-01", 2, offset=11.0),
         },
+        vars_gcm=["tas"],
+        vars_crcm=["tas"],
         output_dir=tmp_path,
     )
 
@@ -371,7 +529,9 @@ def test_visualize_range_and_mean_writes_one_png_per_group(tmp_path):
     stats_df = pd.DataFrame(
         [
             {
-                "sim": "CNRM-ESM2-1_historical_r1i1p1f2",
+                "gcm": "CNRM-ESM2-1",
+                "scenario": "historical",
+                "member": "r1i1p1f2",
                 "model": "gcm",
                 "variable": "hus850",
                 "min": 0.0,
@@ -379,7 +539,9 @@ def test_visualize_range_and_mean_writes_one_png_per_group(tmp_path):
                 "mean": 0.01,
             },
             {
-                "sim": "CNRM-ESM2-1_ssp245_r1i1p1f2",
+                "gcm": "CNRM-ESM2-1",
+                "scenario": "ssp245",
+                "member": "r1i1p1f2",
                 "model": "gcm",
                 "variable": "hus850",
                 "min": 0.0,
@@ -387,7 +549,9 @@ def test_visualize_range_and_mean_writes_one_png_per_group(tmp_path):
                 "mean": 0.01,
             },
             {
-                "sim": "CNRM-ESM2-1_historical_r1i1p1f2",
+                "gcm": "CNRM-ESM2-1",
+                "scenario": "historical",
+                "member": "r1i1p1f2",
                 "model": "gcm",
                 "variable": "ta850",
                 "min": 250.0,
@@ -395,7 +559,9 @@ def test_visualize_range_and_mean_writes_one_png_per_group(tmp_path):
                 "mean": 270.0,
             },
             {
-                "sim": "CNRM-ESM2-1_historical_r1i1p1f2",
+                "gcm": "CNRM-ESM2-1",
+                "scenario": "historical",
+                "member": "r1i1p1f2",
                 "model": "crcm",
                 "variable": "tas",
                 "min": 250.0,
@@ -403,7 +569,9 @@ def test_visualize_range_and_mean_writes_one_png_per_group(tmp_path):
                 "mean": 270.0,
             },
             {
-                "sim": "CNRM-ESM2-1_historical_r1i1p1f2",
+                "gcm": "CNRM-ESM2-1",
+                "scenario": "historical",
+                "member": "r1i1p1f2",
                 "model": "gcm",
                 "variable": "ua850",
                 "min": -10.0,
@@ -411,7 +579,9 @@ def test_visualize_range_and_mean_writes_one_png_per_group(tmp_path):
                 "mean": 0.0,
             },
             {
-                "sim": "CNRM-ESM2-1_historical_r1i1p1f2",
+                "gcm": "CNRM-ESM2-1",
+                "scenario": "historical",
+                "member": "r1i1p1f2",
                 "model": "gcm",
                 "variable": "va850",
                 "min": -10.0,
@@ -419,7 +589,9 @@ def test_visualize_range_and_mean_writes_one_png_per_group(tmp_path):
                 "mean": 0.0,
             },
             {
-                "sim": "CNRM-ESM2-1_historical_r1i1p1f2",
+                "gcm": "CNRM-ESM2-1",
+                "scenario": "historical",
+                "member": "r1i1p1f2",
                 "model": "gcm",
                 "variable": "zg850",
                 "min": 1000.0,
@@ -427,7 +599,9 @@ def test_visualize_range_and_mean_writes_one_png_per_group(tmp_path):
                 "mean": 1400.0,
             },
             {
-                "sim": "CNRM-ESM2-1_historical_r1i1p1f2",
+                "gcm": "CNRM-ESM2-1",
+                "scenario": "historical",
+                "member": "r1i1p1f2",
                 "model": "gcm",
                 "variable": "pr",
                 "min": 0.0,
@@ -435,7 +609,9 @@ def test_visualize_range_and_mean_writes_one_png_per_group(tmp_path):
                 "mean": 0.0001,
             },
             {
-                "sim": "CNRM-ESM2-1_historical_r1i1p1f2",
+                "gcm": "CNRM-ESM2-1",
+                "scenario": "historical",
+                "member": "r1i1p1f2",
                 "model": "gcm",
                 "variable": "psl",
                 "min": 98000.0,
@@ -719,11 +895,97 @@ def test_write_dataframe_to_csv_preserves_small_magnitudes(tmp_path):
     assert written.loc[2, "mean"] == pytest.approx(288.2, abs=0.05)
 
 
+def _assert_summary(row: pd.Series, values: np.ndarray) -> None:
+    assert row["mean"] == pytest.approx(float(np.mean(values)))
+    assert row["std"] == pytest.approx(float(np.std(values)))
+    assert row["min"] == pytest.approx(float(np.min(values)))
+    assert row["max"] == pytest.approx(float(np.max(values)))
+    assert row["range"] == pytest.approx(float(np.max(values) - np.min(values)))
+
+
+def test_compute_stats_and_forcings_stats_match_numpy():
+    times = pd.to_datetime(["2000-01-01", "2000-06-01", "2001-01-01", "2001-06-01"])
+    # The June values differ from January, so using every day would give the wrong forcing statistics.
+    co2 = [400.0, 450.0, 410.0, 460.0]
+    tas = np.array([[1.0, np.nan], [2.0, 3.0], [4.0, 5.0], [6.0, 7.0]])
+    ds = xr.Dataset(
+        {"tas": (("time", "y"), tas), "CO2": ("time", co2)},
+        coords={"time": times, "y": [0, 1]},
+    )
+    run = {"gcm": "CNRM-ESM2-1", "scenario": "historical", "member": "r1i1p1f2", "periods": "2000-01-01/2001-06-01"}
+
+    climate = compute_climate_var_stats(ds, ["tas"], run, "gcm")
+    # Every day counts, and the NaN is excluded.
+    _assert_summary(climate.iloc[0], np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]))
+
+    forcing = compute_forcings_stats(ds, run)
+    # Forcings keep the first value of each year: 400 in 2000 and 410 in 2001.
+    _assert_summary(forcing.iloc[0], np.array([400.0, 410.0]))
+
+
+def test_pool_scenarios():
+    def scenario_ds(dates: list[str], tas: list[list[float]], co2: list[float]) -> xr.Dataset:
+        return xr.Dataset(
+            {"tas": (("time", "y"), np.array(tas)), "CO2": ("time", co2)},
+            coords={"time": pd.to_datetime(dates), "y": [0, 1]},
+        )
+
+    # Unequal sample sizes and a NaN, so averaging the per-scenario means would give the wrong answer.
+    historical = scenario_ds(
+        ["2000-01-01", "2001-01-01", "2002-01-01"], [[1.0, np.nan], [2.0, 3.0], [4.0, 5.0]], [300.0, 310.0, 320.0]
+    )
+    ssp = scenario_ds(["2015-01-01"], [[20.0, 30.0]], [400.0])
+    runs = {
+        name: {"gcm": "CNRM-ESM2-1", "scenario": name, "member": member, "periods": "p"}
+        for name, member in (("historical", "r1"), ("ssp245", "r1"))
+    }
+    single_scenario_run = {"gcm": "CNRM-ESM2-1", "scenario": "historical", "member": "r2", "periods": "p"}
+
+    climate = pool_scenarios(
+        pd.concat(
+            [
+                compute_climate_var_stats(historical, ["tas"], runs["historical"], "gcm"),
+                compute_climate_var_stats(ssp, ["tas"], runs["ssp245"], "gcm"),
+                compute_climate_var_stats(historical, ["tas"], single_scenario_run, "gcm"),
+            ],
+            ignore_index=True,
+        )
+    )
+    forcing = pool_scenarios(
+        pd.concat(
+            [
+                compute_forcings_stats(historical, runs["historical"]),
+                compute_forcings_stats(ssp, runs["ssp245"]),
+                compute_forcings_stats(historical, single_scenario_run),
+            ],
+            ignore_index=True,
+        )
+    )
+
+    pooled_climate = climate[climate["scenario"] == "historical+ssp245"]
+    assert len(pooled_climate) == 1
+    assert pooled_climate.iloc[0]["member"] == "r1"
+    assert pooled_climate.iloc[0]["n"] == 7
+    assert pooled_climate.iloc[0]["n_time_steps"] == 4
+    assert np.isnan(pooled_climate.iloc[0]["pct_non_nan_values"])
+    _assert_summary(pooled_climate.iloc[0], np.array([1.0, 2.0, 3.0, 4.0, 5.0, 20.0, 30.0]))
+
+    pooled_forcing = forcing[forcing["scenario"] == "historical+ssp245"]
+    assert len(pooled_forcing) == 1
+    assert pooled_forcing.iloc[0]["n_years"] == 4
+    assert np.isnan(pooled_forcing.iloc[0]["trend_per_year"])
+    _assert_summary(pooled_forcing.iloc[0], np.array([300.0, 310.0, 320.0, 400.0]))
+
+    assert len(climate) == len(forcing) == 4
+    assert list(climate.columns) == list(compute_climate_var_stats(ssp, ["tas"], runs["ssp245"], "gcm").columns)
+
+
 def test_compute_stats_summary_matches_numpy():
     ds = _spatial_dataset("tas", "2000-01-01", 4)
     values = ds["tas"].values
 
-    stats_df = compute_stats(ds, ["tas"], "sim_a", "gcm")
+    run = {"gcm": "CNRM-ESM2-1", "scenario": "historical", "member": "r1i1p1f2", "periods": "2000-01-01/2000-01-04"}
+    stats_df = compute_climate_var_stats(ds, ["tas"], run, "gcm")
 
     assert list(stats_df["variable"]) == ["tas"]
     assert int(stats_df.loc[0, "n_time_steps"]) == 4

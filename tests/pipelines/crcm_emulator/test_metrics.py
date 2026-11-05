@@ -149,6 +149,25 @@ def test_wasserstein_distance_matches_scipy_per_image_and_variable():
     assert metrics.WassersteinDistance()(target, output).tolist() == pytest.approx(expected, rel=1e-5)
 
 
+def test_bias_map():
+    metric = metrics.BiasMap()
+    assert metric.name == "bias_map"
+    target = torch.randn(1, 1, 4, 4)
+    output = target + 2.5
+    metric_result = metric(target, output)
+    assert metric_result.shape == (1, 4, 4)
+    assert metric_result.min().item() == pytest.approx(2.5, rel=1e-5)
+    assert metric_result.max().item() == pytest.approx(2.5, rel=1e-5)
+
+
+def test_mean_bias():
+    metric = metrics.MeanBias()
+    assert metric.name == "mean_bias"
+    target = torch.randn(1, 1, 4, 4)
+    output = target + 2.5
+    assert metric(target, output).item() == pytest.approx(2.5, rel=1e-5)
+
+
 def test_build_metrics_rmse_ccc():
     assert list(metrics.build_metrics(["rmse", "ccc", "wasserstein_distance"])) == [
         "rmse",

@@ -21,6 +21,7 @@ from resoterre.logging_utils import CustomLogging, logging_delay_sequence, reada
 from resoterre.ml.ml_loops import MinimaTracker
 from resoterre.ml.ml_utils import log_device_info
 from resoterre.pipelines.crcm_emulator.experiment_logger import CometMLLogger
+from resoterre.plots.utils import figure_dispatcher
 
 
 logger = CustomLogging(caller=logging.getLogger(__name__))
@@ -178,6 +179,9 @@ class NNTraining(ABC):
         self.validation_data_loader: td.DataLoader | None = None
         self.metrics = MultiTimeseries()
         self.validation_metrics = MultiTimeseries()
+        self.validation_diagnostics: dict[str, Any] = {}
+        # ToDo: this structure is getting quite complex, perhaps it needs a class
+        self.diagnostic_figure_mapping: dict[str, dict[str, Any]] = {}
 
         self.best_validation_metrics: dict[str, MetricMinimum] = {}
 
@@ -537,6 +541,15 @@ class NNTraining(ABC):
         self.experiment_logger.log_metrics(
             with_split(validation_metrics_summary, "validation"), step=self.total_iterations, epoch=epoch
         )
+        for key, nd_array in self.validation_diagnostics.items():
+            # ToDo: Some diagnostic data should also be saved to disk for later use in publication figures.
+            figure = figure_dispatcher(
+                figure_type=self.diagnostic_figure_mapping[key]["figure_type"],
+                data=nd_array.numpy(),
+                title=f"validation-{key}",
+                figure_kwargs=self.diagnostic_figure_mapping[key].get("figure_kwargs", {}),
+            )
+            self.experiment_logger.log_figure(figure, name=f"validation_{key}", step=self.total_iterations)
 
     def validation_loop(self, epoch: int) -> None:
         """
