@@ -10,6 +10,7 @@ Contributors: Contributors: Francis Charette-Migneault (:user:`fmigneault`), Bla
 
 Changes
 ^^^^^^^
+* Add normalization statistics for forcings (linear vars) in the CRCM emulator data analysis and pool summary statistics across the scenarios of each member. (:issue:`172`, :pull:`179`).
 * Normalize the greenhouse gas inputs (``CO2``, ``CH4``, ``N2O``, ``CFC12``, ``CFC11_eq``) of the CRCM emulator with the min and max of the ``forcing`` entries of the normalization statistics, clipped to [-1, 1], and embed them with a dense network before the U-Net bottleneck (``model.linear_embedding_sizes``). (:issue:`161`, :pull:`178`).
 * Speed up the interpolation baseline: ``InterpolationBaseline.run`` writes contiguous runs of days instead of one day at a time, and ``InterpolationBaseline.evaluate`` scores it with parallel data loader workers; ``02_compute_baselines.py`` is renamed ``02_score_baselines.py``, which only scores the baseline (computed with the snakemake workflow) and saves the scores as JSON. Optionally log these scores to Comet ML during training (``training.log_interpolation_baseline``, e.g. ``tas/interpolation_baseline_validation_rmse``), scoring the baseline only if no saved scores are found, and evaluate the best checkpoint once on the test data at the end of ``03_train.py``. (:issue:`174`, :pull:`176`).
 * Add bias map and mean bias metrics to the CRCM emulator validation (:issue:`102`, :pull:`171`)

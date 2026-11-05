@@ -16,6 +16,7 @@ class EmulatorDatasetLike(Protocol):
     """Dataset surface used by the data-analysis helpers."""
 
     valid_idx: list[tuple[str, int, int]]
+    valid_time_idx: dict[str, list[tuple[int, int]]]
     gcm_variables: list[str]
     crcm_variables: list[str]
 
