@@ -435,7 +435,7 @@ class GCMToZarrFromConfig:
         level_targets = [
             (zarr_name, val["level"])
             for zarr_name, val in gcm_variable_levels.items()
-            if val["variable_name"] == variable_name
+            if val["variable_name"] == variable_name and val["level"] != 100000.0
         ]  # returns list of tuples for ex. ta -> [("ta100", 100000.0), ("ta500", 50000.0), ("ta850", 85000.0)]
         if level_targets:
             return level_targets
