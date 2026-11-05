@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 # TODO: temporary, replace with the cftime_utils period comparison once the cftime feature is merged.
-def _day_key(date: Any) -> str:
+def day_key(date: Any) -> str:
     """
     Return a ``YYYY-MM-DD`` string for a period bound, so it can be compared with any time axis.
 
@@ -121,7 +121,7 @@ def filter_data(
             gcm_days = data_gcm["time"].dt.strftime("%Y-%m-%d").values
             for period in time_periods:
                 start_date, end_date = period[0], period[1]
-                in_range = (gcm_days >= _day_key(start_date)) & (gcm_days <= _day_key(end_date))
+                in_range = (gcm_days >= day_key(start_date)) & (gcm_days <= day_key(end_date))
                 selected_gcm_crcm_idxs.update(
                     (gcm_idx, crcm_idx) for gcm_idx, crcm_idx in gcm_crcm_idxs if in_range[gcm_idx]
                 )
@@ -261,7 +261,21 @@ def compute_forcings_stats(data: xr.Dataset, run: dict[str, str]) -> pd.DataFram
     forcings = [str(name) for name, var in data.data_vars.items() if var.dims == ("time",)]
     if not forcings:
         logger.warning("%s_%s_%s: no forcings found in the GCM data", run["gcm"], run["scenario"], run["member"])
-        return pd.DataFrame()
+        return pd.DataFrame(
+            columns=[
+                *run,
+                "model",
+                "variable",
+                "n_time_steps",
+                "n_years",
+                "mean",
+                "std",
+                "min",
+                "max",
+                "range",
+                "trend_per_year",
+            ]
+        )
 
     df = pd.DataFrame({var: data[var].values for var in forcings})
     df["year"] = data["time"].dt.year.values
@@ -378,7 +392,7 @@ def summarize_data(
         If no simulation has valid days in the time periods.
     """
     data_gcm, data_crcm = filter_data(dataset, time_periods)
-    periods = ";".join(f"{_day_key(start)}/{_day_key(end)}" for start, end in time_periods)
+    periods = ";".join(f"{day_key(start)}/{day_key(end)}" for start, end in time_periods)
 
     climate_var_frames: list[pd.DataFrame] = []
     forcing_frames: list[pd.DataFrame] = []
@@ -410,7 +424,7 @@ def describe_stores(dataset: EmulatorDatasetLike) -> pd.DataFrame:
     Parameters
     ----------
     dataset : EmulatorDatasetLike
-        Dataset providing GCM and CRCM zarr stores and valid time indices.
+        Dataset providing GCM and CRCM stores and all configured simulation keys in ``valid_time_idx``.
 
     Returns
     -------
@@ -420,7 +434,7 @@ def describe_stores(dataset: EmulatorDatasetLike) -> pd.DataFrame:
     """
     variables = {"gcm": set(dataset.gcm_variables), "crcm": set(dataset.crcm_variables)}
     rows = []
-    for sim, gcm_crcm_idxs in group_indices_by_sim(dataset).items():
+    for sim, gcm_crcm_idxs in dataset.valid_time_idx.items():
         for model_type in ("gcm", "crcm"):
             data = dataset.get_open_dataset(model_type, sim)
             time = data["time"].values
@@ -469,20 +483,15 @@ def check_forcings(
     Parameters
     ----------
     dataset : EmulatorDatasetLike
-        Dataset providing GCM and CRCM zarr stores and valid time indices.
+        Dataset providing GCM stores and all configured simulation keys in ``valid_time_idx``.
 
     Returns
     -------
     pandas.DataFrame
         Per-simulation, per-forcing summary statistics.
-
-    Raises
-    ------
-    ValueError
-        If no simulation has valid days in the requested date range.
     """
     rows = []
-    for sim in group_indices_by_sim(dataset):
+    for sim in dataset.valid_time_idx:
         data = dataset.get_open_dataset("gcm", sim)
         forcings = [str(name) for name, var in data.data_vars.items() if var.dims == ("time",)]
         if not forcings:

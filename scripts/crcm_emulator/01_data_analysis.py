@@ -122,9 +122,11 @@ def run_single_period_components(
     years = period_years(config.data.training_periods)
     stats_df, forcing_df = load_or_summarize(dataset, config, analysis_dir, recompute="normalize_stats" in components)
 
-    # The pooled rows (scenario "all") repeat the scenarios, so the figures show the scenarios only.
-    stats_df = stats_df[stats_df["scenario"] != "all"]
-    forcing_df = forcing_df[forcing_df["scenario"] != "all"] if not forcing_df.empty else forcing_df
+    # The pooled rows repeat the scenarios, identified by "+" in the label.
+    # Filter df so figures show the individual scenarios only.
+    stats_df = stats_df[~stats_df["scenario"].str.contains("+", regex=False, na=False)]
+    if not forcing_df.empty:
+        forcing_df = forcing_df[~forcing_df["scenario"].str.contains("+", regex=False, na=False)]
 
     if "range_and_mean" in components:
         visualize_range_and_mean(

@@ -32,7 +32,7 @@ def main() -> None:
     # ===== LOGGING SETUP =====
     if config.paths.output is None:
         raise ValueError("path_output must be specified in the configuration.")
-    output_dir = Path(config.paths.output) / str(config.experiment_name)
+    output_dir = Path(config.paths.output) / "data_exploration"
     output_dir.mkdir(parents=True, exist_ok=True)
     log_file = output_dir / "data_analysis.log"
     logging.basicConfig(

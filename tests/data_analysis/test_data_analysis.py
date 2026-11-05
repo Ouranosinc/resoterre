@@ -24,8 +24,10 @@ from resoterre.data_analysis.plots import (
     visualize_temporal_mean_and_sample,
 )
 from resoterre.data_analysis.summary_stats import (
+    check_forcings,
     compute_climate_var_stats,
     compute_forcings_stats,
+    describe_stores,
     filter_data,
     period_years,
     pool_scenarios,
@@ -53,6 +55,9 @@ class _FakeEmulatorDataset:
         crcm_variables: list[str],
     ) -> None:
         self.valid_idx = valid_idx
+        self.valid_time_idx: dict[str, list[tuple[int, int]]] = {sim: [] for sim in stores["gcm"]}
+        for sim, gcm_idx, crcm_idx in valid_idx:
+            self.valid_time_idx[sim].append((gcm_idx, crcm_idx))
         self._stores = stores
         self.gcm_variables = gcm_variables
         self.crcm_variables = crcm_variables
@@ -64,6 +69,45 @@ class _FakeEmulatorDataset:
 def _daily_dataset(var_name: str, start: str, periods: int) -> xr.Dataset:
     times = pd.date_range(start, periods=periods, freq="D")
     return xr.Dataset({var_name: ("time", np.arange(periods, dtype=float))}, coords={"time": times})
+
+
+@pytest.mark.parametrize("has_pairs", [True, False])  # type: ignore[untyped-decorator]
+def test_store_diagnostics_include_simulations_without_pairs(has_pairs: bool, caplog: pytest.LogCaptureFixture) -> None:
+    """Include unpaired stores and forcings without changing paired-data filtering."""
+    sims = ["CNRM_historical_r1", "CNRM_ssp245_r1"]
+    dataset = _FakeEmulatorDataset(
+        valid_idx=[(sims[0], index, index) for index in range(3)] if has_pairs else [],
+        stores={
+            "gcm": {
+                sim: _daily_dataset("ta850", "2000-01-01", 3).assign(CO2=("time", [value] * 3))
+                for sim, value in zip(sims, (400.0, 410.0), strict=True)
+            },
+            "crcm": {sim: _daily_dataset("tas", "2000-01-01", 3) for sim in sims},
+        },
+        gcm_variables=["ta850"],
+        crcm_variables=["tas"],
+    )
+    caplog.set_level("INFO", logger="resoterre.data_analysis.summary_stats")
+
+    contents = describe_stores(dataset)
+    assert set(zip(contents["sim"], contents["model"], strict=True)) == {
+        (sim, model) for sim in sims for model in ("gcm", "crcm")
+    }
+    assert any(sims[1] in record.message and "0 valid GCM-CRCM pairs" in record.message for record in caplog.records)
+    if not has_pairs:
+        assert all("0 valid GCM-CRCM pairs" in record.message for record in caplog.records)
+
+    forcings = check_forcings(dataset)
+    co2 = forcings[forcings["variable"] == "CO2"].set_index("sim")
+    assert set(co2.index) == set(sims)
+    assert co2["n_time_steps"].tolist() == [3, 3]
+    assert co2["value_start"].tolist() == [400.0, 410.0]
+    assert co2["value_end"].tolist() == [400.0, 410.0]
+    assert co2["is_annual"].all()
+
+    data_gcm, data_crcm = filter_data(dataset)
+    expected = [sims[0]] if has_pairs else []
+    assert list(data_gcm) == list(data_crcm) == expected
 
 
 def test_filter_data_keeps_in_window_days():
