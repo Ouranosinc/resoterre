@@ -3,8 +3,10 @@
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+import torch
 import xarray
 from scipy.ndimage import zoom
 
@@ -79,7 +81,7 @@ class InterpolationBaseline:
             self.config.paths.baselines_out_dirs["interpolation"], f"interpolation_baseline_{split}_results.json"
         )
 
-    def load_results(self, metric_names: list[str], split: str) -> dict[str, float] | None:
+    def load_results(self, metric_names: list[str], split: str) -> dict[str, Any] | None:
         """
         Load the saved scores of the interpolation baseline on a data split (see ``save_results``).
 
@@ -92,7 +94,7 @@ class InterpolationBaseline:
 
         Returns
         -------
-        dict[str, float] | None
+        dict[str, Any] | None
             The scores of ``metric_names`` for each variable of ``data.crcm_variables`` and each key of the periods of
             the split (``<variable>/<metric>_<key>``), or None if there are no saved scores or if some of these are
             missing.
@@ -109,16 +111,17 @@ class InterpolationBaseline:
         ]
         if any(name not in saved for name in names):
             return None
-        return {name: saved[name] for name in names}
+        return {name: torch.tensor(saved[name]) if isinstance(saved[name], list) else saved[name] for name in names}
 
-    def save_results(self, results: dict[str, float], split: str) -> Path:
+    def save_results(self, results: dict[str, Any], split: str) -> Path:
         """
         Save the scores of the interpolation baseline on a data split, e.g. as returned by ``evaluate``.
 
         Parameters
         ----------
-        results : dict[str, float]
-            Scores by name (``<variable>/<metric>_<key>``).
+        results : dict[str, Any]
+            Scores by name (``<variable>/<metric>_<key>``). Non-scalar scores (e.g. bias maps) are saved as nested
+            lists.
         split : str
             Either "test" or "validation".
 
@@ -129,7 +132,8 @@ class InterpolationBaseline:
         """
         path = self.results_json_path(split)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"metrics": results}, indent=2))
+        serializable = {k: v.tolist() if isinstance(v, (torch.Tensor, np.ndarray)) else v for k, v in results.items()}
+        path.write_text(json.dumps({"metrics": serializable}, indent=2))
         return path
 
     def evaluate(self, metric_names: list[str], split: str = "test") -> dict[str, float]:

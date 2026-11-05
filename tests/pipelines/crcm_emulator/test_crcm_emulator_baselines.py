@@ -4,6 +4,7 @@ from typing import Any
 
 import numpy as np
 import pytest
+import torch
 import xarray
 
 from resoterre.config import (
@@ -94,6 +95,16 @@ def test_evaluate(tmp_path, monkeypatch):
     # Errors of 1, 2 and 3 in batches of 2 and 1: the mean is 2 only if batches are weighted by their size, and a
     # baseline taken from a shifted day would be at least 7 off.
     assert results == pytest.approx({"tas/rmse_test": 2.0, "tas/max_value_absolute_error_test": 2.0})
+
+
+def test_save_and_load_results_with_tensor(tmp_path, monkeypatch):
+    baseline = _baseline(tmp_path, monkeypatch, computed_days=[])
+    bias_map = torch.arange(6, dtype=torch.float32).reshape(2, 3)
+    baseline.save_results({"tas/rmse_test": 2.0, "tas/bias_map_test": bias_map}, "test")
+    loaded = baseline.load_results(["rmse", "bias_map"], "test")
+    assert loaded is not None
+    assert loaded["tas/rmse_test"] == 2.0
+    assert torch.equal(loaded["tas/bias_map_test"], bias_map)
 
 
 def test_evaluate_baseline_not_computed(tmp_path, monkeypatch):
