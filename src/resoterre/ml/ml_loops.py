@@ -1,51 +1,7 @@
 """Module for handling loop states in machine learning processes."""
 
 import time
-from dataclasses import dataclass, field
 from typing import Any
-
-from resoterre.plots.ml_training_plot import LossPlotConfig
-
-
-@dataclass(frozen=True, slots=True)
-class NeuralNetworkLoopConfig:
-    """
-    Configuration for neural network training loops.
-
-    Attributes
-    ----------
-    device : str
-        Device to use for training (e.g., 'cpu', 'cuda').
-    weight_norms_scheduler_kwargs : dict[str, Any]
-        Configuration for weight norms scheduler.
-    figure_train_output_scheduler_kwargs : dict[str, Any]
-        Configuration for training output figure scheduler.
-    gradient_norms_scheduler_kwargs : dict[str, Any]
-        Configuration for gradient norms scheduler.
-    figure_validation_output_scheduler_kwargs : dict[str, Any]
-        Configuration for validation output figure scheduler.
-    inference_output_scheduler_kwargs : dict[str, Any]
-        Configuration for inference output scheduler.
-    log_iterations : list[int]
-        List of iterations at which to log information.
-    log_delays : list[int | float]
-        List of delays for logging.
-    minimum_metrics_to_track : list[str]
-        List of metric names to track for minimum values.
-    loss_plot : LossPlotConfig
-        Configuration for loss plotting.
-    """
-
-    device: str = "cpu"
-    weight_norms_scheduler_kwargs: dict[str, Any] = field(default_factory=dict)
-    figure_train_output_scheduler_kwargs: dict[str, Any] = field(default_factory=dict)
-    gradient_norms_scheduler_kwargs: dict[str, Any] = field(default_factory=dict)
-    figure_validation_output_scheduler_kwargs: dict[str, Any] = field(default_factory=dict)
-    inference_output_scheduler_kwargs: dict[str, Any] = field(default_factory=dict)
-    log_iterations: list[int] = field(default_factory=list)
-    log_delays: list[int | float] = field(default_factory=list)
-    minimum_metrics_to_track: list[str] = field(default_factory=list)
-    loss_plot: LossPlotConfig = LossPlotConfig()
 
 
 class MinimumTracker:
@@ -92,19 +48,10 @@ class MinimaTracker(dict[str, MinimumTracker]):
     ----------
     d : dict[str, MinimumTracker], optional
         Initial dictionary of metric names to MinimumTracker instances.
-    minimum_metrics_to_track : list[str], optional
-        List of metric names to ensure trackers are initialized.
     """
 
-    def __init__(
-        self, d: dict[str, MinimumTracker] | None = None, minimum_metrics_to_track: list[str] | None = None
-    ) -> None:
-        d = d or {}
-        if minimum_metrics_to_track is not None:
-            for metric_name in minimum_metrics_to_track:
-                if metric_name not in d:
-                    d[metric_name] = MinimumTracker()
-        super().__init__(d)
+    def __init__(self, d: dict[str, MinimumTracker] | None = None) -> None:
+        super().__init__(d or {})
 
     def update_minima(
         self,
@@ -134,10 +81,11 @@ class MinimaTracker(dict[str, MinimumTracker]):
         """
         new_minima = False
         for key, value in metrics_values.items():
-            if key in self:
-                new_minimum = self[key].update_minimum(iteration, value, epoch=epoch)
-                if new_minimum and (return_true_for is None or key in return_true_for):
-                    new_minima = True
+            if key not in self:
+                self[key] = MinimumTracker()
+            new_minimum = self[key].update_minimum(iteration, value, epoch=epoch)
+            if new_minimum and (return_true_for is None or key in return_true_for):
+                new_minima = True
         return new_minima
 
 

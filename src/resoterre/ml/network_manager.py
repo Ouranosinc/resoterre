@@ -1,13 +1,12 @@
 """Neural network manager module."""
 
-from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Self
 
 import torch
 from torch import nn
 
-from resoterre.config_utils import register_config
+from resoterre.config import NeuralNetworksManagerConfig, OptimizerConfig
 from resoterre.io_utils import purge_files
 from resoterre.utils import TemplateStore
 
@@ -20,98 +19,6 @@ save_defaults = [
     "optimizer_state_dict",
     "pth_files_history",
 ]
-
-
-@dataclass(frozen=True, slots=True)
-class PurgeModelFilesConfig:
-    """
-    Configuration for purging model files.
-
-    Attributes
-    ----------
-    path : Path | str | None
-        The directory path where model files are located. If None, the path will be inferred from
-        the saved model files.
-    older_than : float, optional
-        Age in seconds; model files older than this will be purged.
-    more_than : int, optional
-        If the number of model files exceeds this number, the oldest files will be purged.
-    must_both_be_true : bool
-        If True, model files must meet both criteria to be purged; if False, meeting either criterion is sufficient.
-    protected_files : list[str], optional
-        List of model file names to protect from deletion.
-    """
-
-    path: Path | str | None = None  # ToDo: can be retrieved from templates?
-    older_than: float | None = None  # in seconds
-    more_than: int | None = None
-    must_both_be_true: bool = False
-    protected_files: list[str] | None = field(default_factory=list)  # List of file names to protect from deletion
-
-
-@dataclass(frozen=True, slots=True)
-class NeuralNetworksManagerConfig:
-    """
-    Configuration for the Neural Networks Manager.
-
-    Attributes
-    ----------
-    device : str
-        The device to use for the neural networks (e.g., 'cpu', 'cuda').
-    purge_model_files : PurgeModelFilesConfig
-        Configuration for purging model files.
-    """
-
-    device: str = "cpu"
-    purge_model_files: PurgeModelFilesConfig = PurgeModelFilesConfig()
-
-
-@register_config("Adam")
-@dataclass(frozen=True, slots=True)
-class AdamConfig:
-    """
-    Configuration for the Adam optimizer.
-
-    Attributes
-    ----------
-    optimizer_name : str
-        The name of the optimizer.
-    lr : float
-        The learning rate for the optimizer.
-    weight_decay : float
-        The weight decay (L2 penalty) for the optimizer.
-    """
-
-    optimizer_name: str = field(default="Adam", metadata={"is_hyperparameter": True})
-    lr: float = field(default=0.001, metadata={"is_hyperparameter": True})
-    weight_decay: float = field(default=0.0, metadata={"is_hyperparameter": True})
-
-
-@register_config("AdamW")
-@dataclass(frozen=True, slots=True)
-class AdamWConfig:
-    """
-    Configuration for the AdamW optimizer.
-
-    Attributes
-    ----------
-    optimizer_name : str
-        The name of the optimizer.
-    lr : float
-        The learning rate for the optimizer.
-    weight_decay : float
-        The weight decay (L2 penalty) for the optimizer.
-    beta_1 : float
-        The beta_1 parameter for the AdamW optimizer.
-    beta_2 : float
-        The beta_2 parameter for the AdamW optimizer.
-    """
-
-    optimizer_name: str = field(default="AdamW", metadata={"is_hyperparameter": True})
-    lr: float = field(default=0.001, metadata={"is_hyperparameter": True})
-    weight_decay: float = field(default=0.0, metadata={"is_hyperparameter": True})
-    beta_1: float = field(default=0.9, metadata={"is_hyperparameter": True})
-    beta_2: float = field(default=0.999, metadata={"is_hyperparameter": True})
 
 
 def nb_of_parameters(model: nn.Module, only_trainable: bool = True) -> int:
@@ -224,7 +131,7 @@ class NeuralNetworksManager:
         # No loading of pth files
         networks = {}
         for key, neural_network_info in neural_networks_info.items():
-            kwargs = asdict(runner_config.networks.get(key)) if (key in runner_config.networks) else {}
+            kwargs = runner_config.networks[key].model_dump() if (key in runner_config.networks) else {}
             networks[key] = neural_network_info["class"](**kwargs)
         networks_manager_obj = cls(networks=networks, config=runner_config.networks_manager)
         for key in neural_networks_info.keys():
@@ -266,6 +173,11 @@ class NeuralNetworksManager:
             An instance of NeuralNetworksManager.
         dict[str, Any]
             A dictionary containing supplemental information for each network.
+
+        Raises
+        ------
+        ValueError
+            If a model file does not contain a saved ``config``.
         """
         # ToDo: clarify what is a manager config and a runner config, perhaps rename things a little?
         neural_networks_pth_file = neural_networks_pth_file_from_path(path_models, experiment_name=experiment_name)
@@ -278,8 +190,13 @@ class NeuralNetworksManager:
             network_class = save_state["class"]
             # ToDo: need to verify that the config match? present in multiple model saves!
             global_config = save_state.get("config", None)
+            if global_config is None:
+                raise ValueError(
+                    f"{pth_file} has no saved 'config'; from_path_models requires checkpoints saved with "
+                    "supplemental_info_dict={'config': ...}."
+                )
             networks_manager_obj.config = global_config.networks_manager
-            kwargs = asdict(global_config.networks[key]) if global_config and hasattr(global_config, "networks") else {}
+            kwargs = global_config.networks[key].model_dump() if hasattr(global_config, "networks") else {}
             networks_manager_obj.networks[key] = neural_networks_classes[network_class](**kwargs)
             networks_manager_obj.optimizers[key] = networks_manager_obj.optimizer_setup(
                 network_parameters=networks_manager_obj.networks[key].parameters(), config=global_config.optimizers[key]
@@ -298,7 +215,7 @@ class NeuralNetworksManager:
         return networks_manager_obj, networks_supplemental_info_dict
 
     @staticmethod
-    def optimizer_setup(network_parameters: Any, config: Any) -> torch.optim.Optimizer:
+    def optimizer_setup(network_parameters: Any, config: OptimizerConfig) -> torch.optim.Optimizer:
         """
         Set up an optimizer for the neural network.
 
@@ -306,7 +223,7 @@ class NeuralNetworksManager:
         ----------
         network_parameters : Any
             The parameters of the neural network to optimize.
-        config : Any
+        config : OptimizerConfig
             The configuration for the optimizer.
 
         Returns
@@ -314,9 +231,8 @@ class NeuralNetworksManager:
         torch.optim.Optimizer
             The configured optimizer.
         """
-        kwargs = {k: v for k, v in asdict(config).items() if k != "optimizer_name"}
-        if isinstance(config, AdamWConfig):
-            kwargs["betas"] = (kwargs.pop("beta_1"), kwargs.pop("beta_2"))
+        kwargs = config.model_dump(exclude={"optimizer_name", "beta_1", "beta_2"})
+        kwargs["betas"] = (config.beta_1, config.beta_2)
         optimizer = getattr(torch.optim, config.optimizer_name)(network_parameters, **kwargs)
         return optimizer
 
@@ -341,7 +257,7 @@ class NeuralNetworksManager:
         """
         if config is None:
             return None
-        kwargs = {k: v for k, v in asdict(config).items() if k != "scheduler_name"}
+        kwargs = config.model_dump(exclude={"type", "scheduler_name"})
         scheduler = getattr(torch.optim.lr_scheduler, config.scheduler_name)(optimizer, **kwargs)
         return scheduler
 

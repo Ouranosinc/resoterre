@@ -56,28 +56,33 @@ Similar to the Docker example config ([examples/docker/downscaling_rdps_to_hrdps
 Below is the list of keys necessary for CWL/Docker execution:
 
 ```yaml
-path_logs: logs
-path_output: outputs
-path_preprocessed_zarr: outputs
-path_regridding_weights: /app/matrix                # baked into the image
-path_hrdps_geophysical: /app/geophysical            # baked into the image
-path_rdps: inputs
-use_flat_rdps_directory_structure: true              # true for inputs/2024050100_007.nc; false for inputs/202405/2024050100_007.nc
-path_inference_model: /app/model/model.safetensors  # baked into the image
-
 experiment_name: cwl # used to name the output zarr: inference_<experiment_name>.zarr
 
-inference_start_datetime: "2024-05-01 07:00:00"
-inference_end_datetime: "2024-05-01 08:00:00"
-inference_variables:
-    - "HRDPS_P_TT_10000"
-    - "HRDPS_P_PR_SFC"
-    - "HRDPS_P_UUC_10000"
-    - "HRDPS_P_VVC_10000"
-inference_device: cpu  # cpu or cuda
+paths:
+  logs: logs
+  output: outputs
+  preprocessed_zarr: outputs
+  regridding_weights: /app/matrix                 # baked into the image
+  hrdps_geophysical: /app/geophysical             # baked into the image
+  rdps: inputs
+
+preprocessing:
+  rdps:
+    use_flat_directory_structure: true            # true for inputs/2024050100_007.nc; false for inputs/202405/2024050100_007.nc
+
+inference:
+  start_datetime: "2024-05-01 07:00:00"
+  end_datetime: "2024-05-01 08:00:00"
+  variables:
+      - "HRDPS_P_TT_10000"
+      - "HRDPS_P_PR_SFC"
+      - "HRDPS_P_UUC_10000"
+      - "HRDPS_P_VVC_10000"
+  model_path: /app/model/model.safetensors        # baked into the image
+  device: cpu  # cpu or cuda
 ```
 
-Set `use_flat_rdps_directory_structure` to `true` when the RDPS files are stored directly in `path_rdps`, such as `inputs/2024050100_007.nc`. Set it to `false` when the files are stored in month subdirectories, such as `inputs/202405/2024050100_007.nc`. This setting must match the directory structure supplied through `input_data`.
+Set `preprocessing.rdps.use_flat_directory_structure` to `true` when the RDPS files are stored directly in `paths.rdps`, such as `inputs/2024050100_007.nc`. Set it to `false` when the files are stored in month subdirectories, such as `inputs/202405/2024050100_007.nc`. This setting must match the directory structure supplied through `input_data`.
 
 See [examples/docker/downscaling_rdps_to_hrdps_docker.yaml](../docker/downscaling_rdps_to_hrdps_docker.yaml) for a complete, working example to adapt (remember to switch the `/app/...` absolute paths to the relative ones shown above, and set `experiment_name: cwl`).
 
@@ -90,9 +95,9 @@ Instead of editing the config file, the `start_datetime` and `end_datetime` CWL 
 
 **GPU vs CPU Configuration:**
 
-When running without GPU, change `inference_device: cuda` to `inference_device: cpu` in the configuration file. When invoked via `cwltool`, the `cwltool:CUDARequirement` in the CWL is specified as a hint (not a requirement), meaning:
+When running without GPU, change `inference.device: cuda` to `inference.device: cpu` in the configuration file. When invoked via `cwltool`, the `cwltool:CUDARequirement` in the CWL is specified as a hint (not a requirement), meaning:
 - If `cwltool:CUDARequirement` is present and GPU is available, the GPU will be mapped to the container.
-- If `cwltool:CUDARequirement` is omitted or GPU is unavailable, ensure `inference_device: cpu` is set in the config to avoid errors.
+- If `cwltool:CUDARequirement` is omitted or GPU is unavailable, ensure `inference.device: cpu` is set in the config to avoid errors.
 - The `--enable-ext` flag must be used with `cwltool` to recognize the `cwltool:CUDARequirement` hint.
 ---
 
@@ -142,7 +147,7 @@ python3 -m http.server 4004 -b <ip> -d <PATH_TO_FOLDER>/
 python3 -m http.server 4004 -b <ip> -d /tmp/inference
 ```
 
-In this example, the `/tmp/inference` directory contains a `/config` folder with `downscaling_rdps_to_hrdps.yaml` and an `/inputs` folder with the NetCDF files for inference. The example uses the flat layout, so set `use_flat_rdps_directory_structure: true` and place files directly in `/inputs` (e.g., `inputs/2024050100_007.nc`).
+In this example, the `/tmp/inference` directory contains a `/config` folder with `downscaling_rdps_to_hrdps.yaml` and an `/inputs` folder with the NetCDF files for inference. The example uses the flat layout, so set `preprocessing.rdps.use_flat_directory_structure: true` and place files directly in `/inputs` (e.g., `inputs/2024050100_007.nc`).
 
 When referencing files hosted on a file server in [execute_unet_cwl_schema.yml](execute_unet_cwl_schema.yml), use the full HTTP URL. For example, if serving from `http://localhost:4004`, the input directory would be referenced as:
 ```yaml
@@ -203,7 +208,7 @@ This `CWL` `Workflow` chains the RDPS forecast file listing, file download, and 
   - `forecast_files` (File): The list of RDPS files required for the datetime range.
   - `inference_output` (Directory): The `inference_<experiment_name>.zarr` directory containing the downscaled results.
 
-The downloaded directory is flat, so the inference configuration must keep `use_flat_rdps_directory_structure: true`. The datetime range given to the workflow should match `inference_start_datetime` and `inference_end_datetime` in the configuration.
+The downloaded directory is flat, so the inference configuration must keep `preprocessing.rdps.use_flat_directory_structure: true`. The datetime range given to the workflow should match `inference.start_datetime` and `inference.end_datetime` in the configuration.
 
 The Docker images referenced by the steps must be available locally. See [docker/README.md](../../docker/README.md) for instructions.
 

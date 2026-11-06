@@ -127,6 +127,85 @@ class LinearReLU(nn.Module):  # type: ignore[misc]
         return x
 
 
+class LinearEmbedding(nn.Module):  # type: ignore[misc]
+    """
+    Small dense network embedding a vector of scalar inputs.
+
+    Parameters
+    ----------
+    in_features : int
+        Number of input scalars.
+    hidden_sizes : list[int]
+        Output size of each dense layer, in order. A ReLU follows every layer.
+    """
+
+    def __init__(self, in_features: int, hidden_sizes: list[int]) -> None:
+        super().__init__()
+        if not hidden_sizes:
+            raise ValueError("hidden_sizes must contain at least one layer size.")
+        layers: list[nn.Module] = []
+        for hidden_size in hidden_sizes:
+            layers.append(Linear(in_features=in_features, out_features=hidden_size))
+            layers.append(nn.ReLU())
+            in_features = hidden_size
+        self.out_features = hidden_sizes[-1]
+        self.sequential_block = nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Embed a batch of scalar vectors.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor of shape (batch_size, in_features).
+
+        Returns
+        -------
+        torch.Tensor
+            Embedding of shape (batch_size, out_features).
+        """
+        return self.sequential_block(x)
+
+
+class CyclicalDateEncoding(nn.Module):  # type: ignore[misc]
+    """
+    Encode a calendar date (month and day) as a point on the unit circle.
+
+    The day of the year is computed on a 366-day (leap) calendar and mapped to ``(sin, cos)`` of its angle, so that
+    December 31 and January 1 are neighbours.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        days_in_month = torch.tensor([31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31], dtype=torch.float32)
+        cumulative_days = torch.cumsum(days_in_month, dim=0) - days_in_month
+        self.register_buffer("days_before_month", cumulative_days, persistent=False)
+        self.register_buffer("days_in_month", days_in_month, persistent=False)
+
+    def forward(self, month: torch.Tensor, day: torch.Tensor) -> torch.Tensor:
+        """
+        Encode months and days.
+
+        Parameters
+        ----------
+        month : torch.Tensor
+            Month numbers (1 to 12) of shape (batch_size,).
+        day : torch.Tensor
+            Day of the month (1 to 31) of shape (batch_size,).
+
+        Returns
+        -------
+        torch.Tensor
+            Tensor of shape (batch_size, 2) holding ``(sin, cos)`` of the day of the year angle.
+        """
+        month_idx = month.round().long() - 1
+        day_in_month = torch.minimum(day, self.days_in_month[month_idx])
+        day_of_year = self.days_before_month[month_idx] + day_in_month - 1
+        angle = 2 * torch.pi * day_of_year / 366.0
+        return torch.stack([torch.sin(angle), torch.cos(angle)], dim=-1)
+
+
 class SEBlock(nn.Module):  # type: ignore[misc]
     """
     Squeeze and Excitation Block.
