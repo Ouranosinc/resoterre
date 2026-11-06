@@ -116,6 +116,8 @@ def daily_time_index(ds: xr.Dataset) -> xr.CFTimeIndex:
     """
     Get the time axis of a dataset, floored to the day.
 
+    Assumes one day per step in the time axis.
+
     Parameters
     ----------
     ds : xr.Dataset
@@ -131,14 +133,18 @@ def daily_time_index(ds: xr.Dataset) -> xr.CFTimeIndex:
     TypeError
         If the time axis is not cftime.
     """
-    time_index = ds.indexes["time"]
-    if not isinstance(time_index, xr.CFTimeIndex):
+    days = ds.indexes["time"].floor("D")
+    if not isinstance(days, xr.CFTimeIndex):
         raise TypeError(
-            f"Expected a cftime time axis, got {type(time_index).__name__}. "
+            f"Expected a cftime time axis, got {type(days).__name__}. "
             "Open zarr stores with decode_times=decode_times_as_cftime, "
             "or NetCDF files with decode_times=False and preprocess=decode_time_axis."
         )
-    return time_index.floor("D")
+    if not days.is_unique:
+        raise ValueError("Time axis has several steps per day; only daily data is supported.")
+    if not days.is_monotonic_increasing:
+        raise ValueError("Time axis must be sorted.")
+    return days
 
 
 # Same dates after 1582-10-15; which name a file uses depends on the tool that wrote it.
