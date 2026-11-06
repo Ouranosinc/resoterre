@@ -130,7 +130,7 @@ def recursive_collate(list_of_structures: Sequence[Nested]) -> Nested:
     if all(isinstance(x, torch.Tensor) for x in list_of_structures):
         if len(list_of_structures) == 1:
             return list_of_structures[0]
-        return torch.cat([item for item in list_of_structures])
+        return torch.cat([*list_of_structures])
     elif all(isinstance(x, dict) for x in list_of_structures):
         reference_dict = list_of_structures[0]
         if isinstance(reference_dict, dict):  # Check to silence mypy warning
@@ -511,7 +511,7 @@ class DatasetWithSave(DatasetWithSplits):
         fixed_npz_file = self.saved_fixed_path()
         if ("fixed_data" not in self.cache) and fixed_npz_file.is_file():
             self.cache["fixed_data"] = np.load(fixed_npz_file)
-            self.cache["fixed_data"] = {key: value for key, value in self.cache["fixed_data"].items()}
+            self.cache["fixed_data"] = {**self.cache["fixed_data"]}
 
     def save_idx_data(self, idx: int, data_dict: dict[str, Any]) -> None:
         """
