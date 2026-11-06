@@ -1,44 +1,27 @@
 """Module for computing summary statistics for the CRCM emulator dataset."""
 
 import logging
+from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
 from resoterre.data_analysis.utils import EmulatorDatasetLike, group_indices_by_sim, write_dataframe_to_csv
+from resoterre.data_management.cftime_utils import get_period_slice
 
 
 logger = logging.getLogger(__name__)
 
 
-# TODO: temporary, replace with the cftime_utils period comparison once the cftime feature is merged.
-def day_key(date: Any) -> str:
-    """
-    Return a ``YYYY-MM-DD`` string for a period bound, so it can be compared with any time axis.
-
-    Parameters
-    ----------
-    date : datetime.datetime, numpy.datetime64, or str
-        Period bound.
-
-    Returns
-    -------
-    str
-        ISO date string at day precision.
-    """
-    return str(np.datetime64(date, "D"))
-
-
-def period_years(time_periods: list[list[Any]]) -> str:
+def period_years(time_periods: list[list[datetime]]) -> str:
     """
     Return the years of the time periods, for use in output file names.
 
     Parameters
     ----------
-    time_periods : list of list
+    time_periods : list of list of datetime.datetime
         Time windows. Each window is a start date and an end date.
 
     Returns
@@ -46,7 +29,7 @@ def period_years(time_periods: list[list[Any]]) -> str:
     str
         Years such as ``1970-1979_2000-2009``.
     """
-    return "_".join(f"{np.datetime64(start, 'Y')}-{np.datetime64(end, 'Y')}" for start, end in time_periods)
+    return "_".join(f"{start.year:04d}-{end.year:04d}" for start, end in time_periods)
 
 
 def select_data_by_indices(data: xr.DataArray | xr.Dataset, time_idxs: np.ndarray) -> xr.DataArray | xr.Dataset:
@@ -79,7 +62,7 @@ def select_data_by_indices(data: xr.DataArray | xr.Dataset, time_idxs: np.ndarra
 
 def filter_data(
     dataset: EmulatorDatasetLike,
-    time_periods: list[list[np.datetime64]] | None = None,
+    time_periods: list[list[datetime]] | None = None,
 ) -> tuple[dict[str, xr.Dataset], dict[str, xr.Dataset]]:
     """
     Filter GCM and CRCM data to paired valid times in an optional window.
@@ -91,8 +74,8 @@ def filter_data(
     ----------
     dataset : EmulatorDatasetLike
         Dataset providing GCM and CRCM zarr stores and valid time indices.
-    time_periods : list of list of numpy.datetime64, optional
-        Time windows. Each window is a start date and an end date.
+    time_periods : list of list of datetime.datetime, optional
+        Time windows. Each window is a start date and an end date, both included.
         Multiple (possibly overlapping) time periods are supported.
         If provided, all indices in any period are merged, avoiding duplicates.
 
@@ -113,17 +96,15 @@ def filter_data(
         data_gcm = dataset.get_open_dataset("gcm", sim)
         data_crcm = dataset.get_open_dataset("crcm", sim)
 
-        # TODO: handle np.datetime64 vs cftime comparison in cftime_utils
         # If time periods are provided, constrain the data to the time periods.
         if time_periods is not None:
             selected_gcm_crcm_idxs: set[tuple[int, int]] = set()
-            # ISO date strings sort chronologically and work for both numpy and cftime time axes.
-            gcm_days = data_gcm["time"].dt.strftime("%Y-%m-%d").values
-            for period in time_periods:
-                start_date, end_date = period[0], period[1]
-                in_range = (gcm_days >= day_key(start_date)) & (gcm_days <= day_key(end_date))
+            for start_date, end_date in time_periods:
+                period = get_period_slice(data_gcm, start_date, end_date)
+                if period is None:
+                    continue
                 selected_gcm_crcm_idxs.update(
-                    (gcm_idx, crcm_idx) for gcm_idx, crcm_idx in gcm_crcm_idxs if in_range[gcm_idx]
+                    (gcm_idx, crcm_idx) for gcm_idx, crcm_idx in gcm_crcm_idxs if period.start <= gcm_idx < period.stop
                 )
             gcm_crcm_idxs = list(selected_gcm_crcm_idxs)
             if not gcm_crcm_idxs:
@@ -355,7 +336,7 @@ def pool_scenarios(stats: pd.DataFrame) -> pd.DataFrame:
 def summarize_data(
     dataset: EmulatorDatasetLike,
     output_dir: Path | str,
-    time_periods: list[list[np.datetime64]],
+    time_periods: list[list[datetime]],
     simulations: list[list[str]],
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -374,7 +355,7 @@ def summarize_data(
         Dataset providing GCM and CRCM zarr stores and valid time indices.
     output_dir : Path | str
         Directory where the summary CSVs are written.
-    time_periods : list of list of numpy.datetime64
+    time_periods : list of list of datetime.datetime
         Time windows. Each window is a start date and an end date.
     simulations : list of list of str
         Simulations as ``[gcm, scenario, member]``, as in ``config.preprocessing.simulations``.
@@ -392,7 +373,7 @@ def summarize_data(
         If no simulation has valid days in the time periods.
     """
     data_gcm, data_crcm = filter_data(dataset, time_periods)
-    periods = ";".join(f"{day_key(start)}/{day_key(end)}" for start, end in time_periods)
+    periods = ";".join(f"{start.strftime('%Y-%m-%d')}/{end.strftime('%Y-%m-%d')}" for start, end in time_periods)
 
     climate_var_frames: list[pd.DataFrame] = []
     forcing_frames: list[pd.DataFrame] = []

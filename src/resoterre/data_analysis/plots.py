@@ -123,13 +123,12 @@ def visualize_gcm_vs_coarsened_rcm(
         gcm, rcm, diff = stats["gcm"], stats["rcm"], stats["diff"]
         valid = diff.notnull()
         sample_step = max(1, int(gcm.sizes["time"]) // 400)
-        g0, r0, d_sub, t0 = dask.compute(
+        g0, r0, d_sub = dask.compute(
             gcm.where(valid).isel(time=0),
             rcm.where(valid).isel(time=0),
             diff.isel(time=slice(None, None, sample_step)),
-            gcm["time"].isel(time=0),
         )
-        date_label = str(t0.values)[:10]
+        date_label = gcm.indexes["time"][0].strftime("%Y-%m-%d")
         gcm_climatology, rcm_climatology = stats["gcm_climatology"], stats["rcm_climatology"]
         diff_clim = rcm_climatology - gcm_climatology
         vmin = float(np.nanmin([gcm_climatology.min(), rcm_climatology.min(), g0.min(), r0.min()]))
@@ -333,6 +332,7 @@ def visualize_temporal_mean_and_sample(
     # dask can share chunk reads across panels instead of one graph per panel.
     requests: list[tuple[str, str, str, str]] = []
     lazy_fields: list[xr.DataArray] = []
+    logger.info("Collecting lazy fields for %s simulations", len(data_gcm))
     for sim in data_gcm:
         for model, store, vars in (("gcm", data_gcm, vars_gcm), ("crcm", data_crcm, vars_crcm)):
             if sim not in store:

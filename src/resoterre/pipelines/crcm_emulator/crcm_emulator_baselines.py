@@ -9,6 +9,7 @@ import xarray
 from scipy.ndimage import zoom
 
 from resoterre.config import CRCMEmulatorConfig
+from resoterre.data_management.cftime_utils import decode_times_as_cftime
 from resoterre.datasets.cmip6.cmip6_utils import gcm_calendars
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
 from resoterre.pipelines.crcm_emulator.baseline_evaluation import date_tuples, evaluate_precomputed_predictions
@@ -222,7 +223,7 @@ class InterpolationBaseline:
         if self.config.preprocessing.crcm.path is None:
             raise ValueError("CRCM preprocessing path is not specified in the configuration.")
         path_baseline = self.baseline_zarr_path(gcm_simulation)
-        with xarray.open_zarr(path_baseline) as ds_baseline:
+        with xarray.open_zarr(path_baseline, decode_times=decode_times_as_cftime) as ds_baseline:
             baseline_dates = date_tuples(ds_baseline["time"].values)
         periods = [
             ((start.year, start.month, start.day), (end.year, end.month, end.day))
@@ -241,7 +242,10 @@ class InterpolationBaseline:
         variable_names = self.config.data.crcm_variables
         path_gcm = Path(self.config.preprocessing.gcm.path, f"crcm_emulator_input_{gcm_str}.zarr")
         path_crcm = Path(self.config.preprocessing.crcm.path, f"crcm_emulator_output_{gcm_str}.zarr")
-        with xarray.open_zarr(path_gcm) as ds_gcm, xarray.open_zarr(path_crcm) as ds_crcm:
+        with (
+            xarray.open_zarr(path_gcm, decode_times=decode_times_as_cftime) as ds_gcm,
+            xarray.open_zarr(path_crcm, decode_times=decode_times_as_cftime) as ds_crcm,
+        ):
             gcm_idx = _computed_days(ds_gcm, variable_names, list(chunk_days))
             crcm_idx = _computed_days(ds_crcm, variable_names, list(chunk_days))
             days = [day for day in chunk_days if day in gcm_idx and day in crcm_idx]

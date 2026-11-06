@@ -13,7 +13,7 @@ import xarray
 from torch.utils import data as td
 from tqdm import tqdm
 
-from resoterre.data_management.cftime_utils import convert_list_of_datetimes_to_cftime
+from resoterre.data_management.cftime_utils import decode_times_as_cftime
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
 from resoterre.pipelines.crcm_emulator.metrics import (
     build_metrics,
@@ -78,7 +78,9 @@ class PrecomputedPredictionDataset(td.Dataset):  # type: ignore[misc]
         item = self.dataset[idx]
         gcm_str = self.dataset.valid_idx[idx][0]
         if gcm_str not in self.prediction_datasets:
-            self.prediction_datasets[gcm_str] = xarray.open_zarr(self.prediction_paths[gcm_str])
+            self.prediction_datasets[gcm_str] = xarray.open_zarr(
+                self.prediction_paths[gcm_str], decode_times=decode_times_as_cftime
+            )
             self.prediction_date_idx[gcm_str] = {
                 day: k for k, day in enumerate(date_tuples(self.prediction_datasets[gcm_str]["time"].values))
             }
@@ -104,14 +106,14 @@ def date_tuples(time_values: np.ndarray) -> list[tuple[int, int, int]]:
     Parameters
     ----------
     time_values : np.ndarray
-        Time values, as numpy datetime64 or cftime objects.
+        Time values decoded as cftime objects.
 
     Returns
     -------
     list[tuple[int, int, int]]
         Date of each time value.
     """
-    return [(x.year, x.month, x.day) for x in convert_list_of_datetimes_to_cftime(list(time_values))]
+    return [(date.year, date.month, date.day) for date in time_values]
 
 
 def evaluate_precomputed_predictions(

@@ -32,10 +32,11 @@ def mock_gcm_data(path_output: Path | str, allow_overwrite: bool = False) -> Non
         # If GCMs with other calendars are required, move time logic to cftime_utils.py
         start_datetime = datetime(1850, 1, 1, 12)
         delta_t = timedelta(days=1)
-        times = [start_datetime + i * delta_t for i in range(60625)]
+        num_days = (datetime(2015, 1, 1, 12) - start_datetime).days
+        times = [start_datetime + i * delta_t for i in range(num_days)]
         ds = xarray.Dataset(
             {
-                "tas": (("time", "lat", "lon"), np.zeros((60625, 128, 256), dtype="float32")),
+                "tas": (("time", "lat", "lon"), np.zeros((num_days, 128, 256), dtype="float32")),
             },
             coords={
                 "time": times,
