@@ -10,9 +10,11 @@ All commands below are run from the repository root.
 
 ```bash
 uv sync --all-extras --all-groups
-
-To add a new package, add package name to both `environment-dev.yml` and `pyproject.toml`.
 ```
+
+Use `uv run --frozen <command>` to avoid rewriting `uv.lock` with a different `uv` version.
+
+To add a new package, add it to both `environment-dev.yml` and `pyproject.toml`, then run `uv lock` and commit `uv.lock`.
 
 ## Steps
 
