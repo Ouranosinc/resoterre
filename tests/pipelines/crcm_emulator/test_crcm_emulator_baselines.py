@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -97,14 +98,14 @@ def test_evaluate(tmp_path, monkeypatch):
     assert results == pytest.approx({"tas/rmse_test": 2.0, "tas/max_value_absolute_error_test": 2.0})
 
 
-def test_save_and_load_results_with_tensor(tmp_path, monkeypatch):
+def test_save_and_load_results_drops_non_single_valued(tmp_path, monkeypatch):
     baseline = _baseline(tmp_path, monkeypatch, computed_days=[])
-    bias_map = torch.arange(6, dtype=torch.float32).reshape(2, 3)
-    baseline.save_results({"tas/rmse_test": 2.0, "tas/bias_map_test": bias_map}, "test")
-    loaded = baseline.load_results(["rmse", "bias_map"], "test")
-    assert loaded is not None
-    assert loaded["tas/rmse_test"] == 2.0
-    assert torch.equal(loaded["tas/bias_map_test"], bias_map)
+    results = {"tas/rmse_test": 2.0, "tas/bias_map_test": torch.zeros(2, 3)}
+    path = baseline.save_results(results, "test")
+    saved = json.loads(path.read_text())
+    assert saved == {"metrics": {"tas/rmse_test": 2.0}, "non_single_valued_metrics": ["tas/bias_map_test"]}
+    assert baseline.load_results(["rmse", "bias_map"], "test") == {"tas/rmse_test": 2.0}
+    assert baseline.load_results(["rmse", "ccc"], "test") is None
 
 
 def test_evaluate_baseline_not_computed(tmp_path, monkeypatch):

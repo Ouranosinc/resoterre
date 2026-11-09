@@ -385,7 +385,7 @@ class WassersteinDistance(Metric):
         return (sorted_target - sorted_output).abs().mean(dim=(0, 2))
 
 
-# Metrics that can be selected by name in ``training.validation_metrics`` and ``inference.test_metrics``.
+# Metrics that can be selected by name in ``training.validation_metrics`` and ``inference.evaluation_metrics``.
 AVAILABLE_METRICS: dict[str, type[Metric]] = {
     MaxValueAbsoluteError.name: MaxValueAbsoluteError,
     RMSE.name: RMSE,

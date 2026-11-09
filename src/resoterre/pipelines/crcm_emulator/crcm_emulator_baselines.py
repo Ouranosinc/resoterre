@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import torch
 import xarray
 from scipy.ndimage import zoom
 
@@ -22,6 +21,23 @@ from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import (
 
 
 logger = logging.getLogger(__name__)
+
+
+def single_valued_results(results: dict[str, Any]) -> dict[str, float]:
+    """
+    Keep the single-valued scores (int or float), dropping the others such as bias maps.
+
+    Parameters
+    ----------
+    results : dict[str, Any]
+        Scores by name.
+
+    Returns
+    -------
+    dict[str, float]
+        The scores that are single-valued.
+    """
+    return {k: v for k, v in results.items() if isinstance(v, (int, float))}
 
 
 class InterpolationBaseline:
@@ -81,7 +97,7 @@ class InterpolationBaseline:
             self.config.paths.baselines_out_dirs["interpolation"], f"interpolation_baseline_{split}_results.json"
         )
 
-    def load_results(self, metric_names: list[str], split: str) -> dict[str, Any] | None:
+    def load_results(self, metric_names: list[str], split: str) -> dict[str, float] | None:
         """
         Load the saved scores of the interpolation baseline on a data split (see ``save_results``).
 
@@ -94,24 +110,26 @@ class InterpolationBaseline:
 
         Returns
         -------
-        dict[str, Any] | None
-            The scores of ``metric_names`` for each variable of ``data.crcm_variables`` and each key of the periods of
-            the split (``<variable>/<metric>_<key>``), or None if there are no saved scores or if some of these are
-            missing.
+        dict[str, float] | None
+            The single-valued scores of ``metric_names`` for each variable of ``data.crcm_variables`` and each key of
+            the periods of the split (``<variable>/<metric>_<key>``), or None if there are no saved scores or if some
+            of these are missing. Scores that were not single-valued when saved (e.g. bias maps) are not returned.
         """
         path = self.results_json_path(split)
         if not path.is_file():
             return None
-        saved = json.loads(path.read_text()).get("metrics", {})
+        content = json.loads(path.read_text())
+        saved = content.get("metrics", {})
+        not_saved = set(content.get("non_single_valued_metrics", []))
         names = [
             f"{variable}/{metric}_{key}"
             for key in getattr(self.config.data, f"{split}_periods")
             for variable in self.config.data.crcm_variables
             for metric in metric_names
         ]
-        if any(name not in saved for name in names):
+        if any(name not in saved and name not in not_saved for name in names):
             return None
-        return {name: torch.tensor(saved[name]) if isinstance(saved[name], list) else saved[name] for name in names}
+        return {name: saved[name] for name in names if name in saved}
 
     def save_results(self, results: dict[str, Any], split: str) -> Path:
         """
@@ -120,8 +138,9 @@ class InterpolationBaseline:
         Parameters
         ----------
         results : dict[str, Any]
-            Scores by name (``<variable>/<metric>_<key>``). Non-scalar scores (e.g. bias maps) are saved as nested
-            lists.
+            Scores by name (``<variable>/<metric>_<key>``). Only single-valued scores are saved, as in
+            ``04_inference.py``; the names of the others (e.g. bias maps) are listed under
+            ``non_single_valued_metrics``.
         split : str
             Either "test" or "validation".
 
@@ -132,8 +151,9 @@ class InterpolationBaseline:
         """
         path = self.results_json_path(split)
         path.parent.mkdir(parents=True, exist_ok=True)
-        serializable = {k: v.tolist() if isinstance(v, (torch.Tensor, np.ndarray)) else v for k, v in results.items()}
-        path.write_text(json.dumps({"metrics": serializable}, indent=2))
+        single_valued = single_valued_results(results)
+        content = {"metrics": single_valued, "non_single_valued_metrics": sorted(set(results) - set(single_valued))}
+        path.write_text(json.dumps(content, indent=2))
         return path
 
     def evaluate(self, metric_names: list[str], split: str = "test") -> dict[str, float]:
@@ -143,7 +163,7 @@ class InterpolationBaseline:
         Parameters
         ----------
         metric_names : list[str]
-            Names of the metrics, as for ``inference.test_metrics``.
+            Names of the metrics, as for ``inference.evaluation_metrics``.
         split : str
             Either "test" or "validation".
 

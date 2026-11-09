@@ -423,17 +423,16 @@ def _baseline_runner(
 
 
 def test_crcm_emulator_interpolation_baseline_logged_as_constant_line(monkeypatch):
-    scores = {"validation": {"tas/rmse": 1.5}, "test": {"tas/rmse": 2.0}}
-    monkeypatch.setattr(
-        crcm_emulator_training.InterpolationBaseline, "evaluate", lambda self, metric_names, split: scores[split]
-    )
+    evaluate = MagicMock(return_value={"tas/rmse": 1.5})
+    monkeypatch.setattr(crcm_emulator_training.InterpolationBaseline, "evaluate", evaluate)
     with tempfile.TemporaryDirectory() as tmp_dir:
         Path(tmp_dir, "interpolation_baseline_GCM_ssp245_r1.zarr").mkdir()
         runner = _baseline_runner(tmp_dir, True, {"interpolation": Path(tmp_dir)})
         runner.score_interpolation_baseline()
         runner.total_iterations = 7
         runner.log_validation_metrics_to_experiment(epoch=1)
-        expected = {"tas/interpolation_baseline_validation_rmse": 1.5, "tas/interpolation_baseline_test_rmse": 2.0}
+        expected = {"tas/interpolation_baseline_validation_rmse": 1.5}
+        assert evaluate.call_args.kwargs["split"] == "validation"
         baseline_steps = [
             call.kwargs["step"]
             for call in runner.experiment_logger.experiment.log_metrics.call_args_list
@@ -493,28 +492,25 @@ def test_crcm_emulator_interpolation_baseline_read_from_json(monkeypatch, saved_
     monkeypatch.setattr(crcm_emulator_training.InterpolationBaseline, "evaluate", evaluate)
     with tempfile.TemporaryDirectory() as tmp_dir:
         Path(tmp_dir, "interpolation_baseline_GCM_ssp245_r1.zarr").mkdir()
-        for split in ("validation", "test"):
-            Path(tmp_dir, f"interpolation_baseline_{split}_results.json").write_text(
-                json.dumps({"metrics": saved_metrics})
-            )
+        Path(tmp_dir, "interpolation_baseline_validation_results.json").write_text(
+            json.dumps({"metrics": saved_metrics})
+        )
         runner = _baseline_runner(tmp_dir, True, {"interpolation": Path(tmp_dir)})
         period = {"hist": [datetime(2000, 1, 1), datetime(2000, 1, 2)]}
         runner.config = runner.config.model_copy(
             update={
-                "data": runner.config.data.model_copy(update={"validation_periods": period, "test_periods": period}),
+                "data": runner.config.data.model_copy(update={"validation_periods": period}),
                 "training": runner.config.training.model_copy(update={"validation_metrics": ["rmse"]}),
-                "inference": runner.config.inference.model_copy(update={"test_metrics": ["rmse"]}),
             }
         )
         runner.score_interpolation_baseline()
         expected = (
             {"tas/rmse_hist": 3.0, "pr/rmse_hist": 4.0} if scored else {"tas/rmse_hist": 1.0, "pr/rmse_hist": 2.0}
         )
-        assert evaluate.call_count == (2 if scored else 0)
+        assert evaluate.call_count == (1 if scored else 0)
         assert runner.interpolation_baseline_metrics == {
-            f"{variable}/interpolation_baseline_{split}_rmse_hist": value
-            for split in ("validation", "test")
+            f"{variable}/interpolation_baseline_validation_rmse_hist": value
             for variable, value in zip(("tas", "pr"), expected.values(), strict=True)
         }
-        saved = json.loads(Path(tmp_dir, "interpolation_baseline_test_results.json").read_text())["metrics"]
+        saved = json.loads(Path(tmp_dir, "interpolation_baseline_validation_results.json").read_text())["metrics"]
         assert saved == (expected if scored else saved_metrics)

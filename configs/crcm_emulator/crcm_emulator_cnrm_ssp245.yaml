@@ -133,10 +133,10 @@ training:
     - wasserstein_distance
     - bias_map
     - mean_bias
-  log_interpolation_baseline: true # score the precomputed interpolation baseline and log it to Comet ML
+  log_interpolation_baseline: false # score the precomputed interpolation baseline and log it to Comet ML
 
 inference:
-  test_metrics: # extra metrics reported when evaluating on the test data, in addition to the losses
+  evaluation_metrics: # extra metrics reported when evaluating on the validation and test data, in addition to the losses
     - rmse
     - ccc
     - wasserstein_distance

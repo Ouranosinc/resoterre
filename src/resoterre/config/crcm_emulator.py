@@ -298,15 +298,15 @@ class CRCMEmulatorInferenceConfig(BaseConfig):
         List of inference periods. Each period has the form [start_datetime, end_datetime].
     device : str | None
         Device to use for inference with the trained emulator (e.g., "cpu", "cuda").
-    test_metrics : list[str]
-        Names of the extra metrics reported when evaluating on the test data, in addition to the losses
+    evaluation_metrics : list[str]
+        Names of the extra metrics reported when evaluating on the validation and test data, in addition to the losses
         (e.g., "max_value_absolute_error").
     """
 
     variables: list[str] = Field(default_factory=list)
     periods: list[list[datetime]] | None = None
     device: str | None = None
-    test_metrics: list[str] = Field(default_factory=lambda: ["max_value_absolute_error"])
+    evaluation_metrics: list[str] = Field(default_factory=lambda: ["max_value_absolute_error"])
 
 
 class CRCMEmulatorPlotConfig(BaseConfig):

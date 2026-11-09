@@ -23,7 +23,7 @@ from resoterre.ml.network_manager import NeuralNetworksManager
 from resoterre.ml.neural_networks_basic import CyclicalDateEncoding
 from resoterre.ml.neural_networks_unet import UNet
 from resoterre.ml.training_utils import NNTraining, with_split
-from resoterre.pipelines.crcm_emulator.crcm_emulator_baselines import InterpolationBaseline
+from resoterre.pipelines.crcm_emulator.crcm_emulator_baselines import InterpolationBaseline, single_valued_results
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 from resoterre.pipelines.crcm_emulator.experiment_logger import config_to_experiment_parameters
 from resoterre.pipelines.crcm_emulator.metrics import (
@@ -612,7 +612,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         Evaluate the model once on the test data, and log the metrics to Comet ML.
 
         The best checkpoint in ``paths.output`` is evaluated, or the current model if there is none. The metrics are
-        ``inference.test_metrics`` (in addition to the losses), logged by key of ``data.test_periods`` as e.g.
+        ``inference.evaluation_metrics`` (in addition to the losses), logged by key of ``data.test_periods`` as e.g.
         ``tas/test_rmse_historical`` at the current step, along with ``test_checkpoint_epoch``, the epoch of the
         evaluated model.
 
@@ -636,7 +636,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         except FileNotFoundError:
             logger.warning("No best checkpoint found, testing the current model.")
         results = self.evaluate_by_key(
-            test_data_loaders, build_metrics(self.config.inference.test_metrics), desc="Test"
+            test_data_loaders, build_metrics(self.config.inference.evaluation_metrics), desc="Test"
         )
         self.experiment_logger.log_metrics(
             {**with_split(results, "test"), "test_checkpoint_epoch": self.epoch_counter}, step=step, epoch=epoch
@@ -646,17 +646,16 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
 
     def score_interpolation_baseline(self) -> None:
         """
-        Get the scores of the interpolation baseline on the validation and test data, and log them to Comet ML.
+        Get the scores of the interpolation baseline on the validation data, and log them to Comet ML.
 
         Only done when ``training.log_interpolation_baseline`` is set and Comet ML logging is active. The scores are
-        ``training.validation_metrics`` on the validation periods and ``inference.test_metrics`` on the test periods,
-        logged as ``<variable>/interpolation_baseline_<split>_<metric>_<key>``, next to the model's metrics (e.g.
-        ``tas/interpolation_baseline_validation_rmse_historical`` next to
-        ``tas/validation_rmse_historical``). They are read from the JSON
-        files saved in ``paths.baselines_out_dirs.interpolation`` (e.g. by ``02_score_baselines.py``); if missing or
-        incomplete, the precomputed baseline is scored and the JSON file is saved for the next training. A split that
-        cannot be scored (no baseline zarr, missing days, no period) is skipped with a warning; the baseline is never
-        computed here.
+        ``training.validation_metrics`` on the validation periods, logged as
+        ``<variable>/interpolation_baseline_validation_<metric>_<key>``, next to the model's metrics (e.g.
+        ``tas/interpolation_baseline_validation_rmse_historical`` next to ``tas/validation_rmse_historical``). They are
+        read from the JSON file saved in ``paths.baselines_out_dirs.interpolation`` (e.g. by ``02_score_baselines.py``);
+        if missing or incomplete, the precomputed baseline is scored and the JSON file is saved for the next training.
+        If the baseline cannot be scored (no baseline zarr, missing days, no period), it is skipped with a warning; the
+        baseline is never computed here.
         """
         self.interpolation_baseline_metrics = {}
         if not self.config.training.log_interpolation_baseline:
@@ -668,17 +667,14 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             logger.warning("Interpolation baseline not scored: no paths.baselines_out_dirs.interpolation in config")
             return
         baseline = InterpolationBaseline(self.config)
-        for split, metric_names in (
-            ("validation", self.config.training.validation_metrics),
-            ("test", self.config.inference.test_metrics),
-        ):
-            results = baseline.load_results(metric_names, split)
-            if results is not None:
-                logger.info("Interpolation baseline %s scores read from %s", split, baseline.results_json_path(split))
-            else:
-                results = self._score_interpolation_baseline_split(baseline, metric_names, split)
-            if results:
-                self.interpolation_baseline_metrics.update(with_split(results, f"interpolation_baseline_{split}"))
+        split, metric_names = "validation", self.config.training.validation_metrics
+        results = baseline.load_results(metric_names, split)
+        if results is not None:
+            logger.info("Interpolation baseline %s scores read from %s", split, baseline.results_json_path(split))
+        else:
+            results = self._score_interpolation_baseline_split(baseline, metric_names, split)
+        if results:
+            self.interpolation_baseline_metrics.update(with_split(results, f"interpolation_baseline_{split}"))
         self.log_interpolation_baseline_metrics(epoch=self.epoch_counter)
 
     def _score_interpolation_baseline_split(
@@ -719,7 +715,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             baseline.save_results(results, split)
         except OSError as error:
             logger.warning("Interpolation baseline %s scores not saved: %s", split, error)
-        return results
+        return single_valued_results(results)
 
     def log_interpolation_baseline_metrics(self, epoch: int) -> None:
         """

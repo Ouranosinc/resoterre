@@ -1,11 +1,11 @@
 """
-Evaluate a trained CRCM emulator checkpoint on the test data, and optionally on the validation data.
+Evaluate a trained CRCM emulator checkpoint on the validation data, and optionally on the test data.
 
 Run ``python scripts/crcm_emulator/04_inference.py --config configs/crcm_emulator/crcm_emulator_cnrm_ssp245.yaml``
 
-With ``--validation``, the same checkpoint is also evaluated on ``data.validation_periods`` with
-``training.validation_metrics``. The results are saved to ``<experiment_name>_test_results.json`` and
-``<experiment_name>_validation_results.json`` in ``paths.output``.
+The checkpoint is evaluated on ``data.validation_periods`` with ``inference.evaluation_metrics``. With ``--test``, it is
+also evaluated on ``data.test_periods`` with the same metrics. The results are saved to
+``<experiment_name>_validation_results.json`` and ``<experiment_name>_test_results.json`` in ``paths.output``.
 """
 
 import argparse
@@ -62,9 +62,9 @@ def evaluate_and_save(
     print(f"{split.capitalize()} results saved to {output_path}")
 
 
-def main(config_path: Path, checkpoint: str = "latest", validation: bool = False) -> None:
+def main(config_path: Path, checkpoint: str = "latest", test: bool = False) -> None:
     """
-    Evaluate a trained CRCM emulator on the test periods of preprocessed GCM and CRCM Zarr data.
+    Evaluate a trained CRCM emulator on the validation periods, and optionally on the test periods.
 
     Parameters
     ----------
@@ -72,8 +72,8 @@ def main(config_path: Path, checkpoint: str = "latest", validation: bool = False
         Path to the CRCM emulator YAML configuration used for training.
     checkpoint : str
         Checkpoint to evaluate, "latest" or "best".
-    validation : bool
-        Also evaluate the checkpoint on the validation periods.
+    test : bool
+        Also evaluate the checkpoint on the test periods.
     """
     config = crcm_emulator_parse_config(config_path)
     output_directory = config.paths.output
@@ -85,25 +85,23 @@ def main(config_path: Path, checkpoint: str = "latest", validation: bool = False
     config = config.model_copy(update={"logger": None})
 
     runner = CRCMEmulatorTrainingFromConfig(config)
-    test_data_loaders = runner.build_test_data_loaders()
+    if not runner.validation_data_loaders:
+        raise ValueError("No validation samples match data.validation_periods and the selected variables.")
+    test_data_loaders = runner.build_test_data_loaders() if test else {}
 
     runner.load_state(output_directory, tag=checkpoint)
     runner.to_device(config.training.device)
-    evaluate_and_save(runner, "test", test_data_loaders, config.inference.test_metrics, output_directory)
-    if validation:
-        if not runner.validation_data_loaders:
-            raise ValueError("No validation samples match data.validation_periods and the selected variables.")
-        evaluate_and_save(
-            runner, "validation", runner.validation_data_loaders, config.training.validation_metrics, output_directory
-        )
+    evaluate_and_save(
+        runner, "validation", runner.validation_data_loaders, config.inference.evaluation_metrics, output_directory
+    )
+    if test:
+        evaluate_and_save(runner, "test", test_data_loaders, config.inference.evaluation_metrics, output_directory)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True, help="CRCM emulator YAML configuration")
     parser.add_argument("--checkpoint", choices=["latest", "best"], default="best", help="Checkpoint to evaluate")
-    parser.add_argument(
-        "--validation", action="store_true", help="Also evaluate the checkpoint on the validation periods"
-    )
+    parser.add_argument("--test", action="store_true", help="Also evaluate the checkpoint on the test periods")
     args = parser.parse_args()
-    main(args.config, args.checkpoint, args.validation)
+    main(args.config, args.checkpoint, args.test)

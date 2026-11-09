@@ -3,7 +3,8 @@ Train the CRCM emulator from a YAML configuration.
 
 Run ``python scripts/crcm_emulator/03_train.py --config configs/crcm_emulator/crcm_emulator_cnrm_ssp245.yaml``
 Training resumes from the latest checkpoint in ``paths.output`` when one exists. Use ``--resume best`` to resume
-from the best checkpoint instead, or ``--resume none`` to always start from scratch.
+from the best checkpoint instead, or ``--resume none`` to always start from scratch. With ``--test``, the best
+checkpoint is evaluated on ``data.test_periods`` once training is done.
 """
 
 import argparse
@@ -13,7 +14,7 @@ from resoterre.pipelines.crcm_emulator.crcm_emulator_training import CRCMEmulato
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 
 
-def main(config_path: Path, resume: str = "latest") -> None:
+def main(config_path: Path, resume: str = "latest", test: bool = False) -> None:
     """
     Train the CRCM emulator on preprocessed GCM and CRCM Zarr data.
 
@@ -24,6 +25,8 @@ def main(config_path: Path, resume: str = "latest") -> None:
     resume : str
         Checkpoint to resume training from, "latest", "best" or "none". With "latest", training starts from
         scratch if no checkpoint exists yet.
+    test : bool
+        Evaluate the best checkpoint on the test periods once training is done, and log the results to Comet ML.
     """
     config = crcm_emulator_parse_config(config_path)
     if config.paths.output is None:
@@ -59,7 +62,7 @@ def main(config_path: Path, resume: str = "latest") -> None:
             if resume == "best":
                 raise
             print("No checkpoint found, training from scratch.")
-    trainer.training_loop(test=True)
+    trainer.training_loop(test=test)
 
 
 if __name__ == "__main__":
@@ -68,5 +71,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--resume", choices=["latest", "best", "none"], default="latest", help="Checkpoint to resume from"
     )
+    parser.add_argument(
+        "--test", action="store_true", help="Evaluate the best checkpoint on the test periods after training"
+    )
     args = parser.parse_args()
-    main(args.config, args.resume)
+    main(args.config, args.resume, args.test)
