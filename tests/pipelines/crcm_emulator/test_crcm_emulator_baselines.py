@@ -16,6 +16,7 @@ from resoterre.config import (
     CRCMEmulatorSourcePreprocessingConfig,
 )
 from resoterre.pipelines.crcm_emulator import crcm_emulator_baselines
+from resoterre.pipelines.crcm_emulator.baseline_evaluation import date_tuples
 from resoterre.pipelines.crcm_emulator.crcm_emulator_baselines import InterpolationBaseline
 from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import (
     crcm_emulator_input_format,
@@ -50,7 +51,9 @@ class FakeCRCMEmulatorDataset:
         }
 
 
-def _baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, computed_days: list[int]) -> InterpolationBaseline:
+def _baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, computed_days: list[int], calendar: str = "noleap"
+) -> InterpolationBaseline:
     monkeypatch.setattr(crcm_emulator_baselines, "CRCMEmulatorDataset", FakeCRCMEmulatorDataset)
     config = CRCMEmulatorConfig(
         paths=CRCMEmulatorPathsConfig(baselines_out_dirs={"interpolation": tmp_path}),
@@ -76,7 +79,7 @@ def _baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, computed_days: li
         expected_variables=["tas"],
         institution="test",
         tile_size=TILE_SIZE,
-        calendar="noleap",
+        calendar=calendar,
         chunk_size=2,
     )
     # The baseline of each day is a constant field of 10 times its day of the month, i.e. (day - 1) below the target.
@@ -90,8 +93,9 @@ def _baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, computed_days: li
     return baseline
 
 
-def test_evaluate(tmp_path, monkeypatch):
-    baseline = _baseline(tmp_path, monkeypatch, computed_days=[1, 2, 3, 4, 5])
+@pytest.mark.parametrize("calendar", ["standard", "noleap", "360_day"])
+def test_evaluate(tmp_path, monkeypatch, calendar):
+    baseline = _baseline(tmp_path, monkeypatch, computed_days=[1, 2, 3, 4, 5], calendar=calendar)
     results = baseline.evaluate(["rmse", "max_value_absolute_error"], split="test")
     # Errors of 1, 2 and 3 in batches of 2 and 1: the mean is 2 only if batches are weighted by their size, and a
     # baseline taken from a shifted day would be at least 7 off.
@@ -106,6 +110,12 @@ def test_save_and_load_results_drops_non_single_valued(tmp_path, monkeypatch):
     assert saved == {"metrics": {"tas/rmse_test": 2.0}, "non_single_valued_metrics": ["tas/bias_map_test"]}
     assert baseline.load_results(["rmse", "bias_map"], "test") == {"tas/rmse_test": 2.0}
     assert baseline.load_results(["rmse", "ccc"], "test") is None
+
+
+def test_date_tuples_preserves_360_day_dates() -> None:
+    """Extract date components without converting non-Gregorian dates to Gregorian dates."""
+    dates = xarray.date_range("2000-02-29", periods=3, calendar="360_day", use_cftime=True)
+    assert date_tuples(dates.values) == [(2000, 2, 29), (2000, 2, 30), (2000, 3, 1)]
 
 
 def test_evaluate_baseline_not_computed(tmp_path, monkeypatch):

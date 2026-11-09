@@ -16,6 +16,7 @@ class EmulatorDatasetLike(Protocol):
     """Dataset surface used by the data-analysis helpers."""
 
     valid_idx: list[tuple[str, int, int]]
+    valid_time_idx: dict[str, list[tuple[int, int]]]
     gcm_variables: list[str]
     crcm_variables: list[str]
 
@@ -112,14 +113,7 @@ def first_sample(
     """
     ds = data_gcm[sim] if model == "gcm" else data_crcm[sim]
     sample = ds[var].isel(time=0)
-    sample_time = ds["time"].isel(time=0).values
-
-    # Extract just the date (YYYY-MM-DD) as a string
-    if hasattr(sample_time, "strftime"):
-        date_label = sample_time.strftime("%Y-%m-%d")
-    else:
-        # if sample_time is not a cftime object, convert to string and slice the date portion
-        date_label = str(sample_time)[:10]
+    date_label = ds.indexes["time"][0].strftime("%Y-%m-%d")
     return sample, date_label
 
 

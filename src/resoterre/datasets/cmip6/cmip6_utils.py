@@ -21,6 +21,30 @@ gcm_calendars = {
 gcm_vertical_variables: list[str] = ["hus", "ta", "ua", "va", "zg"]
 
 
+def get_gcm_calendar(gcm: str) -> str:
+    """
+    Get the calendar of a GCM.
+
+    Parameters
+    ----------
+    gcm : str
+        GCM name.
+
+    Returns
+    -------
+    str
+        Calendar name.
+
+    Raises
+    ------
+    KeyError
+        If the GCM is not in gcm_calendars.
+    """
+    if gcm not in gcm_calendars:
+        raise KeyError(f"Unknown calendar for GCM {gcm}, add it to gcm_calendars in {__name__}.")
+    return gcm_calendars[gcm]
+
+
 def _build_gcm_variable_levels() -> dict[str, dict[str, Any]]:
     """
     Get a dictionary mapping GCM variable names to their corresponding vertical levels.
