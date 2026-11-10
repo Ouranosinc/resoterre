@@ -10,16 +10,36 @@ All commands below are run from the repository root.
 
 ```bash
 uv sync --all-extras --all-groups
-
-To add a new package, add package name to both `environment-dev.yml` and `pyproject.toml`.
 ```
+
+Use `uv run --frozen <command>` to avoid rewriting `uv.lock` with a different `uv` version.
+
+To add a new package, add it to both `environment-dev.yml` and `pyproject.toml`, then run `uv lock` and commit `uv.lock`.
 
 ## Steps
 
 On Slurm, training and inference are run with `sbatch run_files/run_train_crcm_pipeline.sh <config.yaml>`.
 
-Once training is done, `03_train.py` evaluates the best checkpoint once on `data.test_periods` with
-`inference.test_metrics`, and logs the results to Comet ML (e.g. `tas/test_rmse`, plus `test_checkpoint_epoch`).
+With `--test`, `03_train.py` evaluates the best checkpoint once training is done on `data.test_periods` with
+`inference.evaluation_metrics`, and logs the results to Comet ML by key of `data.test_periods`
+(e.g. `tas/test_rmse_historical`, plus `test_checkpoint_epoch`). Without it, the test periods are not evaluated.
+
+### Inference
+
+`scripts/crcm_emulator/04_inference.py` evaluates a trained checkpoint with `inference.evaluation_metrics`. By default,
+it evaluates `data.validation_periods`; add `--test` to also evaluate `data.test_periods`:
+
+```bash
+python scripts/crcm_emulator/04_inference.py --config <config.yaml> --checkpoint best          # validation only
+python scripts/crcm_emulator/04_inference.py --config <config.yaml> --checkpoint best --test   # validation and test
+```
+
+`--checkpoint` is `best` (default) or `latest`. The metrics are reported by key of the periods (e.g.
+`tas/rmse_historical`) and saved to `<experiment_name>_validation_results.json` and, with `--test`,
+`<experiment_name>_test_results.json` in `paths.output`.
+
+On Slurm, `sbatch run_files/run_inference_crcm_pipeline.sh <config.yaml> [best|latest]` runs the validation evaluation
+only.
 
 ## Interpolation baseline
 
@@ -64,7 +84,8 @@ Progress: `ls <workflow_dir>/manifests | wc -l`.
 ### 3. Score
 
 ```bash
-python scripts/crcm_emulator/02_score_baselines.py --config <config.yaml>
+python scripts/crcm_emulator/02_score_baselines.py --config <config.yaml>          # validation only
+python scripts/crcm_emulator/02_score_baselines.py --config <config.yaml> --test   # validation and test
 ```
 
 On Slurm:
@@ -80,18 +101,19 @@ batches of `data.batch_size`, and the metrics are computed on `inference.device`
 a GPU, set `inference.device: cpu` and drop `--gres`.
 
 The baseline is compared with the CRCM data in physical units, consolidated like the trained model's metrics: with
-`training.validation_metrics` on the validation periods and `inference.test_metrics` on the test periods. Results are written to
-`paths.baselines_out_dirs.interpolation`:
+`inference.evaluation_metrics` on the validation periods (by default) and, with `--test`, on the test periods. Results
+are written to `paths.baselines_out_dirs.interpolation`:
 
 - `interpolation_baseline_validation_results.json`
-- `interpolation_baseline_test_results.json`
+- `interpolation_baseline_test_results.json` (only with `--test`)
 
 ### 4. Compare with training in Comet ML
 
 Set `training.log_interpolation_baseline: true` to log the baseline scores at the start of every training. Its
-validation (`training.validation_metrics`) and test (`inference.test_metrics`) metrics are logged as
-`<variable>/interpolation_baseline_<split>_<metric>` (e.g. `tas/interpolation_baseline_validation_rmse`), next to the
-model's `tas/validation_rmse`. They are logged again at every validation, so they show as flat lines.
+validation metrics (`training.validation_metrics`) are logged as
+`<variable>/interpolation_baseline_validation_<metric>_<key>` (e.g. `tas/interpolation_baseline_validation_rmse_historical`),
+next to the model's `tas/validation_rmse_historical`. They are logged again at every validation, so they show as flat lines.
+The test baseline is not logged during training.
 
 The scores are read from the JSON files of step 3. If a file is missing or lacks a metric, the baseline is scored at the
 start of training (as long as step 3) and the file is saved for the next training. The baseline is never computed;

@@ -1,9 +1,11 @@
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
+import torch
 import xarray
 
 from resoterre.config import (
@@ -65,8 +67,8 @@ def _baseline(
             tile_size=TILE_SIZE,
             batch_size=2,
             num_workers=0,
-            validation_periods=[],
-            test_periods=[[datetime(2000, 1, 2), datetime(2000, 1, 4)]],
+            validation_periods={},
+            test_periods={"test": [datetime(2000, 1, 2), datetime(2000, 1, 4)]},
         ),
     )
     baseline = InterpolationBaseline(config)
@@ -97,7 +99,17 @@ def test_evaluate(tmp_path, monkeypatch, calendar):
     results = baseline.evaluate(["rmse", "max_value_absolute_error"], split="test")
     # Errors of 1, 2 and 3 in batches of 2 and 1: the mean is 2 only if batches are weighted by their size, and a
     # baseline taken from a shifted day would be at least 7 off.
-    assert results == pytest.approx({"tas/rmse": 2.0, "tas/max_value_absolute_error": 2.0})
+    assert results == pytest.approx({"tas/rmse_test": 2.0, "tas/max_value_absolute_error_test": 2.0})
+
+
+def test_save_and_load_results_drops_non_single_valued(tmp_path, monkeypatch):
+    baseline = _baseline(tmp_path, monkeypatch, computed_days=[])
+    results = {"tas/rmse_test": 2.0, "tas/bias_map_test": torch.zeros(2, 3)}
+    path = baseline.save_results(results, "test")
+    saved = json.loads(path.read_text())
+    assert saved == {"metrics": {"tas/rmse_test": 2.0}, "non_single_valued_metrics": ["tas/bias_map_test"]}
+    assert baseline.load_results(["rmse", "bias_map"], "test") == {"tas/rmse_test": 2.0}
+    assert baseline.load_results(["rmse", "ccc"], "test") is None
 
 
 def test_date_tuples_preserves_360_day_dates() -> None:
@@ -136,8 +148,8 @@ def test_run(tmp_path):
             crcm_variables=["tas"],
             tile_size=TILE_SIZE,
             coarsen_factor=2,
-            validation_periods=[[datetime(2000, 1, 2), datetime(2000, 1, 3)]],
-            test_periods=[[datetime(2000, 1, 6), datetime(2000, 1, 9)]],
+            validation_periods={"val": [datetime(2000, 1, 2), datetime(2000, 1, 3)]},
+            test_periods={"test": [datetime(2000, 1, 6), datetime(2000, 1, 9)]},
         ),
     )
     path_gcm = tmp_path / f"crcm_emulator_input_{simulation_str}.zarr"

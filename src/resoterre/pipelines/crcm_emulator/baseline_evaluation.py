@@ -143,7 +143,7 @@ def evaluate_precomputed_predictions(
     variable_names : list[str]
         Variables to score, in the order of the target channels.
     metric_names : list[str]
-        Names of the metrics, as for ``inference.test_metrics``.
+        Names of the metrics, as for ``inference.evaluation_metrics``.
     batch_size : int
         Number of samples per batch.
     num_workers : int

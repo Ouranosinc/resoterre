@@ -83,7 +83,7 @@ def load_or_summarize(
     forcing_df : pandas.DataFrame
         Per-simulation, per-forcing summary statistics.
     """
-    years = period_years(config.data.training_periods)
+    years = period_years(list(config.data.training_periods.values()))
     stats_path = output_dir / f"normalization_stats_climate_vars_{years}.csv"
     forcing_path = output_dir / f"normalization_stats_forcings_{years}.csv"
     if not recompute and stats_path.exists() and forcing_path.exists():
@@ -92,7 +92,7 @@ def load_or_summarize(
     return summarize_data(
         dataset=dataset,
         output_dir=output_dir,
-        time_periods=config.data.training_periods,
+        time_periods=list(config.data.training_periods.values()),
         simulations=config.preprocessing.simulations,
     )
 
@@ -118,7 +118,7 @@ def run_single_period_components(
         Experiment directory. Outputs are written to its ``data_analysis`` subdirectory.
     """
     analysis_dir = output_dir / "data_analysis"
-    years = period_years(config.data.training_periods)
+    years = period_years(list(config.data.training_periods.values()))
     stats_df, forcing_df = load_or_summarize(dataset, config, analysis_dir, recompute="normalize_stats" in components)
 
     # The pooled rows repeat the scenarios, identified by "+" in the label.

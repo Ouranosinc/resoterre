@@ -104,14 +104,14 @@ def test_crcm_emulator_logger_config_from_yaml():
         CRCMEmulatorConfig,
         {
             "experiment_name": "test",
-            "data": {"training_periods": [["2000-01-01", "2000-12-31T23:00:00"]]},
+            "data": {"training_periods": {"all": ["2000-01-01", "2000-12-31T23:00:00"]}},
             "logger": {"disabled": True, "tags": ["a"]},
         },
     )
     assert config.logger is not None
     assert config.logger.disabled
     assert config.logger.tags == ["a"]
-    assert config.data.training_periods[0][0].year == 2000
+    assert config.data.training_periods["all"][0].year == 2000
 
 
 def test_crcm_emulator_nested_config_from_yaml():
@@ -129,7 +129,7 @@ def test_crcm_emulator_nested_config_from_yaml():
     assert config.data.prefetch_factor == 4
     assert config.training.figure_every_n_steps == 10
     assert config.training.validation_metrics == ["rmse", "ccc", "wasserstein_distance", "bias_map", "mean_bias"]
-    assert config.inference.test_metrics == ["rmse", "ccc", "wasserstein_distance", "bias_map", "mean_bias"]
+    assert config.inference.evaluation_metrics == ["rmse", "ccc", "wasserstein_distance", "bias_map", "mean_bias"]
     assert config.training.device == "cuda"
     assert config.analysis.windows[1] == (datetime(2015, 1, 1), datetime(2100, 12, 31), "ssp245")
     assert config.analysis.surface_variables["tas"] == "ta"

@@ -291,13 +291,13 @@ def main() -> None:
 
     print("\n===== data loader and summary statistics =====")
     periods = {
-        f"{name} {i}": period
+        f"{name} {key}": period
         for name, name_periods in [
             ("training", config.data.training_periods),
             ("validation", config.data.validation_periods),
             ("test", config.data.test_periods),
         ]
-        for i, period in enumerate(name_periods)
+        for key, period in name_periods.items()
     }
     check_data_loader(config, periods)
     check_filter_data(config)
