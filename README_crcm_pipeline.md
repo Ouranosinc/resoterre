@@ -6,6 +6,8 @@ grid. Every step is driven by a single YAML configuration, e.g.
 
 All commands below are run from the repository root.
 
+# Steps
+
 ## Setup
 
 ```bash
@@ -16,7 +18,11 @@ Use `uv run --frozen <command>` to avoid rewriting `uv.lock` with a different `u
 
 To add a new package, add it to both `environment-dev.yml` and `pyproject.toml`, then run `uv lock` and commit `uv.lock`.
 
-## Steps
+## Data preprocessing
+
+## Data analysis
+
+## Training
 
 On Slurm, training and inference are run with `sbatch run_files/run_train_crcm_pipeline.sh <config.yaml>`.
 
