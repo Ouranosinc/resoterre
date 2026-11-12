@@ -322,7 +322,7 @@ class CRCMEmulatorPlotConfig(BaseConfig):
     """
 
     metric_mapping: dict[str, dict[str, Any]] = Field(
-        default_factory=lambda: {"bias_map": {"figure_type": "nd_plot", "kwargs": {"reverse_i": True}}}
+        default_factory=lambda: {"bias_map": {"figure_type": "nd_plot", "figure_kwargs": {"reverse_i": True}}}
     )
     variable_mapping: dict[str, dict[str, Any]] = Field(default_factory=dict)
 

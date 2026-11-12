@@ -38,6 +38,11 @@ python scripts/crcm_emulator/04_inference.py --config <config.yaml> --checkpoint
 `tas/rmse_historical`) and saved to `<experiment_name>_validation_results.json` and, with `--test`,
 `<experiment_name>_test_results.json` in `paths.output`.
 
+Two-dimensional metrics, such as `bias_map`, are not single-valued and are not in the JSON. They are saved in
+`paths.output` as `<experiment_name>_<split>_diagnostics.nc` (one variable per `<variable>_<metric>_<key>`, with
+dimensions `rlat` and `rlon`) and, for the metrics listed in `plot.metric_mapping` (`bias_map` by default), as
+`<experiment_name>_<split>_<variable>_<metric>_<key>.png`.
+
 On Slurm, `sbatch run_files/run_inference_crcm_pipeline.sh <config.yaml> [best|latest]` runs the validation evaluation
 only.
 
@@ -106,6 +111,8 @@ are written to `paths.baselines_out_dirs.interpolation`:
 
 - `interpolation_baseline_validation_results.json`
 - `interpolation_baseline_test_results.json` (only with `--test`)
+- `interpolation_baseline_<split>_diagnostics.nc` and the matching `.png` figures, for the two-dimensional metrics such
+  as `bias_map`, saved as for the trained model (`04_inference.py`)
 
 ### 4. Compare with training in Comet ML
 
