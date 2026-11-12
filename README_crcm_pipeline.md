@@ -43,8 +43,21 @@ Two-dimensional metrics, such as `bias_map`, are not single-valued and are not i
 dimensions `rlat` and `rlon`) and, for the metrics listed in `plot.metric_mapping` (`bias_map` by default), as
 `<experiment_name>_<split>_<variable>_<metric>_<key>.png`.
 
-On Slurm, `sbatch run_files/run_inference_crcm_pipeline.sh <config.yaml> [best|latest]` runs the validation evaluation
-only.
+Add `--save-predictions` to also save the U-Net predictions (in physical units) in the same zarr format as the baseline,
+one `<experiment_name>_<gcm>_<scenario>_<member>.zarr` per simulation in `paths.output`, holding the days of the
+evaluated periods (validation, and test with `--test`). Predictions are not saved by default, and each run overwrites the
+previous prediction stores:
+
+```bash
+python scripts/crcm_emulator/04_inference.py --config <config.yaml> --checkpoint best --test --save-predictions
+```
+
+On Slurm, `sbatch run_files/run_inference_crcm_pipeline.sh <config.yaml> [best|latest] [--test] [--save-predictions]` runs
+the same script. Without the flags, it runs the validation evaluation only:
+
+```bash
+sbatch run_files/run_inference_crcm_pipeline.sh <config.yaml> best --test --save-predictions
+```
 
 ## Interpolation baseline
 
