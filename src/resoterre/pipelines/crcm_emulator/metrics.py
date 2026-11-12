@@ -36,7 +36,7 @@ from fastdigest import TDigest
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
 
 
-Reduction = Literal["sample_mean", "batch_mean", "max", "min", "sum", "tdigest_quantile"]
+Reduction = Literal["sample_mean", "batch_mean", "max", "min", "sum", "tdigest_quantile", "tdigest_quantile_map"]
 
 # Losses are averaged over samples, so batches are weighted by their size (the last one can be partial).
 LOSS_NAMES = ("loss", "mse_loss", "ssim_loss")
@@ -303,18 +303,17 @@ class MeanBias(Metric):
         return (per_image_and_variable(output) - per_image_and_variable(target_data)).mean(dim=-1).mean(dim=0)
 
 
-class TemporalQuantileBias(Metric):
+class TemporalQuantileBiasMap(Metric):
     """
-    Temporal quantile bias between the target and the output.
+    Temporal quantile bias map between the target and the output.
 
     Notes
     -----
     Tracks TDigest objects to allow computation of temporal quantiles on the consolidated data.
-    Computed on each image of each variable, then averaged over the batch, which leaves one value per variable.
     """
 
     name = "temporal_quantile_bias"
-    reduction = "tdigest_quantile"
+    reduction: Reduction = "tdigest_quantile_map"
 
     def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> tuple[np.ndarray, np.ndarray]:
         """
@@ -342,6 +341,18 @@ class TemporalQuantileBias(Metric):
             output_tdigest_array[index] = TDigest(max_centroids=1000)
             output_tdigest_array[index].batch_update(output[:, index[0], index[1], index[2]].cpu().numpy())
         return target_tdigest_array, output_tdigest_array
+
+
+class TemporalQuantileBias(TemporalQuantileBiasMap):
+    """
+    Temporal quantile bias between the target and the output.
+
+    Notes
+    -----
+    Tracks TDigest objects to allow computation of temporal quantiles on the consolidated data.
+    """
+
+    reduction = "tdigest_quantile"
 
 
 class CCC(Metric):
@@ -440,6 +451,7 @@ AVAILABLE_METRICS: dict[str, type[Metric]] = {
 }
 for quantile in [1, 5, 25, 75, 95, 99]:
     AVAILABLE_METRICS[f"temporal_quantile_bias_{quantile:02}"] = TemporalQuantileBias
+    AVAILABLE_METRICS[f"temporal_quantile_bias_map_{quantile:02}"] = TemporalQuantileBias
 
 
 def build_metrics(names: list[str]) -> dict[str, Metric]:
@@ -534,7 +546,7 @@ def running_consolidation(
         if reduction in ["sample_mean", "batch_mean", "max", "min", "sum"]:
             if not isinstance(batch_metric_object, torch.Tensor):
                 raise ValueError(f"Expected torch.Tensor for reduction {reduction}, got {type(batch_metric_object)}.")
-        elif reduction in ["tdigest_quantile"]:
+        elif reduction in ["tdigest_quantile", "tdigest_quantile_map"]:
             if not (isinstance(batch_metric_object, tuple) and len(batch_metric_object) == 2):
                 raise ValueError(
                     f"Expected tuple of length 2 for reduction {reduction}, got {type(batch_metric_object)}."
@@ -564,7 +576,7 @@ def running_consolidation(
             updated_metric = torch.minimum(previous_metric, batch_metric_object)
         elif reduction == "sum":
             updated_metric = previous_metric + batch_metric_object
-        elif reduction == "tdigest_quantile":
+        elif reduction in ["tdigest_quantile", "tdigest_quantile_map"]:
             updated_metric = (
                 np.empty_like(batch_metric_object[0], dtype=object),
                 np.empty_like(batch_metric_object[1], dtype=object),
@@ -597,15 +609,18 @@ def consolidation(running_metrics: dict[str, tuple[torch.Tensor, float]]) -> dic
     results: dict[str, float | torch.Tensor] = {}
     for name, (value, weight) in running_metrics.items():
         reduction = metric_reduction(name)
-        if reduction == "tdigest_quantile":
+        if reduction in ["tdigest_quantile", "tdigest_quantile_map"]:
             quantile = float(metric_parameter(name)) / 100.0
             target_quantile_values = np.empty_like(value[0], dtype=float)
             output_quantile_values = np.empty_like(value[1], dtype=float)
             for index, _ in np.ndenumerate(value[0]):
                 target_quantile_values[index] = value[0][index].quantile(quantile)
                 output_quantile_values[index] = value[1][index].quantile(quantile)
-            # ToDo: how does that work when there are multiple output variables.
-            results[name] = (output_quantile_values - target_quantile_values).mean()
+            quantile_bias = output_quantile_values - target_quantile_values
+            if reduction == "tdigest_quantile":
+                # ToDo: how does that work when there are multiple output variables.
+                quantile_bias = quantile_bias.mean(-2).mean(-1)
+            results[name] = quantile_bias
         else:
             mean = (value / weight).cpu()
             results[name] = mean.item() if mean.numel() == 1 else mean
