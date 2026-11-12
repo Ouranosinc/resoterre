@@ -6,6 +6,12 @@ grid. Every step is driven by a single YAML configuration, e.g.
 
 All commands below are run from the repository root.
 
+# Info
+
+- where to find data on the cluster
+- what to change in the config if you're running experiments
+        - project folder / directory structure dont explicitly put entire mila path
+
 # Steps
 
 ## Setup
@@ -18,7 +24,14 @@ Use `uv run --frozen <command>` to avoid rewriting `uv.lock` with a different `u
 
 To add a new package, add it to both `environment-dev.yml` and `pyproject.toml`, then run `uv lock` and commit `uv.lock`.
 
+Activate environment:
+```bash
+source .venv/bin/activate
+```
+
 ## Data preprocessing
+
+
 
 ## Data analysis
 
