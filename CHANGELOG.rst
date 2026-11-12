@@ -2,17 +2,35 @@
 Changelog
 =========
 
+
 `Unreleased <https://github.com/Ouranosinc/resoterre>`_ (latest)
 ----------------------------------------------------------------
 
-Contributors: Francis Charette-Migneault (:user:`fmigneault`)
+Contributors: Contributors: Francis Charette-Migneault (:user:`fmigneault`), Blaise Gauvin St-Denis (:user:`bstdenis`), Hager Radi (:user:`hager.radi`), Christina Isaicu (:user:`cisaic`)
 
 Changes
 ^^^^^^^
+* Add ``--save-predictions`` to the CRCM emulator ``04_inference.py`` to optionally save the U-Net predictions on the validation periods (and test periods with ``--test``) in the same zarr format as the baselines, one ``<experiment_name>_<gcm>_<scenario>_<member>.zarr`` per simulation in ``paths.output``. Predictions are not saved by default. (:issue:`189`, :pull:`188`).
+* Report CRCM emulator metrics per scenario: ``data.training_periods``, ``validation_periods`` and ``test_periods`` are now dictionaries keyed by a label (e.g. ``historical``, ``future``), and results are keyed as ``<variable>/<metric>_<key>``. ``inference.test_metrics`` is renamed ``inference.evaluation_metrics`` and used for both validation and test; ``03_train.py``, ``04_inference.py`` and ``02_score_baselines.py`` evaluate on validation by default and on test with ``--test``, and non-single-valued metrics are not saved in the results JSON. Add ``training.seed`` for reproducibility. (:issue:`185`, :issue:`186`, :pull:`182`).
+* Use ``cftime`` for every time axis in the CRCM emulator pipeline (including interpolation baseline generation & scoring). Zarr stores are opened with ``xarray.coders.CFDatetimeCoder(use_cftime=True)``, and source NetCDF files are decoded one file at a time by ``decode_time_axis`` so each file keeps its own time units. Shared dates across two datasets are found by ``get_intersection_slices``; windows filtered by start and end dates are found by ``get_period_slice``. Dates are matched by day. New stores record time as ``days since 1850-01-01`` in the calendar from ``gcm_calendars``, at midnight. ``standard``, ``gregorian`` and ``proleptic_gregorian`` are treated as the same calendar. Config dates are parsed as datetimes but converted to ``cftime.datetime`` in the calendar from ``gcm_calendars`` for date comparisons. Requires ``xarray >=2025.01.2``. (:issue:`149`, :pull:`175`).
+* Add normalization statistics for forcings (linear vars) in the CRCM emulator data analysis and pool summary statistics across the scenarios of each member. (:issue:`172`, :pull:`179`).
+* Normalize the greenhouse gas inputs (``CO2``, ``CH4``, ``N2O``, ``CFC12``, ``CFC11_eq``) of the CRCM emulator with the min and max of the ``forcing`` entries of the normalization statistics, clipped to [-1, 1], and embed them with a dense network before the U-Net bottleneck (``model.linear_embedding_sizes``). (:issue:`161`, :pull:`178`).
+* Speed up the interpolation baseline: ``InterpolationBaseline.run`` writes contiguous runs of days instead of one day at a time, and ``InterpolationBaseline.evaluate`` scores it with parallel data loader workers; ``02_compute_baselines.py`` is renamed ``02_score_baselines.py``, which only scores the baseline (computed with the snakemake workflow) and saves the scores as JSON. Optionally log these scores to Comet ML during training (``training.log_interpolation_baseline``, e.g. ``tas/interpolation_baseline_validation_rmse``), scoring the baseline only if no saved scores are found, and evaluate the best checkpoint once on the test data at the end of ``03_train.py``. (:issue:`174`, :pull:`176`).
+* Add bias map and mean bias metrics to the CRCM emulator validation (:issue:`102`, :pull:`171`)
+* Add a ``metrics`` module for the CRCM emulator with configurable validation and test metrics selected by name (``training.validation_metrics``, ``inference.test_metrics``): ``max_value_absolute_error``, ``rmse``, ``ccc`` and ``wasserstein_distance``, computed on denormalized data, reported for each variable (e.g. ``tas/rmse``), with a per-metric aggregation (``reduction``), and refactor the trainer and ``04_inference.py`` to share one evaluation path. (:issue:`156`, :pull:`162`).
+* Add interpolation baseline workflow (``03_baseline.smk``) for the CRCM emulator (:issue:`122`, :pull:`160`)
+* Add a SLURM run script and a test-set evaluation script (``03_inference.py``) for the CRCM emulator, and improve the training pipeline with best and latest checkpoints, resuming training, Comet ML figures, ``tqdm`` progress bars and fewer GPU to CPU synchronizations. (:issue:`150`, :issue:`151`, :issue:`158`, :pull:`159`).
+* Add normalization values based on the training dataset statistics. (:issue:`129`, :pull:`152`)
+* Restructure all configuration classes as frozen ``pydantic`` models defined in the new ``resoterre.config`` package (``base``, ``ml``, ``downscaling``, ``crcm_emulator``), replacing ``dacite`` and the ``register_config`` registry; ``AdamConfig``/``AdamWConfig`` are merged into a single ``OptimizerConfig`` selected via ``optimizer_name``, and the ``type`` YAML key is no longer needed; ``CRCMEmulatorConfig`` is reorganized into nested groups (``paths``, ``preprocessing``, ``data``, ``model``, ``optimizer``, ``loss``, ``training``, ``inference``, ``debug``, ``analysis``, ``logger``) and its ``is_hyperparameter``/``is_setting`` field flags are dropped in favour of saving the full configuration (excluding ``logger``) under ``config`` in the training results JSON (dictionary-valued fields are logged to Comet ML as single JSON-string parameters); ``RDPSToHRDPSConfig`` is likewise nested (``paths``, ``preprocessing.hrdps``/``preprocessing.rdps``, ``data``, ``model``, ``loss``, ``training`` with ``training.optimizer``, ``inference``, ``diagnostics``, ``debug``); all configurations, including RDPS to HRDPS downscaling, now reject unknown YAML keys (descriptive keys such as ``workflow_command``, ``framework`` and grid extents move under a ``metadata`` block), and the ``runner_unet`` and ``ml_training_plot`` modules are removed. (:issue:`108`, :pull:`155`).
+* Add option to fill NaN values with a windowed mean. (:issue:`130`, :pull:`134`).
+* Add ``data_analysis`` package for the CRCM emulator: summary statistics, NaN cluster analysis, GCM versus coarsened RCM comparison, and range, mean, and sample plots. ``scripts/meta_workflows/crcm_emulator/01_data_analysis.py`` provides a workflow to run the data analysis from a CRCM emulator config (:issue:`91`, :pull:`133`).
+* Refactor CRCM emulator preprocessing to produce a single zarr archive. (:issue:`132`), (:pull:`126`).
+* Add ``CometMLLogger`` and ``ExperimentLoggerConfig`` classes to ``resoterre.pipelines.crcm_emulator.experiment_logger`` and integrate Comet ML experiment tracking (parameters, metrics, images/figures) into the CRCM emulator training pipeline. (:issue:`119`, :pull:`127`).
 * Improve CWL metadata corresponding to deployable processes from resoterre source code version, authors and additional references (:pull:`148`).
 
 Fixes
 ^^^^^
+* Fix transition from historical to ssp periods in GCM and CRCM preprocessing. (:issue:`153`, :pull:`134`).
 * Fix ``vcs:tag`` reference in the notebook and corresponding STAC Item produced from it to refer to the actual Git tags for the repository.
 
 .. _changes_0.1.3-dev.10:

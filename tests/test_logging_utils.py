@@ -57,3 +57,9 @@ def test_start_root_logger():
         logger.debug("Valid message", block_short_repetition_delay=10, identifier="test")
         logger.debug("Silenced message", block_short_repetition_delay=10, identifier="test")
         assert log_file_path.is_file()
+
+
+def test_logging_delay_sequence():
+    delay_iterator = logging_utils.logging_delay_sequence(time_delays=[0, 1, 2], counts=[2, 5])
+    sequence = [next(delay_iterator) for _ in range(9)]
+    assert sequence == [0, 0, 1, 1, 1, 2, 2, 2, 2]

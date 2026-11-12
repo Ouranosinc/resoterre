@@ -1,7 +1,6 @@
 """Utilities for the RDPS to HRDPS tasks."""
 
 import datetime
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -10,13 +9,12 @@ import torch
 import xarray
 from torch.utils.data import DataLoader, Dataset
 
-from resoterre.config_utils import register_config
+from resoterre.config import RDPSToHRDPSDatasetConfig
 from resoterre.data_management.timeseries import overlapping_datetimes_indices
 from resoterre.datasets.hrdps.hrdps_variables import hrdps_variables as hrdps_variables_collection
 from resoterre.datasets.hrdps.hrdps_variables import long_variable_name, short_variable_name
 from resoterre.datasets.rdps.rdps_variables import rdps_variables as rdps_variables_collection
 from resoterre.ml.data_loader_utils import (
-    DatasetConfig,
     DatasetFromNetCDFSave,
     inverse_normalize,
     normalize,
@@ -24,78 +22,6 @@ from resoterre.ml.data_loader_utils import (
 )
 from resoterre.ml.dataset_manager import DatasetManager, register_dataset_manager
 from resoterre.plots.nd_plots import NDPlot
-
-
-@register_config("RDPSToHRDPS")
-@dataclass(frozen=True, slots=True)
-class RDPSToHRDPSDatasetConfig(DatasetConfig):
-    """
-    Configuration for RDPS to HRDPS data loading.
-
-    Attributes
-    ----------
-    path_data : Path, optional
-        Path to the data directory.
-    path_grids : Path, optional
-        Path to the grids directory.
-    path_rdps_climatology : Path, optional
-        Path to the RDPS climatology data.
-    path_hrdps_climatology : Path, optional
-        Path to the HRDPS climatology data.
-    path_ml_data : Path, optional
-        Path to the machine learning data.
-    grid_input_for_ml : str, optional
-        Grid name for input data used in machine learning.
-    grid_output_for_ml : str, optional
-        Grid name for output data used in machine learning.
-    start_datetime : datetime.datetime, optional
-        Start datetime for dataset.
-    end_datetime : datetime.datetime, optional
-        End datetime for dataset.
-    only_from_ml_data : bool
-        Whether to load only from pre-computed machine learning data.
-    save_batch_size : int
-        Batch size for saving data.
-    normalize : bool
-        Whether to normalize the data.
-    train_fraction : float
-        Fraction of data to use for training.
-    random_seed : int, optional
-        Random seed for data splitting.
-    num_forecast_time_delay : int
-        Number of initial forecast steps that are skipped.
-    rdps_variables : list[str]
-        List of RDPS variable names to load.
-    hrdps_variables : list[str]
-        List of HRDPS variable names to load.
-    restricted_channels : dict[str, list[int]] | None
-        Dictionary specifying restricted channels for each dynamic dataset key.
-    skip_load : bool
-        Used to skip loading the data during testing.
-    dataset_manager : str
-        Name of the dataset manager to use.
-    """
-
-    path_data: Path | None = None
-    path_grids: Path | None = None
-    path_rdps_climatology: Path | None = None
-    path_hrdps_climatology: Path | None = None
-    path_ml_data: Path | None = None
-    grid_input_for_ml: str | None = None
-    grid_output_for_ml: str | None = None
-    start_datetime: datetime.datetime | None = None
-    end_datetime: datetime.datetime | None = None
-    only_from_ml_data: bool = False
-    save_batch_size: int = 1
-    normalize: bool = True
-    train_fraction: float = 0.8
-    random_seed: int | None = 0
-    num_forecast_time_delay: int = 0  # ToDo: replace with more specific forecast_hours
-    rdps_variables: list[str] = field(default_factory=list)
-    hrdps_variables: list[str] = field(default_factory=list)
-    restricted_channels: dict[str, list[int]] | None = None
-    skip_load: bool = False
-    dataset_manager: str = "RDPSToHRDPS"
 
 
 def post_process_model_output(

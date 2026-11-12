@@ -98,14 +98,14 @@ inputs:
 
   start_datetime:
     type: ["null", string]
-    doc: Optional start datetime (ISO 8601) overriding the config's inference_start_datetime
+    doc: Optional start datetime (ISO 8601) overriding the config's inference.start_datetime
     inputBinding:
       position: 2
       valueFrom: '$(self ? "start_datetime=" + self : null)'
 
   end_datetime:
     type: ["null", string]
-    doc: Optional end datetime (ISO 8601) overriding the config's inference_end_datetime
+    doc: Optional end datetime (ISO 8601) overriding the config's inference.end_datetime
     inputBinding:
       position: 3
       valueFrom: '$(self ? "end_datetime=" + self : null)'
