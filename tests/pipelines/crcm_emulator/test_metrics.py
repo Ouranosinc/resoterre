@@ -168,6 +168,24 @@ def test_mean_bias():
     assert metric(target, output).item() == pytest.approx(2.5, rel=1e-5)
 
 
+def test_mean_bias_consolidate():
+    metric = metrics.MeanBias()
+    target = torch.randn(2, 1, 4, 4)
+    output = target + 2.5
+    metric_result = metric(target, output)
+    running_metrics: dict[str, tuple[torch.Tensor, float]] = {}
+    metrics.running_consolidation(running_metrics, {"tas/mean_bias": metric_result}, batch_size=2)
+    assert running_metrics["tas/mean_bias"][0].item() == pytest.approx(5.0, rel=1e-5)
+    assert running_metrics["tas/mean_bias"][1] == 2
+    output = target + 7.5
+    metric_result = metric(target, output)
+    metrics.running_consolidation(running_metrics, {"tas/mean_bias": metric_result}, batch_size=2)
+    assert running_metrics["tas/mean_bias"][0].item() == pytest.approx(20.0, rel=1e-5)
+    assert running_metrics["tas/mean_bias"][1] == 4
+    consolidate_result = metrics.consolidation(running_metrics)
+    assert consolidate_result["tas/mean_bias"] == pytest.approx(5.0, rel=1e-5)
+
+
 def test_build_metrics_rmse_ccc():
     assert list(metrics.build_metrics(["rmse", "ccc", "wasserstein_distance"])) == [
         "rmse",
