@@ -1,5 +1,7 @@
+import numpy as np
 import pytest
 import torch
+from fastdigest import TDigest
 from scipy.stats import wasserstein_distance
 
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
@@ -170,20 +172,62 @@ def test_mean_bias():
 
 def test_mean_bias_consolidate():
     metric = metrics.MeanBias()
-    target = torch.randn(2, 1, 4, 4)
-    output = target + 2.5
+    target = torch.ones(2, 1, 4, 4)
+    output = target + 2.5  # initial bias of 2.5, batch size 2
     metric_result = metric(target, output)
     running_metrics: dict[str, tuple[torch.Tensor, float]] = {}
     metrics.running_consolidation(running_metrics, {"tas/mean_bias": metric_result}, batch_size=2)
     assert running_metrics["tas/mean_bias"][0].item() == pytest.approx(5.0, rel=1e-5)
     assert running_metrics["tas/mean_bias"][1] == 2
-    output = target + 7.5
+    output = target + 7.5  # next batch has bias of 7.5, mean bias is now 5.0
     metric_result = metric(target, output)
     metrics.running_consolidation(running_metrics, {"tas/mean_bias": metric_result}, batch_size=2)
     assert running_metrics["tas/mean_bias"][0].item() == pytest.approx(20.0, rel=1e-5)
     assert running_metrics["tas/mean_bias"][1] == 4
     consolidate_result = metrics.consolidation(running_metrics)
     assert consolidate_result["tas/mean_bias"] == pytest.approx(5.0, rel=1e-5)
+
+
+def test_temporal_quantile_bias():
+    metric = metrics.TemporalQuantileBias()
+    assert metric.name == "temporal_quantile_bias"
+    target = torch.tensor(np.arange(128 * 3 * 2 * 2).reshape(128, 3, 2, 2), dtype=torch.float32)
+    output = target + 10.0  # output bias of 10.0 everywhere
+    target_metric_result, output_metric_result = metric(target, output)
+    assert target_metric_result.shape == (3, 2, 2)
+    assert isinstance(target_metric_result, np.ndarray)
+    assert isinstance(target_metric_result[0, 0, 0], TDigest)
+    assert target_metric_result[0, 0, 0].quantile(0.5) == pytest.approx(762.0, rel=1e-5)
+    assert target_metric_result[0, 0, 0].quantile(0.95) == pytest.approx(1447.8, rel=1e-5)
+    assert output_metric_result.shape == (3, 2, 2)
+    assert isinstance(output_metric_result, np.ndarray)
+    assert isinstance(output_metric_result[0, 0, 0], TDigest)
+    assert output_metric_result[0, 0, 0].quantile(0.5) == pytest.approx(772.0, rel=1e-5)
+    assert output_metric_result[0, 0, 0].quantile(0.95) == pytest.approx(1457.8, rel=1e-5)
+
+
+def test_temporal_quantile_bias_consolidate():
+    metric = metrics.TemporalQuantileBias()
+    target = torch.tensor(np.arange(128 * 3 * 2 * 2).reshape(128, 3, 2, 2), dtype=torch.float32)
+    output = target + 10.0  # output bias of 10.0 everywhere
+    metric_results = metric(target, output)
+    running_metrics: dict[str, tuple[torch.Tensor, float]] = {}
+    metric_name = "tas/temporal_quantile_bias_95"
+    metrics.running_consolidation(running_metrics, {metric_name: metric_results}, batch_size=target.shape[0])
+    assert len(running_metrics[metric_name]) == 2  # (value, weight)
+    assert len(running_metrics[metric_name][0]) == 2  # (np.ndarray[TDigest], np.ndarray[TDigest])
+    assert running_metrics[metric_name][0][0][0, 0, 0].quantile(0.5) == pytest.approx(762.0, rel=1e-5)
+    assert running_metrics[metric_name][0][0][0, 0, 0].quantile(0.95) == pytest.approx(1447.8, rel=1e-5)
+    assert running_metrics[metric_name][1] == 1.0  # weight remains 1.0 for tdigest_quantile
+    target = target + 100.0
+    output = target + 10.0
+    metric_results = metric(target, output)
+    metrics.running_consolidation(running_metrics, {metric_name: metric_results}, batch_size=target.shape[0])
+    assert running_metrics[metric_name][0][0][0, 0, 0].quantile(0.5) == pytest.approx(812.0, rel=1e-5)
+    assert running_metrics[metric_name][0][0][0, 0, 0].quantile(0.95) == pytest.approx(1501.0, rel=1e-5)
+    assert running_metrics[metric_name][1] == 1.0
+    consolidate_result = metrics.consolidation(running_metrics)
+    assert consolidate_result[metric_name] == pytest.approx(10.0, rel=1e-5)
 
 
 def test_build_metrics_rmse_ccc():

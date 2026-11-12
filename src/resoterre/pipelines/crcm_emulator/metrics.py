@@ -27,14 +27,16 @@ Adding new metrics:
 
 import math
 from abc import ABC, abstractmethod
-from typing import Literal
+from typing import Any, Literal
 
+import numpy as np
 import torch
+from fastdigest import TDigest
 
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
 
 
-Reduction = Literal["sample_mean", "batch_mean", "max", "min", "sum"]
+Reduction = Literal["sample_mean", "batch_mean", "max", "min", "sum", "tdigest_quantile"]
 
 # Losses are averaged over samples, so batches are weighted by their size (the last one can be partial).
 LOSS_NAMES = ("loss", "mse_loss", "ssim_loss")
@@ -301,6 +303,47 @@ class MeanBias(Metric):
         return (per_image_and_variable(output) - per_image_and_variable(target_data)).mean(dim=-1).mean(dim=0)
 
 
+class TemporalQuantileBias(Metric):
+    """
+    Temporal quantile bias between the target and the output.
+
+    Notes
+    -----
+    Tracks TDigest objects to allow computation of temporal quantiles on the consolidated data.
+    Computed on each image of each variable, then averaged over the batch, which leaves one value per variable.
+    """
+
+    name = "temporal_quantile_bias"
+    reduction = "tdigest_quantile"
+
+    def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Compute the metric.
+
+        Parameters
+        ----------
+        target_data : torch.Tensor
+            The ground truth data.
+        output : torch.Tensor
+            The model output data.
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray]
+            First element: TDigest of target data.
+            Second element: TDigest of output data.
+        """
+        target_tdigest_array = np.empty(output.shape[1:], dtype=object)
+        output_tdigest_array = np.empty(output.shape[1:], dtype=object)
+        for index, _ in np.ndenumerate(target_tdigest_array):
+            target_tdigest_array[index] = TDigest(max_centroids=1000)
+            target_tdigest_array[index].batch_update(target_data[:, index[0], index[1], index[2]].cpu().numpy())
+        for index, _ in np.ndenumerate(output_tdigest_array):
+            output_tdigest_array[index] = TDigest(max_centroids=1000)
+            output_tdigest_array[index].batch_update(output[:, index[0], index[1], index[2]].cpu().numpy())
+        return target_tdigest_array, output_tdigest_array
+
+
 class CCC(Metric):
     """
     Lin's concordance correlation coefficient between the target and the output.
@@ -395,6 +438,8 @@ AVAILABLE_METRICS: dict[str, type[Metric]] = {
     BiasMap.name: BiasMap,
     MeanBias.name: MeanBias,
 }
+for quantile in [1, 5, 25, 75, 95, 99]:
+    AVAILABLE_METRICS[f"temporal_quantile_bias_{quantile:02}"] = TemporalQuantileBias
 
 
 def build_metrics(names: list[str]) -> dict[str, Metric]:
@@ -443,47 +488,92 @@ def metric_reduction(name: str) -> Reduction:
     return "sample_mean" if name in LOSS_NAMES else "batch_mean"
 
 
+def metric_parameter(name: str) -> Any:
+    """
+    Get the parameter of a metric, such as the quantile for temporal quantile bias.
+
+    Parameters
+    ----------
+    name : str
+        Name of the metric, optionally with a variable prefix (``tas/temporal_quantile_bias_95``).
+
+    Returns
+    -------
+    Any
+        The parameter at the end of the metric name.
+    """
+    name = name.split("/")[-1]
+    if name in AVAILABLE_METRICS:
+        return name.split("_")[-1]
+    return None
+
+
 def running_consolidation(
-    running_metrics: dict[str, tuple[torch.Tensor, float]], metrics: dict[str, torch.Tensor], batch_size: int
+    running_metrics: dict[str, tuple[Any, float]], metrics: dict[str, Any], batch_size: int
 ) -> None:
     """
     Fold the metrics of one batch into the running statistics.
 
     Parameters
     ----------
-    running_metrics : dict[str, tuple[torch.Tensor, float]]
-        Running statistics per metric, as (value, total weight). Updated in place.
-    metrics : dict[str, torch.Tensor]
-        Scalar metric tensors of the batch, possibly on the GPU.
+    running_metrics : dict[str, tuple[Any, float]]
+        Running statistics per metric, as (object, total weight). Updated in place.
+    metrics : dict[str, Any]
+        Metric objects of the batch, possibly on the GPU if they are torch tensors.
     batch_size : int
         Number of samples in the batch.
 
     Notes
     -----
-    The statistics stay on the device, so there is no GPU synchronization until ``consolidation``. For the mean
-    reductions the value is a weighted sum, for ``max``, ``min`` and ``sum`` it is the running extremum or total, with
-    a weight of 1.
+    If metrics are torch tensors, the statistics stay on the device, so there is no GPU synchronization until
+    ``consolidation``.
     """
-    for name, batch_value in metrics.items():
+    for name, batch_metric_object in metrics.items():
         reduction = metric_reduction(name)
-        value = batch_value.float()
+        # Verify batch_metric_object_format for reduction type
+        if reduction in ["sample_mean", "batch_mean", "max", "min", "sum"]:
+            if not isinstance(batch_metric_object, torch.Tensor):
+                raise ValueError(f"Expected torch.Tensor for reduction {reduction}, got {type(batch_metric_object)}.")
+        elif reduction in ["tdigest_quantile"]:
+            if not (isinstance(batch_metric_object, tuple) and len(batch_metric_object) == 2):
+                raise ValueError(
+                    f"Expected tuple of length 2 for reduction {reduction}, got {type(batch_metric_object)}."
+                )
+
+        # Initialize running metric if not already present
         weight = 1.0
+        if name not in running_metrics:
+            if reduction in ["sample_mean"]:
+                weight = float(batch_size)
+                batch_metric_object *= weight
+            running_metrics[name] = (batch_metric_object, weight)
+            continue
+
+        previous_metric, previous_weight = running_metrics[name]
+        # Specific handling for each reduction type
         if reduction == "sample_mean":
-            value = value * batch_size
-            weight = float(batch_size)
-        if name in running_metrics:
-            previous_value, previous_weight = running_metrics[name]
-            if reduction == "max":
-                value = torch.maximum(previous_value, value)
-            elif reduction == "min":
-                value = torch.minimum(previous_value, value)
-            else:
-                value = previous_value + value
-            if reduction in ("sample_mean", "batch_mean"):
-                weight = previous_weight + weight
-            else:
-                weight = 1.0
-        running_metrics[name] = (value, weight)
+            # Guarantee that everything is float for numerical stability
+            updated_metric = previous_metric.float() + batch_metric_object.float() * batch_size
+            weight = previous_weight + float(batch_size)
+        elif reduction == "batch_mean":
+            updated_metric = previous_metric.float() + batch_metric_object.float()
+            weight = previous_weight + 1.0
+        elif reduction == "max":
+            updated_metric = torch.maximum(previous_metric, batch_metric_object)
+        elif reduction == "min":
+            updated_metric = torch.minimum(previous_metric, batch_metric_object)
+        elif reduction == "sum":
+            updated_metric = previous_metric + batch_metric_object
+        elif reduction == "tdigest_quantile":
+            updated_metric = (
+                np.empty_like(batch_metric_object[0], dtype=object),
+                np.empty_like(batch_metric_object[1], dtype=object),
+            )
+            for index, _ in np.ndenumerate(batch_metric_object[0]):
+                updated_metric[0][index] = previous_metric[0][index].merge(batch_metric_object[0][index])
+                updated_metric[1][index] = previous_metric[1][index].merge(batch_metric_object[1][index])
+
+        running_metrics[name] = (updated_metric, weight)
 
 
 def consolidation(running_metrics: dict[str, tuple[torch.Tensor, float]]) -> dict[str, float | torch.Tensor]:
@@ -506,7 +596,18 @@ def consolidation(running_metrics: dict[str, tuple[torch.Tensor, float]]) -> dic
     """
     results: dict[str, float | torch.Tensor] = {}
     for name, (value, weight) in running_metrics.items():
-        mean = (value / weight).cpu()
-        results[name] = mean.item() if mean.numel() == 1 else mean
+        reduction = metric_reduction(name)
+        if reduction == "tdigest_quantile":
+            quantile = float(metric_parameter(name)) / 100.0
+            target_quantile_values = np.empty_like(value[0], dtype=float)
+            output_quantile_values = np.empty_like(value[1], dtype=float)
+            for index, _ in np.ndenumerate(value[0]):
+                target_quantile_values[index] = value[0][index].quantile(quantile)
+                output_quantile_values[index] = value[1][index].quantile(quantile)
+            # ToDo: how does that work when there are multiple output variables.
+            results[name] = (output_quantile_values - target_quantile_values).mean()
+        else:
+            mean = (value / weight).cpu()
+            results[name] = mean.item() if mean.numel() == 1 else mean
 
     return results
