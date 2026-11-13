@@ -15,11 +15,15 @@ Adding new metrics:
 5. Add the class to ``AVAILABLE_METRICS`` so it can be selected by name.
 6. If the metric produces a diagnostic figure, specify its figure type in ``CRCMEmulatorPlotConfig``. Add new figure
     types to the dispatcher in ``plots/utils.py``.
+
+Instances are shared: keep metric and reducer configuration unchanged after construction,
+and keep accumulation state external.
 """
 
 import math
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from functools import cache
 from typing import Any, Protocol
 
 import numpy as np
@@ -138,7 +142,15 @@ ReducerState = tuple[torch.Tensor, float]
 
 
 class MetricReducer(Protocol):
-    """Strategy for accumulating batches and finalizing one metric result."""
+    """
+    Strategy for accumulating batches and finalizing one metric result.
+
+    Notes
+    -----
+    Reducer instances may be shared across metrics and evaluations. Treat their
+    configuration as immutable after construction and keep all accumulation
+    state in the state passed to and returned from accumulate().
+    """
 
     def accumulate(self, state: ReducerState | None, batch_value: torch.Tensor, batch_size: int) -> ReducerState:
         """
@@ -275,14 +287,6 @@ class YearlyMeanReducer(WeightedMeanReducer):
     """
 
     def __init__(self, days_per_year: float = 365.2425) -> None:
-        """
-        Initialize the yearly reducer.
-
-        Parameters
-        ----------
-        days_per_year : float, optional
-            Number of daily samples per simulation-year, by default 365.2425.
-        """
         self.days_per_year = days_per_year
 
     def batch_weight(self, batch_size: int) -> float:
@@ -560,6 +564,13 @@ class Metric(ABC):
         Name under which the metric is reported.
     reducer : MetricReducer
         Strategy used to aggregate batch values and finalize the metric.
+
+    Notes
+    -----
+    Metric instances are cached and shared by name within a process. Treat
+    their configuration, including their reducer, as immutable after construction.
+    Calls must not retain batch data or accumulated results on the instance;
+    keep accumulation state in the explicitly passed reducer state.
     """
 
     name: str
@@ -916,6 +927,27 @@ for quantile in [1, 5, 25, 75, 95, 99]:
     AVAILABLE_METRICS[f"temporal_quantile_bias_map_{quantile:02}"] = TemporalQuantileBiasMap
 
 
+@cache
+def _build_metric(name: str) -> Metric:
+    """
+    Build and return an instance of the metric corresponding to the given name.
+
+    Parameters
+    ----------
+    name : str
+        Name of the metric, as registered in ``AVAILABLE_METRICS``.
+
+    Returns
+    -------
+    Metric
+        Instantiated metric object.
+    """
+    kwargs: dict[str, Any] = {}
+    if name.startswith("temporal_quantile_bias_"):
+        kwargs["quantile"] = float(metric_parameter(name)) / 100.0
+    return AVAILABLE_METRICS[name](**kwargs)
+
+
 def build_metrics(names: list[str]) -> dict[str, Metric]:
     """
     Instantiate metrics from their names.
@@ -938,13 +970,7 @@ def build_metrics(names: list[str]) -> dict[str, Metric]:
     unknown_metrics = set(names) - set(AVAILABLE_METRICS)
     if unknown_metrics:
         raise ValueError(f"Unknown metrics {sorted(unknown_metrics)}, available: {sorted(AVAILABLE_METRICS)}.")
-    # ToDo: make this a single function call?
-    kwargs: dict[str, dict[str, Any]] = {name: {} for name in names}
-    for name in names:
-        if name.startswith("temporal_quantile_bias_"):
-            quantile = float(metric_parameter(name)) / 100.0
-            kwargs[name]["quantile"] = quantile
-    return {name: AVAILABLE_METRICS[name](**kwargs[name]) for name in names}
+    return {name: _build_metric(name) for name in names}
 
 
 def reducer_for_metric(name: str) -> MetricReducer:
@@ -962,15 +988,9 @@ def reducer_for_metric(name: str) -> MetricReducer:
         Reducer registered for the metric, or the default batch-mean reducer.
     """
     metric_name = name.rsplit("/", 1)[-1]
-    try:
-        instantiated_metrics = build_metrics([metric_name])
-    except ValueError:
-        instantiated_metrics = {}
-    return getattr(
-        instantiated_metrics.get(metric_name),
-        "reducer",
-        LOSS_REDUCERS.get(metric_name, BATCH_MEAN_REDUCER),
-    )
+    if metric_name in AVAILABLE_METRICS:
+        return _build_metric(metric_name).reducer
+    return LOSS_REDUCERS.get(metric_name, BATCH_MEAN_REDUCER)
 
 
 def metric_parameter(name: str) -> Any:
