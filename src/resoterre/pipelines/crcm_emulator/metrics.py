@@ -518,7 +518,7 @@ class Metric(ABC):
 
 class DaysAboveThresholdMap(Metric):
     """
-    Per-pixel target-minus-output count of days above a temperature threshold.
+    Per-pixel output-minus-target count of days above a temperature threshold.
 
     Parameters
     ----------
