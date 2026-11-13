@@ -152,7 +152,7 @@ def save_rdps_coarse(
             "time",
             data=np.array(list_of_datetimes, dtype="datetime64[ns]"),
             dtype=np.float64,
-            attributes={key: value for key, value in ds_rdps["time"].attrs.items()},
+            attributes={**ds_rdps["time"].attrs},
         )
         cf_coordinates.add(
             "is_empty",
@@ -172,7 +172,7 @@ def save_rdps_coarse(
                 data=da.empty(
                     (len(list_of_datetimes), rlat.size, rlon.size), dtype=np.float32, chunks=(24, rlat.size, rlon.size)
                 ),
-                attributes={key: value for key, value in rdps_netcdf_attrs[local_variable_name].items()},
+                attributes={**rdps_netcdf_attrs[local_variable_name]},
             )
         Path(path_output).parent.mkdir(parents=True, exist_ok=True)
         ds_output = xarray.Dataset(data_vars=cf_variables, coords=cf_coordinates, attrs=cf_attrs)
@@ -197,7 +197,7 @@ def save_rdps_coarse(
         "time",
         data=ds_rdps["time"].values[:],
         dtype=np.float64,
-        attributes={key: value for key, value in ds_rdps["time"].attrs.items()},
+        attributes={**ds_rdps["time"].attrs},
     )
 
     cf_variables = CFVariables()
@@ -205,7 +205,7 @@ def save_rdps_coarse(
         variable_name,
         dims=("time", "rlat", "rlon"),
         data=data,
-        attributes={key: value for key, value in rdps_netcdf_attrs[variable_name].items()},
+        attributes={**rdps_netcdf_attrs[variable_name]},
     )
 
     zarr_ds = xarray.open_zarr(path_output)

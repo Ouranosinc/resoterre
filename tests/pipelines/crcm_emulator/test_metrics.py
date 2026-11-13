@@ -1,5 +1,7 @@
+import numpy as np
 import pytest
 import torch
+from fastdigest import TDigest
 from scipy.stats import wasserstein_distance
 
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
@@ -24,6 +26,73 @@ def test_max_value_absolute_error():
     assert metric(target, output).tolist() == pytest.approx([2.0 / 2, 4.0 / 2])
 
 
+def test_days_above_threshold_map() -> None:
+    metric = metrics.DaysAboveThresholdMap()
+    assert metric.name == "days_above_threshold_map"
+    target = torch.zeros(2, 2, 2, 2)
+    output = torch.zeros(2, 2, 2, 2)
+    target[0, 0, 0, 0] = 305.0  # above threshold
+    output[0, 0, 1, 1] = 303.0  # below threshold
+    output[0, 1, 0, 0] = 304.0  # above threshold
+    result = metric(target, output, threshold=303.15)
+    expected = torch.tensor([[[1, 0], [0, 0]], [[-1, 0], [0, 0]]])
+    torch.testing.assert_close(result, expected)
+
+
+def test_yearly_days_above_threshold_map_consolidation(monkeypatch: pytest.MonkeyPatch) -> None:
+    days_per_year = 4.0
+    monkeypatch.setattr(
+        metrics.DaysAboveThresholdMap,
+        "reducer",
+        metrics.YearlyMeanReducer(days_per_year=days_per_year),
+    )
+    map_metric = metrics.DaysAboveThresholdMap()
+    running_map: dict[str, metrics.ReducerState] = {}
+
+    first_target = torch.zeros(2, 1, 1, 2)
+    first_output = torch.zeros_like(first_target)
+    first_target[0, 0, 0, 0] = 304.0
+    first_target[1, 0, 0, 1] = 304.0
+
+    second_target = torch.zeros(2, 1, 1, 2)
+    second_output = torch.zeros_like(second_target)
+    second_output[0, 0, 0, 0] = 304.0
+
+    for target, output in ((first_target, first_output), (second_target, second_output)):
+        map_batch = metrics.per_variable_metrics(map_metric.name, map_metric(target, output), ["tas"])
+        metrics.running_consolidation(running_map, map_batch, batch_size=2)
+
+    annual_map = metrics.consolidation(running_map)["tas/days_above_threshold_map"]
+    torch.testing.assert_close(annual_map, torch.tensor([[0.0, 1.0]]))
+
+
+def test_yearly_days_above_threshold_rmse_consolidation(monkeypatch: pytest.MonkeyPatch) -> None:
+    days_per_year = 4.0
+    monkeypatch.setattr(
+        metrics.DaysAboveThreshold,
+        "reducer",
+        metrics.AnnualizedSpatialRMSEReducer(days_per_year=days_per_year),
+    )
+    rmse_metric = metrics.DaysAboveThreshold()
+    running_rmse: dict[str, metrics.ReducerState] = {}
+
+    first_target = torch.zeros(2, 1, 1, 2)
+    first_output = torch.zeros_like(first_target)
+    first_target[0, 0, 0, 0] = 304.0
+    first_target[1, 0, 0, 1] = 304.0
+
+    second_target = torch.zeros(2, 1, 1, 2)
+    second_output = torch.zeros_like(second_target)
+    second_output[0, 0, 0, 0] = 304.0
+
+    for target, output in ((first_target, first_output), (second_target, second_output)):
+        rmse_batch = metrics.per_variable_metrics(rmse_metric.name, rmse_metric(target, output), ["tas"])
+        metrics.running_consolidation(running_rmse, rmse_batch, batch_size=2)
+
+    annual_rmse = metrics.consolidation(running_rmse)["tas/days_above_threshold"]
+    assert annual_rmse == pytest.approx((0.5) ** 0.5)
+
+
 def test_per_variable_metrics():
     result = metrics.per_variable_metrics("rmse", torch.tensor([1.0, 2.0]), ["tas", "pr"])
     assert {name: value.item() for name, value in result.items()} == {"tas/rmse": 1.0, "pr/rmse": 2.0}
@@ -36,12 +105,13 @@ def test_metrics_are_reported_per_variable():
     assert metrics.RMSE()(target, output).tolist() == pytest.approx([0.0, 2.0])
 
 
-def test_metric_reduction():
-    assert metrics.metric_reduction("tas/rmse") == "sample_mean"
-    assert metrics.metric_reduction("tas/some_other_metric") == "batch_mean"
-    assert metrics.metric_reduction("mse_loss") == "sample_mean"
-    assert metrics.metric_reduction("ccc") == "sample_mean"
-    assert metrics.metric_reduction("some_other_metric") == "batch_mean"
+def test_reducer_lookup_handles_metric_prefixes_and_fallbacks() -> None:
+    assert isinstance(metrics.reducer_for_metric("tas/rmse"), metrics.SampleMeanReducer)
+    assert isinstance(metrics.reducer_for_metric("mse_loss"), metrics.SampleMeanReducer)
+    assert isinstance(metrics.reducer_for_metric("tas/unknown_metric"), metrics.BatchMeanReducer)
+    assert isinstance(metrics.reducer_for_metric("ccc"), metrics.SampleMeanReducer)
+    assert isinstance(metrics.reducer_for_metric("tas/days_above_threshold_map"), metrics.YearlyMeanReducer)
+    assert isinstance(metrics.reducer_for_metric("pr/days_above_threshold"), metrics.AnnualizedSpatialRMSEReducer)
 
 
 def test_consolidation_supports_all_reductions(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -51,15 +121,15 @@ def test_consolidation_supports_all_reductions(monkeypatch: pytest.MonkeyPatch) 
 
     class MaxMetric(ReducedMetric):
         name = "test_max"
-        reduction: metrics.Reduction = "max"
+        reducer = metrics.ExtremumReducer(torch.maximum)
 
     class MinMetric(ReducedMetric):
         name = "test_min"
-        reduction: metrics.Reduction = "min"
+        reducer = metrics.ExtremumReducer(torch.minimum)
 
     class SumMetric(ReducedMetric):
         name = "test_sum"
-        reduction: metrics.Reduction = "sum"
+        reducer = metrics.SumReducer()
 
     for metric_class in (MaxMetric, MinMetric, SumMetric):
         monkeypatch.setitem(metrics.AVAILABLE_METRICS, metric_class.name, metric_class)
@@ -166,6 +236,66 @@ def test_mean_bias():
     target = torch.randn(1, 1, 4, 4)
     output = target + 2.5
     assert metric(target, output).item() == pytest.approx(2.5, rel=1e-5)
+
+
+def test_mean_bias_consolidate():
+    metric = metrics.MeanBias()
+    target = torch.ones(2, 1, 4, 4)
+    output = target + 2.5  # initial bias of 2.5, batch size 2
+    metric_result = metric(target, output)
+    running_metrics: dict[str, tuple[torch.Tensor, float]] = {}
+    metrics.running_consolidation(running_metrics, {"tas/mean_bias": metric_result}, batch_size=2)
+    assert running_metrics["tas/mean_bias"][0].item() == pytest.approx(5.0, rel=1e-5)
+    assert running_metrics["tas/mean_bias"][1] == 2
+    output = target + 7.5  # next batch has bias of 7.5, mean bias is now 5.0
+    metric_result = metric(target, output)
+    metrics.running_consolidation(running_metrics, {"tas/mean_bias": metric_result}, batch_size=2)
+    assert running_metrics["tas/mean_bias"][0].item() == pytest.approx(20.0, rel=1e-5)
+    assert running_metrics["tas/mean_bias"][1] == 4
+    consolidate_result = metrics.consolidation(running_metrics)
+    assert consolidate_result["tas/mean_bias"] == pytest.approx(5.0, rel=1e-5)
+
+
+def test_temporal_quantile_bias():
+    metric = metrics.TemporalQuantileBias(quantile=0.95)
+    assert metric.name == "temporal_quantile_bias"
+    target = torch.tensor(np.arange(128 * 3 * 2 * 2).reshape(128, 3, 2, 2), dtype=torch.float32)
+    output = target + 10.0  # output bias of 10.0 everywhere
+    target_metric_result, output_metric_result = metric(target, output)
+    assert target_metric_result.shape == (3, 2, 2)
+    assert isinstance(target_metric_result, np.ndarray)
+    assert isinstance(target_metric_result[0, 0, 0], TDigest)
+    assert target_metric_result[0, 0, 0].quantile(0.5) == pytest.approx(762.0, rel=1e-5)
+    assert target_metric_result[0, 0, 0].quantile(0.95) == pytest.approx(1447.8, rel=1e-5)
+    assert output_metric_result.shape == (3, 2, 2)
+    assert isinstance(output_metric_result, np.ndarray)
+    assert isinstance(output_metric_result[0, 0, 0], TDigest)
+    assert output_metric_result[0, 0, 0].quantile(0.5) == pytest.approx(772.0, rel=1e-5)
+    assert output_metric_result[0, 0, 0].quantile(0.95) == pytest.approx(1457.8, rel=1e-5)
+
+
+def test_temporal_quantile_bias_consolidate():
+    metric = metrics.TemporalQuantileBias(quantile=0.95)
+    target = torch.tensor(np.arange(128 * 3 * 2 * 2).reshape(128, 3, 2, 2), dtype=torch.float32)
+    output = target + 10.0  # output bias of 10.0 everywhere
+    metric_results = metric(target, output)
+    running_metrics: dict[str, tuple[torch.Tensor, float]] = {}
+    metric_name = "tas/temporal_quantile_bias_95"
+    metrics.running_consolidation(running_metrics, {metric_name: metric_results}, batch_size=target.shape[0])
+    assert len(running_metrics[metric_name]) == 2  # (value, weight)
+    assert len(running_metrics[metric_name][0]) == 2  # (np.ndarray[TDigest], np.ndarray[TDigest])
+    assert running_metrics[metric_name][0][0][0, 0, 0].quantile(0.5) == pytest.approx(762.0, rel=1e-5)
+    assert running_metrics[metric_name][0][0][0, 0, 0].quantile(0.95) == pytest.approx(1447.8, rel=1e-5)
+    assert running_metrics[metric_name][1] == 1.0  # weight remains 1.0 for tdigest_quantile
+    target = target + 100.0
+    output = target + 10.0
+    metric_results = metric(target, output)
+    metrics.running_consolidation(running_metrics, {metric_name: metric_results}, batch_size=target.shape[0])
+    assert running_metrics[metric_name][0][0][0, 0, 0].quantile(0.5) == pytest.approx(812.0, rel=1e-5)
+    assert running_metrics[metric_name][0][0][0, 0, 0].quantile(0.95) == pytest.approx(1501.0, rel=1e-5)
+    assert running_metrics[metric_name][1] == 1.0
+    consolidate_result = metrics.consolidation(running_metrics)
+    assert consolidate_result[metric_name] == pytest.approx(10.0, rel=1e-5)
 
 
 def test_build_metrics_rmse_ccc():
