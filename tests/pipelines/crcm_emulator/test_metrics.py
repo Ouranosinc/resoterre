@@ -24,6 +24,73 @@ def test_max_value_absolute_error():
     assert metric(target, output).tolist() == pytest.approx([2.0 / 2, 4.0 / 2])
 
 
+def test_days_above_threshold_map() -> None:
+    metric = metrics.DaysAboveThresholdMap()
+    assert metric.name == "days_above_threshold_map"
+    target = torch.zeros(2, 2, 2, 2)
+    output = torch.zeros(2, 2, 2, 2)
+    target[0, 0, 0, 0] = 305.0  # above threshold
+    output[0, 0, 1, 1] = 303.0  # below threshold
+    output[0, 1, 0, 0] = 304.0  # above threshold
+    result = metric(target, output, threshold=303.15)
+    expected = torch.tensor([[[1, 0], [0, 0]], [[-1, 0], [0, 0]]])
+    torch.testing.assert_close(result, expected)
+
+
+def test_yearly_days_above_threshold_map_consolidation(monkeypatch: pytest.MonkeyPatch) -> None:
+    days_per_year = 4.0
+    monkeypatch.setattr(
+        metrics.DaysAboveThresholdMap,
+        "reducer",
+        metrics.YearlyMeanReducer(days_per_year=days_per_year),
+    )
+    map_metric = metrics.DaysAboveThresholdMap()
+    running_map: dict[str, metrics.ReducerState] = {}
+
+    first_target = torch.zeros(2, 1, 1, 2)
+    first_output = torch.zeros_like(first_target)
+    first_target[0, 0, 0, 0] = 304.0
+    first_target[1, 0, 0, 1] = 304.0
+
+    second_target = torch.zeros(2, 1, 1, 2)
+    second_output = torch.zeros_like(second_target)
+    second_output[0, 0, 0, 0] = 304.0
+
+    for target, output in ((first_target, first_output), (second_target, second_output)):
+        map_batch = metrics.per_variable_metrics(map_metric.name, map_metric(target, output), ["tas"])
+        metrics.running_consolidation(running_map, map_batch, batch_size=2)
+
+    annual_map = metrics.consolidation(running_map)["tas/days_above_threshold_map"]
+    torch.testing.assert_close(annual_map, torch.tensor([[0.0, 1.0]]))
+
+
+def test_yearly_days_above_threshold_rmse_consolidation(monkeypatch: pytest.MonkeyPatch) -> None:
+    days_per_year = 4.0
+    monkeypatch.setattr(
+        metrics.DaysAboveThreshold,
+        "reducer",
+        metrics.AnnualizedSpatialRMSEReducer(days_per_year=days_per_year),
+    )
+    rmse_metric = metrics.DaysAboveThreshold()
+    running_rmse: dict[str, metrics.ReducerState] = {}
+
+    first_target = torch.zeros(2, 1, 1, 2)
+    first_output = torch.zeros_like(first_target)
+    first_target[0, 0, 0, 0] = 304.0
+    first_target[1, 0, 0, 1] = 304.0
+
+    second_target = torch.zeros(2, 1, 1, 2)
+    second_output = torch.zeros_like(second_target)
+    second_output[0, 0, 0, 0] = 304.0
+
+    for target, output in ((first_target, first_output), (second_target, second_output)):
+        rmse_batch = metrics.per_variable_metrics(rmse_metric.name, rmse_metric(target, output), ["tas"])
+        metrics.running_consolidation(running_rmse, rmse_batch, batch_size=2)
+
+    annual_rmse = metrics.consolidation(running_rmse)["tas/days_above_threshold"]
+    assert annual_rmse == pytest.approx((0.5) ** 0.5)
+
+
 def test_per_variable_metrics():
     result = metrics.per_variable_metrics("rmse", torch.tensor([1.0, 2.0]), ["tas", "pr"])
     assert {name: value.item() for name, value in result.items()} == {"tas/rmse": 1.0, "pr/rmse": 2.0}
@@ -36,12 +103,13 @@ def test_metrics_are_reported_per_variable():
     assert metrics.RMSE()(target, output).tolist() == pytest.approx([0.0, 2.0])
 
 
-def test_metric_reduction():
-    assert metrics.metric_reduction("tas/rmse") == "sample_mean"
-    assert metrics.metric_reduction("tas/some_other_metric") == "batch_mean"
-    assert metrics.metric_reduction("mse_loss") == "sample_mean"
-    assert metrics.metric_reduction("ccc") == "sample_mean"
-    assert metrics.metric_reduction("some_other_metric") == "batch_mean"
+def test_reducer_lookup_handles_metric_prefixes_and_fallbacks() -> None:
+    assert isinstance(metrics.reducer_for_metric("tas/rmse"), metrics.SampleMeanReducer)
+    assert isinstance(metrics.reducer_for_metric("mse_loss"), metrics.SampleMeanReducer)
+    assert isinstance(metrics.reducer_for_metric("tas/unknown_metric"), metrics.BatchMeanReducer)
+    assert isinstance(metrics.reducer_for_metric("ccc"), metrics.SampleMeanReducer)
+    assert isinstance(metrics.reducer_for_metric("tas/days_above_threshold_map"), metrics.YearlyMeanReducer)
+    assert isinstance(metrics.reducer_for_metric("pr/days_above_threshold"), metrics.AnnualizedSpatialRMSEReducer)
 
 
 def test_consolidation_supports_all_reductions(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -51,15 +119,15 @@ def test_consolidation_supports_all_reductions(monkeypatch: pytest.MonkeyPatch) 
 
     class MaxMetric(ReducedMetric):
         name = "test_max"
-        reduction: metrics.Reduction = "max"
+        reducer = metrics.ExtremumReducer(torch.maximum)
 
     class MinMetric(ReducedMetric):
         name = "test_min"
-        reduction: metrics.Reduction = "min"
+        reducer = metrics.ExtremumReducer(torch.minimum)
 
     class SumMetric(ReducedMetric):
         name = "test_sum"
-        reduction: metrics.Reduction = "sum"
+        reducer = metrics.SumReducer()
 
     for metric_class in (MaxMetric, MinMetric, SumMetric):
         monkeypatch.setitem(metrics.AVAILABLE_METRICS, metric_class.name, metric_class)

@@ -5,35 +5,26 @@ Notes
 -----
 Adding new metrics:
 
-1. Define a new class inheriting from ``Metric``. (in this module)
-
-   a. Set the ``name`` attribute to the desired metric name.
-   b. Set the ``reduction`` attribute (if a new consolidation is required, implement it in ``running_consolidation``).
-
-      - ``sample_mean``: The result of the __call__ function will be averaged over all batches, weighted by batch size.
-      - ``batch_mean``: The result of the __call__ function will be averaged over all batches, no weighting.
-      - ``max``: The maximum value over all batches.
-      - ``min``: The minimum value over all batches.
-      - ``sum``: The sum over all batches.
-
-2. Implement the ``__call__`` method to compute the metric for a batch of data.
-3. If special final consolidation is required, implement it in ``consolidation``.
-4. Add the metric to AVAILABLE_METRICS (in this module)
-5. If this is a diagnostic that will output a figure, specify the figure type in ``CRCMEmulatorPlotConfig``.
-
-   a. New figure types should be added to the figure dispatcher in ``plots/utils.py``.
+1. Define a class inheriting from ``Metric`` and give it a unique ``name``.
+2. Implement ``__call__`` to compute the batch value. Return a tensor with variables on the first axis; trailing
+    dimensions are preserved for map-valued metrics.
+3. Set the ``reducer`` strategy. ``Metric`` defaults to ``SampleMeanReducer``. Reuse an existing reducer or implement
+    the ``MetricReducer`` protocol's ``accumulate`` and ``finalize`` methods for custom behavior. Reducers can also
+    compose existing behavior, for example annualizing a map before computing a spatial RMSE.
+4. Add the class to ``AVAILABLE_METRICS`` so it can be selected by name.
+5. If the metric produces a diagnostic figure, specify its figure type in ``CRCMEmulatorPlotConfig``. Add new figure
+    types to the dispatcher in ``plots/utils.py``.
 """
 
 import math
 from abc import ABC, abstractmethod
-from typing import Literal
+from collections.abc import Callable
+from typing import Protocol
 
 import torch
 
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
 
-
-Reduction = Literal["sample_mean", "batch_mean", "max", "min", "sum"]
 
 # Losses are averaged over samples, so batches are weighted by their size (the last one can be partial).
 LOSS_NAMES = ("loss", "mse_loss", "ssim_loss")
@@ -126,16 +117,346 @@ def per_variable_metrics(name: str, values: torch.Tensor, variable_names: list[s
     name : str
         Name of the metric.
     values : torch.Tensor
-        Metric of each variable, of shape (variables,).
+        Metric values with variables on the first axis. Any remaining dimensions are preserved per variable.
     variable_names : list[str]
         Names of the variables, in channel order.
 
     Returns
     -------
     dict[str, torch.Tensor]
-        Scalar metrics, named ``<variable>/<metric>`` (e.g. ``tas/rmse``), so that Comet groups metrics by variable.
+        Per-variable metrics, named ``<variable>/<metric>`` (e.g. ``tas/rmse``), so that Comet groups metrics by
+        variable.
     """
     return {f"{variable_name}/{name}": value for variable_name, value in zip(variable_names, values, strict=True)}
+
+
+# (Accumulated tensor, Accumulated weight) stored for each metric
+ReducerState = tuple[torch.Tensor, float]
+
+
+class MetricReducer(Protocol):
+    """Strategy for accumulating batches and finalizing one metric result."""
+
+    def accumulate(self, state: ReducerState | None, batch_value: torch.Tensor, batch_size: int) -> ReducerState:
+        """
+        Add a batch value to the running state.
+
+        Parameters
+        ----------
+        state : ReducerState or None
+            Current accumulated value and weight, or ``None`` for the first batch.
+        batch_value : torch.Tensor
+            Metric value computed for this batch.
+        batch_size : int
+            Number of samples in the batch.
+
+        Returns
+        -------
+        ReducerState
+            Updated accumulated value and weight.
+        """
+        ...
+
+    def finalize(self, state: ReducerState) -> torch.Tensor:
+        """
+        Convert accumulated state into the final metric value.
+
+        Parameters
+        ----------
+        state : ReducerState
+            Accumulated value and weight.
+
+        Returns
+        -------
+        torch.Tensor
+            Final metric value.
+        """
+        ...
+
+
+class WeightedMeanReducer:
+    """Accumulate weighted values and return their weighted mean."""
+
+    def batch_weight(self, batch_size: int) -> float:
+        """
+        Return the weight assigned to a batch.
+
+        Parameters
+        ----------
+        batch_size : int
+            Number of samples in the batch.
+
+        Returns
+        -------
+        float
+            Weight assigned to the batch.
+        """
+        return 1.0
+
+    def accumulate(self, state: ReducerState | None, batch_value: torch.Tensor, batch_size: int) -> ReducerState:
+        """
+        Add a weighted batch value to the accumulated state.
+
+        Parameters
+        ----------
+        state : ReducerState or None
+            Accumulated value and weight, or ``None`` for the first batch.
+        batch_value : torch.Tensor
+            Metric value computed for this batch.
+        batch_size : int
+            Number of samples in the batch.
+
+        Returns
+        -------
+        ReducerState
+            Updated weighted sum and total weight.
+        """
+        weight = self.batch_weight(batch_size)
+        value = batch_value.float() * weight
+        if state is not None:
+            previous_value, previous_weight = state
+            value = previous_value + value
+            weight = previous_weight + weight
+        return value, weight
+
+    def finalize(self, state: ReducerState) -> torch.Tensor:
+        """
+        Divide the accumulated value by its total weight.
+
+        Parameters
+        ----------
+        state : ReducerState
+            Accumulated weighted sum and total weight.
+
+        Returns
+        -------
+        torch.Tensor
+            Weighted mean.
+        """
+        value, weight = state
+        return value / weight
+
+
+class SampleMeanReducer(WeightedMeanReducer):
+    """Average batches weighted by the number of samples in each batch."""
+
+    def batch_weight(self, batch_size: int) -> float:
+        """
+        Use the sample count as the batch weight.
+
+        Parameters
+        ----------
+        batch_size : int
+            Number of samples in the batch.
+
+        Returns
+        -------
+        float
+            Batch sample count as a weight.
+        """
+        return float(batch_size)
+
+
+class BatchMeanReducer(WeightedMeanReducer):
+    """Average batch values with equal weight."""
+
+
+class YearlyMeanReducer(WeightedMeanReducer):
+    """
+    Annualize values that are already summed across the batch's daily samples.
+
+    Parameters
+    ----------
+    days_per_year : float, optional
+        Number of daily samples per simulation-year, by default 365.2425 (the average length of a year in days).
+    """
+
+    def __init__(self, days_per_year: float = 365.2425) -> None:
+        """
+        Initialize the yearly reducer.
+
+        Parameters
+        ----------
+        days_per_year : float, optional
+            Number of daily samples per simulation-year, by default 365.2425.
+        """
+        self.days_per_year = days_per_year
+
+    def batch_weight(self, batch_size: int) -> float:
+        """
+        Return this batch's fraction of a simulation-year.
+
+        Parameters
+        ----------
+        batch_size : int
+            Number of daily samples in the batch.
+
+        Returns
+        -------
+        float
+            Fractional year weight for the batch.
+        """
+        return batch_size / self.days_per_year
+
+    def accumulate(self, state: ReducerState | None, batch_value: torch.Tensor, batch_size: int) -> ReducerState:
+        """
+        Sum a batch total and accumulate its year-equivalent weight.
+
+        Parameters
+        ----------
+        state : ReducerState or None
+            Accumulated total and year weight, or ``None`` for the first batch.
+        batch_value : torch.Tensor
+            Metric values already summed over this batch's daily samples.
+        batch_size : int
+            Number of daily samples in the batch.
+
+        Returns
+        -------
+        ReducerState
+            Updated total and year-equivalent weight.
+        """
+        weight = self.batch_weight(batch_size)
+        value = batch_value.float()
+        if state is not None:
+            previous_value, previous_weight = state
+            value = previous_value + value
+            weight += previous_weight
+        return value, weight
+
+
+class AnnualizedSpatialRMSEReducer(YearlyMeanReducer):
+    """Takes a spatial bias map, computes yearly mean, and returns RMSE over the spatial domain."""
+
+    def finalize(self, state: ReducerState) -> torch.Tensor:
+        """
+        Finalize the annualized map as a spatial RMSE.
+
+        Parameters
+        ----------
+        state : ReducerState
+            Accumulated map total and year-equivalent weight.
+
+        Returns
+        -------
+        torch.Tensor
+            Spatial RMSE of the annualized map.
+        """
+        annual_bias_map = super().finalize(state)
+        return annual_bias_map.square().mean().sqrt()
+
+
+class SumReducer:
+    """Add batch values without normalizing the total."""
+
+    def accumulate(self, state: ReducerState | None, batch_value: torch.Tensor, batch_size: int) -> ReducerState:
+        """
+        Add a batch value to the running total.
+
+        Parameters
+        ----------
+        state : ReducerState or None
+            Current total and placeholder weight, or ``None`` for the first batch.
+        batch_value : torch.Tensor
+            Metric value computed for this batch.
+        batch_size : int
+            Number of samples in the batch; not used by this reducer.
+
+        Returns
+        -------
+        ReducerState
+            Updated total and placeholder weight.
+        """
+        value = batch_value.float()
+        if state is not None:
+            previous_value, _ = state
+            value = previous_value + value
+        return value, 1.0
+
+    def finalize(self, state: ReducerState) -> torch.Tensor:
+        """
+        Return the accumulated total.
+
+        Parameters
+        ----------
+        state : ReducerState
+            Accumulated total and placeholder weight.
+
+        Returns
+        -------
+        torch.Tensor
+            Sum of the batch values.
+        """
+        value, _ = state
+        return value
+
+
+class ExtremumReducer:
+    """
+    Track an elementwise maximum or minimum using the supplied torch operation.
+
+    Parameters
+    ----------
+    operation : Callable
+        Elementwise operation such as ``torch.maximum`` or ``torch.minimum``.
+    """
+
+    def __init__(self, operation: Callable[[torch.Tensor, torch.Tensor], torch.Tensor]) -> None:
+        """
+        Initialize an elementwise extremum reducer.
+
+        Parameters
+        ----------
+        operation : Callable
+            Elementwise operation such as ``torch.maximum`` or ``torch.minimum``.
+        """
+        self.operation = operation
+
+    def accumulate(self, state: ReducerState | None, batch_value: torch.Tensor, batch_size: int) -> ReducerState:
+        """
+        Update the running elementwise extremum.
+
+        Parameters
+        ----------
+        state : ReducerState or None
+            Current extremum and placeholder weight, or ``None`` for the first batch.
+        batch_value : torch.Tensor
+            Metric value computed for this batch.
+        batch_size : int
+            Number of samples in the batch; not used by this reducer.
+
+        Returns
+        -------
+        ReducerState
+            Updated extremum and placeholder weight.
+        """
+        value = batch_value.float()
+        if state is not None:
+            previous_value, _ = state
+            value = self.operation(previous_value, value)
+        return value, 1.0
+
+    def finalize(self, state: ReducerState) -> torch.Tensor:
+        """
+        Return the accumulated extremum.
+
+        Parameters
+        ----------
+        state : ReducerState
+            Accumulated extremum and placeholder weight.
+
+        Returns
+        -------
+        torch.Tensor
+            Elementwise maximum or minimum.
+        """
+        value, _ = state
+        return value
+
+
+BATCH_MEAN_REDUCER = BatchMeanReducer()
+SAMPLE_MEAN_REDUCER = SampleMeanReducer()
+LOSS_REDUCERS: dict[str, MetricReducer] = {name: SAMPLE_MEAN_REDUCER for name in LOSS_NAMES}
 
 
 class Metric(ABC):
@@ -146,13 +467,12 @@ class Metric(ABC):
     ----------
     name : str
         Name under which the metric is reported.
-    reduction : Reduction
-        How the per-batch values are aggregated over a dataset: ``sample_mean`` (mean over samples, batches weighted
-        by their size), ``batch_mean`` (plain mean over batches), ``max``, ``min`` or ``sum``.
+    reducer : MetricReducer
+        Strategy used to aggregate batch values and finalize the metric.
     """
 
     name: str
-    reduction: Reduction = "sample_mean"
+    reducer: MetricReducer = SAMPLE_MEAN_REDUCER
 
     @abstractmethod
     def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
@@ -169,8 +489,51 @@ class Metric(ABC):
         Returns
         -------
         torch.Tensor
-            Metric of each variable, of shape (variables,), computed on the tensors' device.
+            Metric values with variables on the first axis; trailing dimensions are metric-specific. Computed on the
+            tensors' device.
         """
+
+
+class DaysAboveThresholdMap(Metric):
+    """
+    Per-pixel target-minus-output count of days above a temperature threshold.
+
+    Notes
+    -----
+    The batch axis contains daily samples. The result is a count-bias map per variable, annualized by the reducer.
+    """
+
+    name = "days_above_threshold_map"
+    reducer = YearlyMeanReducer()
+
+    def __call__(self, target_data: torch.Tensor, output: torch.Tensor, threshold: float = 303.15) -> torch.Tensor:
+        """
+        Compute the metric.
+
+        Parameters
+        ----------
+        target_data : torch.Tensor
+            The ground truth data.
+        output : torch.Tensor
+            The model output data.
+        threshold : float, optional
+            The threshold value to compare against, by default 303.15K (30°C).
+
+        Returns
+        -------
+        torch.Tensor
+            Signed count-bias maps, of shape (variables, height, width), computed on the tensors' device.
+        """
+        target_above = (target_data > threshold).sum(dim=0)
+        output_above = (output > threshold).sum(dim=0)
+        return target_above - output_above
+
+
+class DaysAboveThreshold(DaysAboveThresholdMap):
+    """Compute the annualized spatial RMSE of daily threshold-bias maps."""
+
+    name = "days_above_threshold"
+    reducer = AnnualizedSpatialRMSEReducer()
 
 
 class MaxValueAbsoluteError(Metric):
@@ -183,7 +546,6 @@ class MaxValueAbsoluteError(Metric):
     """
 
     name = "max_value_absolute_error"
-    reduction = "sample_mean"
 
     def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
         """
@@ -216,7 +578,6 @@ class RMSE(Metric):
     """
 
     name = "rmse"
-    reduction = "sample_mean"
 
     def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
         """
@@ -248,7 +609,6 @@ class BiasMap(Metric):
     """
 
     name = "bias_map"
-    reduction = "sample_mean"
 
     def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
         """
@@ -279,7 +639,6 @@ class MeanBias(Metric):
     """
 
     name = "mean_bias"
-    reduction = "sample_mean"
 
     def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
         """
@@ -317,7 +676,6 @@ class CCC(Metric):
     """
 
     name = "ccc"
-    reduction = "sample_mean"
 
     def __init__(self, eps: float = 1e-8) -> None:
         self.eps = eps
@@ -362,7 +720,6 @@ class WassersteinDistance(Metric):
     """
 
     name = "wasserstein_distance"
-    reduction = "sample_mean"
 
     def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
         """
@@ -393,6 +750,8 @@ AVAILABLE_METRICS: dict[str, type[Metric]] = {
     WassersteinDistance.name: WassersteinDistance,
     BiasMap.name: BiasMap,
     MeanBias.name: MeanBias,
+    DaysAboveThreshold.name: DaysAboveThreshold,
+    DaysAboveThresholdMap.name: DaysAboveThresholdMap,
 }
 
 
@@ -421,29 +780,30 @@ def build_metrics(names: list[str]) -> dict[str, Metric]:
     return {name: AVAILABLE_METRICS[name]() for name in names}
 
 
-def metric_reduction(name: str) -> Reduction:
+def reducer_for_metric(name: str) -> MetricReducer:
     """
-    Get how the batch values of a metric are aggregated over a dataset.
+    Get a metric's reducer, ignoring any variable prefix in its key.
 
     Parameters
     ----------
     name : str
-        Name of the metric, optionally with a variable prefix (``tas/rmse``).
+        Metric key, optionally prefixed by a variable name (e.g. ``tas/rmse``).
 
     Returns
     -------
-    Reduction
-        The reduction of the metric. The losses are averaged over samples, and names that are neither a loss nor an
-        available metric are averaged over batches.
+    MetricReducer
+        Reducer registered for the metric, or the default batch-mean reducer.
     """
-    name = name.split("/")[-1]
-    if name in AVAILABLE_METRICS:
-        return AVAILABLE_METRICS[name].reduction
-    return "sample_mean" if name in LOSS_NAMES else "batch_mean"
+    metric_name = name.rsplit("/", 1)[-1]
+    return getattr(
+        AVAILABLE_METRICS.get(metric_name),
+        "reducer",
+        LOSS_REDUCERS.get(metric_name, BATCH_MEAN_REDUCER),
+    )
 
 
 def running_consolidation(
-    running_metrics: dict[str, tuple[torch.Tensor, float]], metrics: dict[str, torch.Tensor], batch_size: int
+    running_metrics: dict[str, ReducerState], metrics: dict[str, torch.Tensor], batch_size: int
 ) -> None:
     """
     Fold the metrics of one batch into the running statistics.
@@ -451,61 +811,45 @@ def running_consolidation(
     Parameters
     ----------
     running_metrics : dict[str, tuple[torch.Tensor, float]]
-        Running statistics per metric, as (value, total weight). Updated in place.
+        Running statistics keyed by metric as (running value, total weight). Updated in place.
     metrics : dict[str, torch.Tensor]
-        Scalar metric tensors of the batch, possibly on the GPU.
+        Batch metric tensors, possibly on the GPU.
     batch_size : int
         Number of samples in the batch.
 
+    Returns
+    -------
+    None
+        The running statistics are updated in place.
+
     Notes
     -----
-    The statistics stay on the device, so there is no GPU synchronization until ``consolidation``. For the mean
-    reductions the value is a weighted sum, for ``max``, ``min`` and ``sum`` it is the running extremum or total, with
-    a weight of 1.
+    The statistics stay on the device, so there is no GPU synchronization until ``consolidation``.
     """
-    for name, batch_value in metrics.items():
-        reduction = metric_reduction(name)
-        value = batch_value.float()
-        weight = 1.0
-        if reduction == "sample_mean":
-            value = value * batch_size
-            weight = float(batch_size)
-        if name in running_metrics:
-            previous_value, previous_weight = running_metrics[name]
-            if reduction == "max":
-                value = torch.maximum(previous_value, value)
-            elif reduction == "min":
-                value = torch.minimum(previous_value, value)
-            else:
-                value = previous_value + value
-            if reduction in ("sample_mean", "batch_mean"):
-                weight = previous_weight + weight
-            else:
-                weight = 1.0
-        running_metrics[name] = (value, weight)
+    for metric_key, batch_value in metrics.items():
+        reducer = reducer_for_metric(metric_key)
+        running_state = running_metrics.get(metric_key)
+        running_metrics[metric_key] = reducer.accumulate(running_state, batch_value, batch_size)
 
 
-def consolidation(running_metrics: dict[str, tuple[torch.Tensor, float]]) -> dict[str, float | torch.Tensor]:
+def consolidation(running_metrics: dict[str, ReducerState]) -> dict[str, float | torch.Tensor]:
     """
     Consolidate the running statistics into one value per metric, whatever its reduction.
 
     Parameters
     ----------
-    running_metrics : dict[str, tuple[torch.Tensor, float]]
-        Running statistics per metric, as (value, total weight).
+    running_metrics : dict[str, ReducerState]
+        Running statistics keyed by metric (<variable>/<metric>), with values (running value, total weight).
 
     Returns
     -------
     dict[str, float | torch.Tensor]
-        The consolidated value of each metric.
-
-    Notes
-    -----
-    All metrics are transferred to the CPU in a single synchronization.
+        Final value for each metric. Non-scalar tensors (maps) remain tensors.
     """
     results: dict[str, float | torch.Tensor] = {}
-    for name, (value, weight) in running_metrics.items():
-        mean = (value / weight).cpu()
-        results[name] = mean.item() if mean.numel() == 1 else mean
+    for name, state in running_metrics.items():
+        value = reducer_for_metric(name).finalize(state).cpu()
+        # Convert the value to a Python scalar if it is a single-element tensor.
+        results[name] = value.item() if value.numel() == 1 else value
 
     return results
