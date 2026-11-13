@@ -24,7 +24,7 @@ import math
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from functools import cache
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeAlias
 
 import numpy as np
 import torch
@@ -35,6 +35,8 @@ from resoterre.datasets.crcm.crcm_variables import crcm_variables
 
 # Losses are averaged over samples, so batches are weighted by their size (the last one can be partial).
 LOSS_NAMES = ("loss", "mse_loss", "ssim_loss")
+
+TensorOrNumpy: TypeAlias = torch.Tensor | np.ndarray
 
 
 def denormalize_crcm(data: torch.Tensor, variable_names: list[str]) -> torch.Tensor:
@@ -137,8 +139,8 @@ def per_variable_metrics(name: str, values: torch.Tensor, variable_names: list[s
     return {f"{variable_name}/{name}": value for variable_name, value in zip(variable_names, values, strict=True)}
 
 
-# (Accumulated tensor, Accumulated weight) stored for each metric
-ReducerState = tuple[torch.Tensor, float]
+# (Accumulated object, Accumulated weight) stored for each metric
+ReducerState = tuple[Any, float]
 
 
 class MetricReducer(Protocol):
@@ -172,7 +174,7 @@ class MetricReducer(Protocol):
         """
         ...
 
-    def finalize(self, state: ReducerState) -> torch.Tensor:
+    def finalize(self, state: ReducerState) -> TensorOrNumpy:
         """
         Convert accumulated state into the final metric value.
 
@@ -183,7 +185,7 @@ class MetricReducer(Protocol):
 
         Returns
         -------
-        torch.Tensor
+        TensorOrNumpy
             Final metric value.
         """
         ...
@@ -234,7 +236,7 @@ class WeightedMeanReducer:
             weight = previous_weight + weight
         return value, weight
 
-    def finalize(self, state: ReducerState) -> torch.Tensor:
+    def finalize(self, state: ReducerState) -> TensorOrNumpy:
         """
         Divide the accumulated value by its total weight.
 
@@ -245,7 +247,7 @@ class WeightedMeanReducer:
 
         Returns
         -------
-        torch.Tensor
+        TensorOrNumpy
             Weighted mean.
         """
         value, weight = state
@@ -335,7 +337,7 @@ class YearlyMeanReducer(WeightedMeanReducer):
 class AnnualizedSpatialRMSEReducer(YearlyMeanReducer):
     """Takes a spatial bias map, computes yearly mean, and returns RMSE over the spatial domain."""
 
-    def finalize(self, state: ReducerState) -> torch.Tensor:
+    def finalize(self, state: ReducerState) -> TensorOrNumpy:
         """
         Finalize the annualized map as a spatial RMSE.
 
@@ -346,7 +348,7 @@ class AnnualizedSpatialRMSEReducer(YearlyMeanReducer):
 
         Returns
         -------
-        torch.Tensor
+        TensorOrNumpy
             Spatial RMSE of the annualized map.
         """
         annual_bias_map = super().finalize(state)
@@ -380,7 +382,7 @@ class SumReducer:
             value = previous_value + value
         return value, 1.0
 
-    def finalize(self, state: ReducerState) -> torch.Tensor:
+    def finalize(self, state: ReducerState) -> TensorOrNumpy:
         """
         Return the accumulated total.
 
@@ -391,7 +393,7 @@ class SumReducer:
 
         Returns
         -------
-        torch.Tensor
+        TensorOrNumpy
             Sum of the batch values.
         """
         value, _ = state
@@ -443,7 +445,7 @@ class ExtremumReducer:
             value = self.operation(previous_value, value)
         return value, 1.0
 
-    def finalize(self, state: ReducerState) -> torch.Tensor:
+    def finalize(self, state: ReducerState) -> TensorOrNumpy:
         """
         Return the accumulated extremum.
 
@@ -454,7 +456,7 @@ class ExtremumReducer:
 
         Returns
         -------
-        torch.Tensor
+        TensorOrNumpy
             Elementwise maximum or minimum.
         """
         value, _ = state
@@ -503,7 +505,7 @@ class TDigestMapReducer:
             updated_metric[1][index] = state[0][1][index].merge(batch_value[1][index])
         return updated_metric, 1.0
 
-    def finalize(self, state: ReducerState) -> torch.Tensor:
+    def finalize(self, state: ReducerState) -> TensorOrNumpy:
         """
         Return the accumulated total.
 
@@ -514,8 +516,8 @@ class TDigestMapReducer:
 
         Returns
         -------
-        torch.Tensor
-            Sum of the batch values.
+        TensorOrNumpy
+            Quantile bias computed from the accumulated TDigest states.
         """
         target_quantile_values = np.empty_like(state[0][0], dtype=float)
         output_quantile_values = np.empty_like(state[0][1], dtype=float)
@@ -529,7 +531,7 @@ class TDigestMapReducer:
 class TDigestReducer(TDigestMapReducer):
     """Update TDigest batches."""
 
-    def finalize(self, state: ReducerState) -> torch.Tensor:
+    def finalize(self, state: ReducerState) -> TensorOrNumpy:
         """
         Return the accumulated total.
 
@@ -540,11 +542,11 @@ class TDigestReducer(TDigestMapReducer):
 
         Returns
         -------
-        torch.Tensor
-            Sum of the batch values.
+        TensorOrNumpy
+            Quantile bias computed from the accumulated TDigest states.
         """
         quantile_bias_map = super().finalize(state)
-        # ToDo: how does that work when there are multiple output variables.
+        # Average over the last two dimensions to get a single bias per variable.
         quantile_bias = quantile_bias_map.mean(-2).mean(-1)
         return quantile_bias
 
@@ -577,7 +579,7 @@ class Metric(ABC):
     reducer: MetricReducer = SAMPLE_MEAN_REDUCER
 
     @abstractmethod
-    def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+    def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> Any:
         """
         Compute the metric.
 
@@ -590,9 +592,9 @@ class Metric(ABC):
 
         Returns
         -------
-        torch.Tensor
-            Metric values with variables on the first axis; trailing dimensions are metric-specific. Computed on the
-            tensors' device.
+        Any
+            Metric values or tracker objects with variables on the first axis; trailing dimensions are metric-specific.
+            Computed on the tensors' device if they are torch tensors.
         """
 
 
@@ -1013,17 +1015,16 @@ def metric_parameter(name: str) -> Any:
     return None
 
 
-# ToDo: check types in docstring
 def running_consolidation(running_metrics: dict[str, ReducerState], metrics: dict[str, Any], batch_size: int) -> None:
     """
     Fold the metrics of one batch into the running statistics.
 
     Parameters
     ----------
-    running_metrics : dict[str, tuple[torch.Tensor, float]]
-        Running statistics keyed by metric as (running value, total weight). Updated in place.
-    metrics : dict[str, torch.Tensor]
-        Batch metric tensors, possibly on the GPU.
+    running_metrics : dict[str, ReducerState]
+        Running statistics keyed by metric as ReducerState (running value, total weight). Updated in place.
+    metrics : dict[str, Any]
+        Batch metric tensors, possibly on the GPU if they are torch tensors.
     batch_size : int
         Number of samples in the batch.
 
@@ -1042,7 +1043,7 @@ def running_consolidation(running_metrics: dict[str, ReducerState], metrics: dic
         running_metrics[metric_key] = reducer.accumulate(running_state, batch_metric_object, batch_size)
 
 
-def consolidation(running_metrics: dict[str, ReducerState]) -> dict[str, float | torch.Tensor]:
+def consolidation(running_metrics: dict[str, ReducerState]) -> dict[str, float | torch.Tensor | np.ndarray]:
     """
     Consolidate the running statistics into one value per metric, whatever its reduction.
 
@@ -1053,10 +1054,10 @@ def consolidation(running_metrics: dict[str, ReducerState]) -> dict[str, float |
 
     Returns
     -------
-    dict[str, float | torch.Tensor]
+    dict[str, float | torch.Tensor | np.ndarray]
         Final value for each metric. Non-scalar tensors (maps) remain tensors.
     """
-    results: dict[str, float | torch.Tensor] = {}
+    results: dict[str, float | torch.Tensor | np.ndarray] = {}
     for name, state in running_metrics.items():
         value = reducer_for_metric(name).finalize(state)
         if isinstance(value, torch.Tensor):
