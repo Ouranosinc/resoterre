@@ -12,17 +12,22 @@ Adding new metrics:
     the ``MetricReducer`` protocol's ``accumulate`` and ``finalize`` methods for custom behavior. Reducers can also
     compose existing behavior, for example annualizing a map before computing a spatial RMSE.
 4. Add the class to ``AVAILABLE_METRICS`` so it can be selected by name.
-5. If the metric produces a diagnostic figure, specify its figure type in ``CRCMEmulatorPlotConfig``. Add new figure
+5. If the metric has configurable parameters, add them to ``CRCMEmulatorMetricConfig`` and ensure they are used in the
+    metric's computation.
+    Implement ``__init__`` to accept the configuration parameters and store them as instance attributes.
+    Override ``from_config`` as a class method to pass the relevant config values to the constructor.
+6. If the metric produces a diagnostic figure, specify its figure type in ``CRCMEmulatorPlotConfig``. Add new figure
     types to the dispatcher in ``plots/utils.py``.
 """
 
 import math
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Protocol
+from typing import Protocol, Self
 
 import torch
 
+from resoterre.config.crcm_emulator import CRCMEmulatorMetricConfig
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
 
 
@@ -267,18 +272,18 @@ class YearlyMeanReducer(WeightedMeanReducer):
 
     Parameters
     ----------
-    days_per_year : float, optional
-        Number of daily samples per simulation-year, by default 365.2425 (the average length of a year in days).
+    days_per_year : float
+        Number of daily samples per simulation-year.
     """
 
-    def __init__(self, days_per_year: float = 365.2425) -> None:
+    def __init__(self, days_per_year: float) -> None:
         """
         Initialize the yearly reducer.
 
         Parameters
         ----------
-        days_per_year : float, optional
-            Number of daily samples per simulation-year, by default 365.2425.
+        days_per_year : float
+            Number of daily samples per simulation-year.
         """
         self.days_per_year = days_per_year
 
@@ -474,6 +479,23 @@ class Metric(ABC):
     name: str
     reducer: MetricReducer = SAMPLE_MEAN_REDUCER
 
+    @classmethod
+    def from_config(cls, config: CRCMEmulatorMetricConfig) -> Self:
+        """
+        Construct a metric using its relevant configuration settings.
+
+        Parameters
+        ----------
+        config : CRCMEmulatorMetricConfig
+            Metric settings; ignored by metrics without configurable settings.
+
+        Returns
+        -------
+        Self
+            Constructed metric.
+        """
+        return cls()
+
     @abstractmethod
     def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
         """
@@ -498,15 +520,53 @@ class DaysAboveThresholdMap(Metric):
     """
     Per-pixel target-minus-output count of days above a temperature threshold.
 
+    Parameters
+    ----------
+    threshold : float
+        Temperature threshold in Kelvin.
+    days_per_year : float
+        Daily samples per simulation-year.
+
     Notes
     -----
     The batch axis contains daily samples. The result is a count-bias map per variable, annualized by the reducer.
     """
 
     name = "days_above_threshold_map"
-    reducer = YearlyMeanReducer()
+    reducer_class = YearlyMeanReducer
 
-    def __call__(self, target_data: torch.Tensor, output: torch.Tensor, threshold: float = 303.15) -> torch.Tensor:
+    def __init__(self, threshold: float, days_per_year: float) -> None:
+        """
+        Initialize the threshold and annualization strategy.
+
+        Parameters
+        ----------
+        threshold : float
+            Temperature threshold in Kelvin.
+        days_per_year : float
+            Daily samples per simulation-year.
+        """
+        self.threshold = threshold
+        self.reducer = self.reducer_class(days_per_year=days_per_year)
+
+    @classmethod
+    def from_config(cls, config: CRCMEmulatorMetricConfig) -> Self:
+        """
+        Construct a threshold metric from its temperature and year settings.
+
+        Parameters
+        ----------
+        config : CRCMEmulatorMetricConfig
+            Threshold and annualization settings.
+
+        Returns
+        -------
+        Self
+            Configured threshold metric.
+        """
+        return cls(threshold=config.tas_day_threshold, days_per_year=config.days_per_year)
+
+    def __call__(self, target_data: torch.Tensor, output: torch.Tensor, threshold: float | None = None) -> torch.Tensor:
         """
         Compute the metric.
 
@@ -516,24 +576,25 @@ class DaysAboveThresholdMap(Metric):
             The ground truth data.
         output : torch.Tensor
             The model output data.
-        threshold : float, optional
-            The threshold value to compare against, by default 303.15K (30°C).
+        threshold : float or None, optional
+            Explicit Kelvin threshold override. None uses the configured threshold.
 
         Returns
         -------
         torch.Tensor
             Signed count-bias maps, of shape (variables, height, width), computed on the tensors' device.
         """
+        threshold = self.threshold if threshold is None else threshold
         target_above = (target_data > threshold).sum(dim=0)
         output_above = (output > threshold).sum(dim=0)
-        return target_above - output_above
+        return output_above - target_above
 
 
 class DaysAboveThreshold(DaysAboveThresholdMap):
     """Compute the annualized spatial RMSE of daily threshold-bias maps."""
 
     name = "days_above_threshold"
-    reducer = AnnualizedSpatialRMSEReducer()
+    reducer_class = AnnualizedSpatialRMSEReducer
 
 
 class MaxValueAbsoluteError(Metric):
@@ -565,7 +626,7 @@ class MaxValueAbsoluteError(Metric):
         """
         target_max = per_image_and_variable(target_data).amax(dim=-1)
         output_max = per_image_and_variable(output).amax(dim=-1)
-        return (target_max - output_max).abs().mean(dim=0)
+        return (output_max - target_max).abs().mean(dim=0)
 
 
 class RMSE(Metric):
@@ -739,7 +800,7 @@ class WassersteinDistance(Metric):
         """
         sorted_target = per_image_and_variable(target_data).sort(dim=-1).values
         sorted_output = per_image_and_variable(output).sort(dim=-1).values
-        return (sorted_target - sorted_output).abs().mean(dim=(0, 2))
+        return (sorted_output - sorted_target).abs().mean(dim=(0, 2))
 
 
 # Metrics that can be selected by name in ``training.validation_metrics`` and ``inference.evaluation_metrics``.
@@ -755,7 +816,7 @@ AVAILABLE_METRICS: dict[str, type[Metric]] = {
 }
 
 
-def build_metrics(names: list[str]) -> dict[str, Metric]:
+def build_metrics(names: list[str], config: CRCMEmulatorMetricConfig | None = None) -> dict[str, Metric]:
     """
     Instantiate metrics from their names.
 
@@ -763,6 +824,8 @@ def build_metrics(names: list[str]) -> dict[str, Metric]:
     ----------
     names : list[str]
         Names of the metrics, as registered in ``AVAILABLE_METRICS``.
+    config : CRCMEmulatorMetricConfig or None, optional
+        Construction settings. None uses the default metric configuration.
 
     Returns
     -------
@@ -777,10 +840,11 @@ def build_metrics(names: list[str]) -> dict[str, Metric]:
     unknown_metrics = set(names) - set(AVAILABLE_METRICS)
     if unknown_metrics:
         raise ValueError(f"Unknown metrics {sorted(unknown_metrics)}, available: {sorted(AVAILABLE_METRICS)}.")
-    return {name: AVAILABLE_METRICS[name]() for name in names}
+    config = CRCMEmulatorMetricConfig() if config is None else config
+    return {name: AVAILABLE_METRICS[name].from_config(config) for name in names}
 
 
-def reducer_for_metric(name: str) -> MetricReducer:
+def reducer_for_metric(name: str, *, metric_functions: dict[str, Metric]) -> MetricReducer:
     """
     Get a metric's reducer, ignoring any variable prefix in its key.
 
@@ -788,22 +852,30 @@ def reducer_for_metric(name: str) -> MetricReducer:
     ----------
     name : str
         Metric key, optionally prefixed by a variable name (e.g. ``tas/rmse``).
+    metric_functions : dict[str, Metric]
+        Configured metric instances keyed by base name.
 
     Returns
     -------
     MetricReducer
-        Reducer registered for the metric, or the default batch-mean reducer.
+        Reducer configured for the metric, the sample-mean reducer for losses,
+        or the batch-mean fallback for diagnostics.
     """
     metric_name = name.rsplit("/", 1)[-1]
+    metric = metric_functions.get(metric_name)
     return getattr(
-        AVAILABLE_METRICS.get(metric_name),
+        metric,
         "reducer",
         LOSS_REDUCERS.get(metric_name, BATCH_MEAN_REDUCER),
     )
 
 
 def running_consolidation(
-    running_metrics: dict[str, ReducerState], metrics: dict[str, torch.Tensor], batch_size: int
+    running_metrics: dict[str, ReducerState],
+    metrics: dict[str, torch.Tensor],
+    batch_size: int,
+    *,
+    metric_functions: dict[str, Metric],
 ) -> None:
     """
     Fold the metrics of one batch into the running statistics.
@@ -816,6 +888,8 @@ def running_consolidation(
         Batch metric tensors, possibly on the GPU.
     batch_size : int
         Number of samples in the batch.
+    metric_functions : dict[str, Metric]
+        Configured metric instances keyed by base name.
 
     Returns
     -------
@@ -827,12 +901,14 @@ def running_consolidation(
     The statistics stay on the device, so there is no GPU synchronization until ``consolidation``.
     """
     for metric_key, batch_value in metrics.items():
-        reducer = reducer_for_metric(metric_key)
+        reducer = reducer_for_metric(metric_key, metric_functions=metric_functions)
         running_state = running_metrics.get(metric_key)
         running_metrics[metric_key] = reducer.accumulate(running_state, batch_value, batch_size)
 
 
-def consolidation(running_metrics: dict[str, ReducerState]) -> dict[str, float | torch.Tensor]:
+def consolidation(
+    running_metrics: dict[str, ReducerState], *, metric_functions: dict[str, Metric]
+) -> dict[str, float | torch.Tensor]:
     """
     Consolidate the running statistics into one value per metric, whatever its reduction.
 
@@ -840,6 +916,8 @@ def consolidation(running_metrics: dict[str, ReducerState]) -> dict[str, float |
     ----------
     running_metrics : dict[str, ReducerState]
         Running statistics keyed by metric (<variable>/<metric>), with values (running value, total weight).
+    metric_functions : dict[str, Metric]
+        Configured metric instances used when accumulating the running statistics.
 
     Returns
     -------
@@ -848,7 +926,7 @@ def consolidation(running_metrics: dict[str, ReducerState]) -> dict[str, float |
     """
     results: dict[str, float | torch.Tensor] = {}
     for name, state in running_metrics.items():
-        value = reducer_for_metric(name).finalize(state).cpu()
+        value = reducer_for_metric(name, metric_functions=metric_functions).finalize(state).cpu()
         # Convert the value to a Python scalar if it is a single-element tensor.
         results[name] = value.item() if value.numel() == 1 else value
 

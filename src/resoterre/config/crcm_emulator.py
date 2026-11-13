@@ -309,6 +309,22 @@ class CRCMEmulatorInferenceConfig(BaseConfig):
     evaluation_metrics: list[str] = Field(default_factory=lambda: ["max_value_absolute_error"])
 
 
+class CRCMEmulatorMetricConfig(BaseConfig):
+    """
+    Metric configuration for the CRCM emulator.
+
+    Attributes
+    ----------
+    tas_day_threshold : float
+        Temperature threshold for the days above threshold metric (default 303.15 K).
+    days_per_year : float
+        Number of days per year used for annualized metrics (default 365).
+    """
+
+    tas_day_threshold: float = 303.15
+    days_per_year: float = 365
+
+
 class CRCMEmulatorPlotConfig(BaseConfig):
     """
     Plotting settings of the CRCM emulator.
@@ -322,7 +338,10 @@ class CRCMEmulatorPlotConfig(BaseConfig):
     """
 
     metric_mapping: dict[str, dict[str, Any]] = Field(
-        default_factory=lambda: {"bias_map": {"figure_type": "nd_plot", "kwargs": {"reverse_i": True}}}
+        default_factory=lambda: {
+            "bias_map": {"figure_type": "nd_plot", "kwargs": {"reverse_i": True}},
+            "days_above_threshold_map": {"figure_type": "nd_plot", "kwargs": {"reverse_i": True}},
+        }
     )
     variable_mapping: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
@@ -371,6 +390,8 @@ class CRCMEmulatorConfig(BaseConfig):
         Training loop configuration.
     inference : CRCMEmulatorInferenceConfig
         Inference configuration.
+    metric : CRCMEmulatorMetricConfig
+        Shared metric thresholds and annualization settings for all evaluation paths.
     debug : CRCMEmulatorDebugConfig
         Debugging figures configuration.
     analysis : CRCMEmulatorAnalysisConfig
@@ -391,6 +412,7 @@ class CRCMEmulatorConfig(BaseConfig):
     training: CRCMEmulatorTrainingConfig = Field(default_factory=CRCMEmulatorTrainingConfig)
     # TODO: not used, consider removing
     inference: CRCMEmulatorInferenceConfig = Field(default_factory=CRCMEmulatorInferenceConfig)
+    metric: CRCMEmulatorMetricConfig = Field(default_factory=CRCMEmulatorMetricConfig)
     plot: CRCMEmulatorPlotConfig = Field(default_factory=CRCMEmulatorPlotConfig)
     debug: CRCMEmulatorDebugConfig = Field(default_factory=CRCMEmulatorDebugConfig)
     analysis: CRCMEmulatorAnalysisConfig = Field(default_factory=CRCMEmulatorAnalysisConfig)

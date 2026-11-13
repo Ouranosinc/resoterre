@@ -208,6 +208,7 @@ class InterpolationBaseline:
                 prefetch_factor=self.config.data.prefetch_factor,
                 device=self.config.inference.device or self.config.training.device,
                 desc=f"Baseline {split} {key}",
+                metric_config=self.config.metric,
             )
             results.update({f"{name}_{key}": value for name, value in key_results.items()})
         return results

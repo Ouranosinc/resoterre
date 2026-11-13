@@ -15,6 +15,7 @@ from resoterre.config import (
     CRCMEmulatorPreprocessingConfig,
     CRCMEmulatorSourcePreprocessingConfig,
 )
+from resoterre.config.crcm_emulator import CRCMEmulatorMetricConfig
 from resoterre.pipelines.crcm_emulator import crcm_emulator_baselines
 from resoterre.pipelines.crcm_emulator.baseline_evaluation import date_tuples
 from resoterre.pipelines.crcm_emulator.crcm_emulator_baselines import InterpolationBaseline
@@ -100,6 +101,16 @@ def test_evaluate(tmp_path, monkeypatch, calendar):
     # Errors of 1, 2 and 3 in batches of 2 and 1: the mean is 2 only if batches are weighted by their size, and a
     # baseline taken from a shifted day would be at least 7 off.
     assert results == pytest.approx({"tas/rmse_test": 2.0, "tas/max_value_absolute_error_test": 2.0})
+
+
+def test_evaluate_threshold_metrics_use_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    baseline = _baseline(tmp_path, monkeypatch, computed_days=[1, 2, 3, 4, 5])
+    baseline.config = baseline.config.model_copy(
+        update={"metric": CRCMEmulatorMetricConfig(tas_day_threshold=31.0, days_per_year=6.0)}
+    )
+    results = baseline.evaluate(["days_above_threshold_map", "days_above_threshold"], split="test")
+    torch.testing.assert_close(results["tas/days_above_threshold_map_test"], torch.full((TILE_SIZE, TILE_SIZE), -2.0))
+    assert results["tas/days_above_threshold_test"] == pytest.approx(2.0)
 
 
 def test_save_and_load_results_drops_non_single_valued(tmp_path, monkeypatch):
