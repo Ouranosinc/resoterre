@@ -38,8 +38,21 @@ python scripts/crcm_emulator/04_inference.py --config <config.yaml> --checkpoint
 `tas/rmse_historical`) and saved to `<experiment_name>_validation_results.json` and, with `--test`,
 `<experiment_name>_test_results.json` in `paths.output`.
 
-On Slurm, `sbatch run_files/run_inference_crcm_pipeline.sh <config.yaml> [best|latest]` runs the validation evaluation
-only.
+Add `--save-predictions` to also save the U-Net predictions (in physical units) in the same zarr format as the baseline,
+one `<experiment_name>_<gcm>_<scenario>_<member>.zarr` per simulation in `paths.output`, holding the days of the
+evaluated periods (validation, and test with `--test`). Predictions are not saved by default, and each run overwrites the
+previous prediction stores:
+
+```bash
+python scripts/crcm_emulator/04_inference.py --config <config.yaml> --checkpoint best --test --save-predictions
+```
+
+On Slurm, `sbatch run_files/run_inference_crcm_pipeline.sh <config.yaml> [best|latest] [--test] [--save-predictions]` runs
+the same script. Without the flags, it runs the validation evaluation only:
+
+```bash
+sbatch run_files/run_inference_crcm_pipeline.sh <config.yaml> best --test --save-predictions
+```
 
 ## Interpolation baseline
 

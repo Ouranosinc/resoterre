@@ -25,6 +25,7 @@ from resoterre.ml.neural_networks_unet import UNet
 from resoterre.ml.training_utils import NNTraining, with_split
 from resoterre.pipelines.crcm_emulator.crcm_emulator_baselines import InterpolationBaseline, single_valued_results
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
+from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import PredictionZarrWriter
 from resoterre.pipelines.crcm_emulator.experiment_logger import config_to_experiment_parameters
 from resoterre.pipelines.crcm_emulator.metrics import (
     build_metrics,
@@ -373,7 +374,11 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             )
 
     def evaluate(
-        self, data_loader: td.DataLoader[Any], metric_functions: dict[str, Any], desc: str = "Evaluation"
+        self,
+        data_loader: td.DataLoader[Any],
+        metric_functions: dict[str, Any],
+        desc: str = "Evaluation",
+        prediction_writer: PredictionZarrWriter | None = None,
     ) -> dict[str, float]:
         """
         Evaluate the model on a dataset, e.g. the test data.
@@ -386,6 +391,8 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             Extra metrics to compute, by name, in addition to the losses (see ``build_metrics``).
         desc : str
             Description of the progress bar.
+        prediction_writer : PredictionZarrWriter | None
+            If given, the predictions (in physical units) are saved with it.
 
         Returns
         -------
@@ -396,13 +403,30 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         self.running_validation_metrics = {}
         with torch.no_grad():
             for item in tqdm(data_loader, desc=desc):
-                self.evaluation_step(item, metric_functions)
+                _, _, output = self.evaluation_step(item, metric_functions)
+                if prediction_writer is not None:
+                    prediction_writer.write(
+                        list(item["simulation"]),
+                        list(
+                            zip(
+                                item["year"].tolist(),
+                                item["month"].tolist(),
+                                item["day"].tolist(),
+                                strict=True,
+                            )
+                        ),
+                        denormalize_crcm(output, self.config.data.crcm_variables).cpu().numpy(),
+                    )
         results = consolidation(self.running_validation_metrics)
         self.running_validation_metrics = {}
         return results
 
     def evaluate_by_key(
-        self, data_loaders: dict[str, td.DataLoader[Any]], metric_functions: dict[str, Any], desc: str = "Evaluation"
+        self,
+        data_loaders: dict[str, td.DataLoader[Any]],
+        metric_functions: dict[str, Any],
+        desc: str = "Evaluation",
+        prediction_writer: PredictionZarrWriter | None = None,
     ) -> dict[str, float]:
         """
         Evaluate the model on each dataset, e.g. the test periods, and report the metrics by key.
@@ -415,6 +439,8 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             Extra metrics to compute, by name, in addition to the losses (see ``build_metrics``).
         desc : str
             Description of the progress bar.
+        prediction_writer : PredictionZarrWriter | None
+            If given, the predictions (in physical units) are saved with it.
 
         Returns
         -------
@@ -423,7 +449,9 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         """
         results: dict[str, float] = {}
         for key, data_loader in data_loaders.items():
-            key_results = self.evaluate(data_loader, metric_functions, desc=f"{desc} {key}")
+            key_results = self.evaluate(
+                data_loader, metric_functions, desc=f"{desc} {key}", prediction_writer=prediction_writer
+            )
             results.update({f"{name}_{key}": value for name, value in key_results.items()})
         return results
 
