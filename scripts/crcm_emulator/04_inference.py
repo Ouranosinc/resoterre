@@ -53,7 +53,10 @@ def evaluate_and_save(
         If given, the predictions are saved with it.
     """
     results = runner.evaluate_by_key(
-        data_loaders, build_metrics(metric_names), desc=split.capitalize(), prediction_writer=prediction_writer
+        data_loaders,
+        build_metrics(metric_names, runner.config.metric),
+        desc=split.capitalize(),
+        prediction_writer=prediction_writer,
     )
     single_valued_results = {k: v for k, v in results.items() if isinstance(v, (int, float))}
 

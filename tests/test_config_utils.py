@@ -114,6 +114,13 @@ def test_crcm_emulator_logger_config_from_yaml():
     assert config.data.training_periods["all"][0].year == 2000
 
 
+@pytest.mark.parametrize("metric_name", ["bias_map", "days_above_threshold_map"])  # type: ignore[untyped-decorator]
+def test_crcm_emulator_default_metric_plot_mapping(metric_name: str) -> None:
+    """Check that spatial diagnostics have default plotting configurations."""
+    config = CRCMEmulatorConfig.model_validate({"training": {"validation_metrics": [metric_name]}})
+    assert config.plot.metric_mapping[metric_name] == {"figure_type": "nd_plot", "kwargs": {"reverse_i": True}}
+
+
 def test_crcm_emulator_nested_config_from_yaml():
     path_yaml = Path(__file__).parents[1] / "configs" / "crcm_emulator" / "crcm_emulator_cnrm_ssp245.yaml"
     config = crcm_emulator_parse_config(path_yaml)

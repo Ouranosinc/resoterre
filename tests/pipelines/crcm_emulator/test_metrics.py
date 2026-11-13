@@ -2,6 +2,7 @@ import pytest
 import torch
 from scipy.stats import wasserstein_distance
 
+from resoterre.config.crcm_emulator import CRCMEmulatorMetricConfig
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
 from resoterre.ml.data_loader_utils import inverse_normalize
 from resoterre.pipelines.crcm_emulator import metrics
@@ -24,6 +25,94 @@ def test_max_value_absolute_error():
     assert metric(target, output).tolist() == pytest.approx([2.0 / 2, 4.0 / 2])
 
 
+def test_days_above_threshold_map() -> None:
+    metric = metrics.build_metrics(["days_above_threshold_map"])["days_above_threshold_map"]
+    assert isinstance(metric, metrics.DaysAboveThresholdMap)
+    assert metric.name == "days_above_threshold_map"
+    target = torch.zeros(2, 2, 2, 2)
+    output = torch.zeros(2, 2, 2, 2)
+    target[0, 0, 0, 0] = 305.0  # above threshold
+    output[0, 0, 1, 1] = 303.0  # below threshold
+    output[0, 1, 0, 0] = 304.0  # above threshold
+    result = metric(target, output, threshold=303.15)
+    expected = torch.tensor([[[-1, 0], [0, 0]], [[1, 0], [0, 0]]])
+    torch.testing.assert_close(result, expected)
+
+
+def test_yearly_days_above_threshold_map_consolidation() -> None:
+    days_per_year = 4.0
+    metric_functions = metrics.build_metrics(
+        ["days_above_threshold_map"], CRCMEmulatorMetricConfig(days_per_year=days_per_year)
+    )
+    map_metric = metric_functions["days_above_threshold_map"]
+    running_map: dict[str, metrics.ReducerState] = {}
+
+    first_target = torch.zeros(2, 1, 1, 2)
+    first_output = torch.zeros_like(first_target)
+    first_target[0, 0, 0, 0] = 304.0
+    first_target[1, 0, 0, 1] = 304.0
+
+    second_target = torch.zeros(2, 1, 1, 2)
+    second_output = torch.zeros_like(second_target)
+    second_output[0, 0, 0, 0] = 304.0
+
+    for target, output in ((first_target, first_output), (second_target, second_output)):
+        map_batch = metrics.per_variable_metrics(map_metric.name, map_metric(target, output), ["tas"])
+        metrics.running_consolidation(running_map, map_batch, batch_size=2, metric_functions=metric_functions)
+
+    annual_map = metrics.consolidation(running_map, metric_functions=metric_functions)["tas/days_above_threshold_map"]
+    torch.testing.assert_close(annual_map, torch.tensor([[0.0, -1.0]]))
+
+
+def test_yearly_days_above_threshold_rmse_consolidation() -> None:
+    days_per_year = 4.0
+    metric_functions = metrics.build_metrics(
+        ["days_above_threshold"], CRCMEmulatorMetricConfig(days_per_year=days_per_year)
+    )
+    rmse_metric = metric_functions["days_above_threshold"]
+    running_rmse: dict[str, metrics.ReducerState] = {}
+
+    first_target = torch.zeros(2, 1, 1, 2)
+    first_output = torch.zeros_like(first_target)
+    first_target[0, 0, 0, 0] = 304.0
+    first_target[1, 0, 0, 1] = 304.0
+
+    second_target = torch.zeros(2, 1, 1, 2)
+    second_output = torch.zeros_like(second_target)
+    second_output[0, 0, 0, 0] = 304.0
+
+    for target, output in ((first_target, first_output), (second_target, second_output)):
+        rmse_batch = metrics.per_variable_metrics(rmse_metric.name, rmse_metric(target, output), ["tas"])
+        metrics.running_consolidation(running_rmse, rmse_batch, batch_size=2, metric_functions=metric_functions)
+
+    annual_rmse = metrics.consolidation(running_rmse, metric_functions=metric_functions)["tas/days_above_threshold"]
+    assert annual_rmse == pytest.approx((0.5) ** 0.5)
+
+
+@pytest.mark.parametrize("metric_name", ["days_above_threshold", "days_above_threshold_map"])  # type: ignore[untyped-decorator]
+def test_metric_configuration_is_isolated(metric_name: str) -> None:
+    configured = metrics.build_metrics(
+        [metric_name], CRCMEmulatorMetricConfig(tas_day_threshold=310.0, days_per_year=4.0)
+    )
+    defaults = metrics.build_metrics([metric_name])
+    target = torch.zeros(1, 1, 1, 2)
+    output = torch.tensor([[[[305.0, 311.0]]]])
+    torch.testing.assert_close(configured[metric_name](target, output), torch.tensor([[[0, 1]]]))
+    torch.testing.assert_close(defaults[metric_name](target, output), torch.tensor([[[1, 1]]]))
+    reducer = metrics.reducer_for_metric(f"tas/{metric_name}", metric_functions=configured)
+    assert reducer is configured[metric_name].reducer
+    assert defaults[metric_name].reducer.days_per_year == CRCMEmulatorMetricConfig().days_per_year
+
+
+def test_configured_metrics_preserve_loss_and_unknown_fallbacks() -> None:
+    metric_functions = metrics.build_metrics(["rmse", "ccc"])
+    assert isinstance(metric_functions["ccc"], metrics.CCC)
+    assert isinstance(metrics.reducer_for_metric("loss", metric_functions=metric_functions), metrics.SampleMeanReducer)
+    assert isinstance(
+        metrics.reducer_for_metric("unknown", metric_functions=metric_functions), metrics.BatchMeanReducer
+    )
+
+
 def test_per_variable_metrics():
     result = metrics.per_variable_metrics("rmse", torch.tensor([1.0, 2.0]), ["tas", "pr"])
     assert {name: value.item() for name, value in result.items()} == {"tas/rmse": 1.0, "pr/rmse": 2.0}
@@ -36,38 +125,49 @@ def test_metrics_are_reported_per_variable():
     assert metrics.RMSE()(target, output).tolist() == pytest.approx([0.0, 2.0])
 
 
-def test_metric_reduction():
-    assert metrics.metric_reduction("tas/rmse") == "sample_mean"
-    assert metrics.metric_reduction("tas/some_other_metric") == "batch_mean"
-    assert metrics.metric_reduction("mse_loss") == "sample_mean"
-    assert metrics.metric_reduction("ccc") == "sample_mean"
-    assert metrics.metric_reduction("some_other_metric") == "batch_mean"
+def test_reducer_lookup_handles_metric_prefixes_and_fallbacks() -> None:
+    metric_functions = metrics.build_metrics(["rmse", "ccc", "days_above_threshold_map", "days_above_threshold"])
+    expected_reducers = {
+        "tas/rmse": metrics.SampleMeanReducer,
+        "mse_loss": metrics.SampleMeanReducer,
+        "tas/unknown_metric": metrics.BatchMeanReducer,
+        "ccc": metrics.SampleMeanReducer,
+        "tas/days_above_threshold_map": metrics.YearlyMeanReducer,
+        "pr/days_above_threshold": metrics.AnnualizedSpatialRMSEReducer,
+    }
+    for metric_key, reducer_class in expected_reducers.items():
+        assert isinstance(metrics.reducer_for_metric(metric_key, metric_functions=metric_functions), reducer_class)
 
 
-def test_consolidation_supports_all_reductions(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_consolidation_supports_all_reductions() -> None:
     class ReducedMetric(metrics.Metric):
         def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
             return target_data.sum()
 
     class MaxMetric(ReducedMetric):
         name = "test_max"
-        reduction: metrics.Reduction = "max"
+        reducer = metrics.ExtremumReducer(torch.maximum)
 
     class MinMetric(ReducedMetric):
         name = "test_min"
-        reduction: metrics.Reduction = "min"
+        reducer = metrics.ExtremumReducer(torch.minimum)
 
     class SumMetric(ReducedMetric):
         name = "test_sum"
-        reduction: metrics.Reduction = "sum"
+        reducer = metrics.SumReducer()
 
-    for metric_class in (MaxMetric, MinMetric, SumMetric):
-        monkeypatch.setitem(metrics.AVAILABLE_METRICS, metric_class.name, metric_class)
+    metric_functions: dict[str, metrics.Metric] = {
+        metric_class.name: metric_class() for metric_class in (MaxMetric, MinMetric, SumMetric)
+    }
     running: dict[str, tuple[torch.Tensor, float]] = {}
     for batch_size, value in ((4, 3.0), (4, 7.0), (1, 2.0)):
         batch = {f"test_{r}": torch.tensor(value) for r in ("max", "min", "sum")}
-        metrics.running_consolidation(running, batch, batch_size)
-    assert metrics.consolidation(running) == {"test_max": 7.0, "test_min": 2.0, "test_sum": 12.0}
+        metrics.running_consolidation(running, batch, batch_size, metric_functions=metric_functions)
+    assert metrics.consolidation(running, metric_functions=metric_functions) == {
+        "test_max": 7.0,
+        "test_min": 2.0,
+        "test_sum": 12.0,
+    }
 
 
 def test_consolidation_weights_losses_by_batch_size():
@@ -75,15 +175,18 @@ def test_consolidation_weights_losses_by_batch_size():
     # 128 samples with zero error, then a partial batch of 1 sample with a squared error of 100
     for batch_size, value in ((128, 0.0), (1, 100.0)):
         metrics.running_consolidation(
-            running, {"mse_loss": torch.tensor(value), "some_other_metric": torch.tensor(value)}, batch_size
+            running,
+            {"mse_loss": torch.tensor(value), "some_other_metric": torch.tensor(value)},
+            batch_size,
+            metric_functions={},
         )
-    result = metrics.consolidation(running)
+    result = metrics.consolidation(running, metric_functions={})
     assert result["mse_loss"] == pytest.approx(100 / 129)
     assert result["some_other_metric"] == pytest.approx(50.0)
 
 
 def test_consolidation_empty():
-    assert metrics.consolidation({}) == {}
+    assert metrics.consolidation({}, metric_functions={}) == {}
 
 
 def test_build_metrics():

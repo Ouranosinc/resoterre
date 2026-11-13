@@ -28,6 +28,7 @@ from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulat
 from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import PredictionZarrWriter
 from resoterre.pipelines.crcm_emulator.experiment_logger import config_to_experiment_parameters
 from resoterre.pipelines.crcm_emulator.metrics import (
+    Metric,
     build_metrics,
     consolidation,
     denormalize_crcm,
@@ -102,7 +103,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         self.validation_figure_data: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
         # per metric: (weighted sum, total weight), kept as tensors on the device until consolidation()
         self.running_validation_metrics: dict[str, tuple[torch.Tensor, float]] = {}
-        self.validation_metric_functions = build_metrics(self.config.training.validation_metrics)
+        self.validation_metric_functions = build_metrics(self.config.training.validation_metrics, self.config.metric)
         # Interpolation baseline metrics, computed once, re-logged at each validation (see score_interpolation_baseline)
         self.interpolation_baseline_metrics: dict[str, float] = {}
         self.init_unet()
@@ -351,7 +352,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
                 metrics.update(
                     per_variable_metrics(name, metric_function(target_physical, output_physical), variable_names)
                 )
-        self.running_consolidation(metrics, batch_size=input_data.shape[0])
+        self.running_consolidation(metrics, batch_size=input_data.shape[0], metric_functions=metric_functions)
         return input_data, target_data, output
 
     def validation_step(self, item: dict[str, torch.Tensor]) -> None:
@@ -417,7 +418,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
                         ),
                         denormalize_crcm(output, self.config.data.crcm_variables).cpu().numpy(),
                     )
-        results = consolidation(self.running_validation_metrics)
+        results = consolidation(self.running_validation_metrics, metric_functions=metric_functions)
         self.running_validation_metrics = {}
         return results
 
@@ -455,7 +456,13 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             results.update({f"{name}_{key}": value for name, value in key_results.items()})
         return results
 
-    def running_consolidation(self, metrics: dict[str, torch.Tensor], batch_size: int) -> None:
+    def running_consolidation(
+        self,
+        metrics: dict[str, torch.Tensor],
+        batch_size: int,
+        *,
+        metric_functions: dict[str, Metric],
+    ) -> None:
         """
         Fold the metrics of one validation batch into the running statistics.
 
@@ -465,12 +472,14 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             Scalar metric tensors of the batch, possibly on the GPU.
         batch_size : int
             Number of samples in the batch.
+        metric_functions : dict[str, Metric]
+            Active configured metric instances.
 
         Notes
         -----
         Called after every validation step, while the batch is still in memory.
         """
-        running_consolidation(self.running_validation_metrics, metrics, batch_size)
+        running_consolidation(self.running_validation_metrics, metrics, batch_size, metric_functions=metric_functions)
 
     def consolidation(self, key: str = "") -> None:
         """
@@ -487,7 +496,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         """
         if not self.running_validation_metrics:
             return
-        consolidated = consolidation(self.running_validation_metrics)
+        consolidated = consolidation(self.running_validation_metrics, metric_functions=self.validation_metric_functions)
         self.running_validation_metrics = {}
         suffix = f"_{key}" if key else ""
         single_values_metrics = {
@@ -664,7 +673,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         except FileNotFoundError:
             logger.warning("No best checkpoint found, testing the current model.")
         results = self.evaluate_by_key(
-            test_data_loaders, build_metrics(self.config.inference.evaluation_metrics), desc="Test"
+            test_data_loaders, build_metrics(self.config.inference.evaluation_metrics, self.config.metric), desc="Test"
         )
         self.experiment_logger.log_metrics(
             {**with_split(results, "test"), "test_checkpoint_epoch": self.epoch_counter}, step=step, epoch=epoch
