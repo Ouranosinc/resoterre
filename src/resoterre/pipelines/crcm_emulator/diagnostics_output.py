@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import xarray
 
+from resoterre.datasets.crcm.crcm_variables import crcm_variables
 from resoterre.plots.utils import figure_dispatcher
 
 
@@ -26,6 +27,44 @@ def file_safe_name(name: str) -> str:
         The name with "/" replaced by "_".
     """
     return name.replace("/", "_")
+
+
+def variable_units(name: str) -> str | None:
+    """
+    Get the units of the variable of a result name.
+
+    Parameters
+    ----------
+    name : str
+        Result name (``<variable>/<metric>_<key>``).
+
+    Returns
+    -------
+    str | None
+        The units of the variable, None if the variable is unknown.
+    """
+    try:
+        return str(crcm_variables[name.split("/")[0]].units)
+    except KeyError:
+        return None
+
+
+def diagnostic_title(name: str) -> str:
+    """
+    Get the figure title of a result, shared by the training figures and the saved figures.
+
+    Parameters
+    ----------
+    name : str
+        Result name (``<variable>/<metric>_<key>``).
+
+    Returns
+    -------
+    str
+        The name, followed by the units of the variable when known.
+    """
+    units = variable_units(name)
+    return f"{name} [{units}]" if units else name
 
 
 def metric_figure_spec(name: str, metric_mapping: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
@@ -91,7 +130,12 @@ def save_diagnostics(
         return []
     output_directory.mkdir(parents=True, exist_ok=True)
     paths = []
-    dataset = xarray.Dataset({file_safe_name(name): (("rlat", "rlon"), data) for name, data in maps.items()})
+    dataset = xarray.Dataset(
+        {
+            file_safe_name(name): (("rlat", "rlon"), data, {"units": units} if (units := variable_units(name)) else {})
+            for name, data in maps.items()
+        }
+    )
     path_netcdf = Path(output_directory, f"{prefix}_diagnostics.nc")
     dataset.to_netcdf(path_netcdf, engine="h5netcdf")
     paths.append(path_netcdf)
@@ -102,7 +146,7 @@ def save_diagnostics(
         figure = figure_dispatcher(
             figure_type=spec["figure_type"],
             data=data,
-            title=name,
+            title=diagnostic_title(name),
             figure_kwargs=spec.get("figure_kwargs", {}),
         )
         path_figure = Path(output_directory, f"{prefix}_{file_safe_name(name)}.png")

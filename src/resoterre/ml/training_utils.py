@@ -20,6 +20,7 @@ from resoterre.data_management.timeseries import MultiTimeseries
 from resoterre.logging_utils import CustomLogging, logging_delay_sequence, readable_delta_t
 from resoterre.ml.ml_loops import MinimaTracker
 from resoterre.ml.ml_utils import log_device_info
+from resoterre.pipelines.crcm_emulator.diagnostics_output import diagnostic_title
 from resoterre.pipelines.crcm_emulator.experiment_logger import CometMLLogger
 from resoterre.plots.utils import figure_dispatcher
 
@@ -556,7 +557,7 @@ class NNTraining(ABC):
             figure = figure_dispatcher(
                 figure_type=self.diagnostic_figure_mapping[key]["figure_type"],
                 data=nd_array.numpy(),
-                title=f"validation-{key}",
+                title=diagnostic_title(key),
                 figure_kwargs=self.diagnostic_figure_mapping[key].get("figure_kwargs", {}),
             )
             self.experiment_logger.log_figure(figure, name=f"validation_{key}", step=self.total_iterations)

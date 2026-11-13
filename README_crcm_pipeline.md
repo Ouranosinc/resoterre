@@ -41,7 +41,11 @@ python scripts/crcm_emulator/04_inference.py --config <config.yaml> --checkpoint
 Two-dimensional metrics, such as `bias_map`, are not single-valued and are not in the JSON. They are saved in
 `paths.output` as `<experiment_name>_<split>_diagnostics.nc` (one variable per `<variable>_<metric>_<key>`, with
 dimensions `rlat` and `rlon`) and, for the metrics listed in `plot.metric_mapping` (`bias_map` by default), as
-`<experiment_name>_<split>_<variable>_<metric>_<key>.png`.
+`<experiment_name>_<split>_<variable>_<metric>_<key>.png`. The units of the variable are in the figure title and in
+the `units` attribute of the NetCDF variable. The figures logged to Comet during training use the same title and
+`plot.metric_mapping`, so they look the same as the saved ones. The `figure_kwargs` of a metric accept `reverse_i`,
+`vmin`, `vmax`, `cmap`, `symmetric` (colour scale centred on zero) and `show_range` (min and max in the title). The
+default for `bias_map` is `{reverse_i: true, cmap: coolwarm, symmetric: true}`.
 
 Add `--save-predictions` to also save the U-Net predictions (in physical units) in the same zarr format as the baseline,
 one `<experiment_name>_<gcm>_<scenario>_<member>.zarr` per simulation in `paths.output`, holding the days of the

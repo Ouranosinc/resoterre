@@ -2,7 +2,12 @@ import numpy as np
 import torch
 import xarray
 
-from resoterre.pipelines.crcm_emulator.diagnostics_output import metric_figure_spec, save_diagnostics
+from resoterre.pipelines.crcm_emulator.diagnostics_output import (
+    diagnostic_title,
+    metric_figure_spec,
+    save_diagnostics,
+    variable_units,
+)
 
 
 MAPPING = {"bias_map": {"figure_type": "nd_plot", "figure_kwargs": {"reverse_i": True}}}
@@ -30,8 +35,20 @@ def test_save_diagnostics(tmp_path):
     with xarray.open_dataset(tmp_path / "exp_validation_diagnostics.nc", engine="h5netcdf") as dataset:
         assert set(dataset.data_vars) == {"tas_bias_map_historical", "pr_other_map_historical"}
         np.testing.assert_array_equal(dataset["tas_bias_map_historical"].values, bias.numpy())
+        assert dataset["tas_bias_map_historical"].attrs["units"] == "K"
+        assert dataset["pr_other_map_historical"].attrs["units"] == variable_units("pr/x")
+
+
+def test_variable_units():
+    assert variable_units("tas/bias_map_historical") == "K"
+    assert variable_units("unknown_variable/bias_map") is None
 
 
 def test_save_diagnostics_without_maps(tmp_path):
     assert save_diagnostics({"tas/rmse_historical": 1.5}, tmp_path, "exp", MAPPING) == []
     assert not list(tmp_path.iterdir())
+
+
+def test_diagnostic_title():
+    assert diagnostic_title("tas/bias_map_historical") == "tas/bias_map_historical [K]"
+    assert diagnostic_title("unknown_variable/bias_map") == "unknown_variable/bias_map"
