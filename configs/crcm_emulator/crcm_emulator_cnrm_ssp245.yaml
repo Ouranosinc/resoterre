@@ -143,6 +143,16 @@ inference:
     - bias_map
     - mean_bias
 
+plot:
+  metric_mapping: # figure of each 2D metric, used for the Comet figures at training and the PNGs saved at inference
+    bias_map:
+      figure_type: nd_plot
+      figure_kwargs:
+        reverse_i: true # north at the top
+        cmap: coolwarm
+        symmetric: true # colour scale centred on zero
+        show_range: true # min and max in the title
+
 debug:
   crcm_figures:
     - [ "CNRM-ESM2-1", "historical", "r1i1p1f2", "tas", 2000, 1, 2 ]

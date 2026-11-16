@@ -6,6 +6,8 @@ Run ``python scripts/crcm_emulator/04_inference.py --config configs/crcm_emulato
 The checkpoint is evaluated on ``data.validation_periods`` with ``inference.evaluation_metrics``. With ``--test``, it is
 also evaluated on ``data.test_periods`` with the same metrics. The results are saved to
 ``<experiment_name>_validation_results.json`` and ``<experiment_name>_test_results.json`` in ``paths.output``.
+Two-dimensional metrics (e.g. ``bias_map``) are saved there too, as ``<experiment_name>_<split>_diagnostics.nc`` and,
+for the metrics of ``plot.metric_mapping``, as PNG figures.
 
 With ``--save-predictions``, the predictions (in physical units) are also saved in the format of the CRCM data, as one
 zarr dataset per simulation, ``<experiment_name>_<gcm>_<scenario>_<member>.zarr`` in ``paths.output``, containing the
@@ -23,6 +25,7 @@ import torch.utils.data as td
 from resoterre.pipelines.crcm_emulator.crcm_emulator_training import CRCMEmulatorTrainingFromConfig
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import PredictionZarrWriter
+from resoterre.pipelines.crcm_emulator.diagnostics_output import save_diagnostics
 from resoterre.pipelines.crcm_emulator.metrics import build_metrics
 
 
@@ -70,6 +73,10 @@ def evaluate_and_save(
         )
     print(json.dumps(single_valued_results, indent=4))
     print(f"{split.capitalize()} results saved to {output_path}")
+    for path in save_diagnostics(
+        results, output_directory, f"{runner.config.experiment_name}_{split}", runner.config.plot.metric_mapping
+    ):
+        print(f"{split.capitalize()} diagnostic saved to {path}")
 
 
 def main(config_path: Path, checkpoint: str = "latest", test: bool = False, save_predictions: bool = False) -> None:

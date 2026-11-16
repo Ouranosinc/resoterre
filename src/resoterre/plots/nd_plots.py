@@ -17,6 +17,9 @@ def nd_ax_plot(
     vmin: float | None = None,
     vmax: float | None = None,
     reverse_i: bool = False,
+    cmap: str = "coolwarm",
+    symmetric: bool = False,
+    show_range: bool = True,
 ) -> None:
     """
     Plot n-dimensional data on the given Axes.
@@ -37,6 +40,12 @@ def nd_ax_plot(
         The maximum value for the color scale (only for 2D data).
     reverse_i : bool, optional
         Whether to reverse the order of the first dimension (only for 2D data).
+    cmap : str, optional
+        The Matplotlib colormap name (only for 2D data).
+    symmetric : bool, optional
+        Whether to center the color scale on zero when ``vmin`` and ``vmax`` are not given (only for 2D data).
+    show_range : bool, optional
+        Whether to add the minimum and maximum of the data to the title.
     """
     plot_data = np.squeeze(plot_data)
     if len(plot_data.shape) == 0:
@@ -50,16 +59,21 @@ def nd_ax_plot(
     elif len(plot_data.shape) == 2:
         if reverse_i:
             plot_data = plot_data[::-1, :]
-        im = ax.imshow(plot_data, cmap="viridis", vmin=vmin, vmax=vmax)
+        if symmetric and vmin is None and vmax is None:
+            vmax = float(np.nanmax(np.abs(plot_data)))
+            vmin = -vmax
+        im = ax.imshow(plot_data, cmap=cmap, vmin=vmin, vmax=vmax)
         _ = fig.colorbar(im, ax=ax, location="bottom", orientation="horizontal", fraction=0.05, pad=0.05)
     else:
         raise NotImplementedError()
     if len(plot_data.shape) == 0:
         ax.set_title(title)
-    else:
+    elif show_range:
         ax.set_title(
             f"{title} {plot_data.shape} [{readable_value(plot_data.min())}, {readable_value(plot_data.max())}]"
         )
+    else:
+        ax.set_title(f"{title} {plot_data.shape}")
 
 
 def nd_fig_plot(
@@ -69,6 +83,9 @@ def nd_fig_plot(
     vmin: float | None = None,
     vmax: float | None = None,
     reverse_i: bool = False,
+    cmap: str = "coolwarm",
+    symmetric: bool = False,
+    show_range: bool = True,
 ) -> None:
     """
     Plot n-dimensional data on a new Axes in the given Figure.
@@ -87,10 +104,27 @@ def nd_fig_plot(
         The maximum value for the color scale (only for 2D data).
     reverse_i : bool, optional
         Whether to reverse the order of the first dimension (only for 2D data).
+    cmap : str, optional
+        The Matplotlib colormap name (only for 2D data).
+    symmetric : bool, optional
+        Whether to center the color scale on zero when ``vmin`` and ``vmax`` are not given (only for 2D data).
+    show_range : bool, optional
+        Whether to add the minimum and maximum of the data to the title.
     """
     fig.set_size_inches(8, 8, forward=True)
     ax = fig.add_subplot(111)
-    nd_ax_plot(ax, fig, plot_data, title=title, vmin=vmin, vmax=vmax, reverse_i=reverse_i)
+    nd_ax_plot(
+        ax,
+        fig,
+        plot_data,
+        title=title,
+        vmin=vmin,
+        vmax=vmax,
+        reverse_i=reverse_i,
+        cmap=cmap,
+        symmetric=symmetric,
+        show_range=show_range,
+    )
 
 
 def nd_plot(
@@ -99,6 +133,9 @@ def nd_plot(
     vmin: float | None = None,
     vmax: float | None = None,
     reverse_i: bool = False,
+    cmap: str = "coolwarm",
+    symmetric: bool = False,
+    show_range: bool = True,
 ) -> plt.Figure:
     """
     Display a plot of n-dimensional data.
@@ -115,6 +152,12 @@ def nd_plot(
         The maximum value for the color scale (only for 2D data).
     reverse_i : bool, optional
         Whether to reverse the order of the first dimension (only for 2D data).
+    cmap : str, optional
+        The Matplotlib colormap name (only for 2D data).
+    symmetric : bool, optional
+        Whether to center the color scale on zero when ``vmin`` and ``vmax`` are not given (only for 2D data).
+    show_range : bool, optional
+        Whether to add the minimum and maximum of the data to the title.
 
     Returns
     -------
@@ -122,7 +165,17 @@ def nd_plot(
         The Matplotlib Figure containing the plot.
     """
     fig = plt.figure()
-    nd_fig_plot(fig, plot_data, title, vmin=vmin, vmax=vmax, reverse_i=reverse_i)
+    nd_fig_plot(
+        fig,
+        plot_data,
+        title,
+        vmin=vmin,
+        vmax=vmax,
+        reverse_i=reverse_i,
+        cmap=cmap,
+        symmetric=symmetric,
+        show_range=show_range,
+    )
     return fig
 
 
@@ -133,6 +186,9 @@ def nd_save_plot(
     vmin: float | None = None,
     vmax: float | None = None,
     reverse_i: bool = False,
+    cmap: str = "coolwarm",
+    symmetric: bool = False,
+    show_range: bool = True,
 ) -> None:
     """
     Save a plot of n-dimensional data to a file.
@@ -151,9 +207,25 @@ def nd_save_plot(
         The maximum value for the color scale (only for 2D data).
     reverse_i : bool, optional
         Whether to reverse the order of the first dimension (only for 2D data).
+    cmap : str, optional
+        The Matplotlib colormap name (only for 2D data).
+    symmetric : bool, optional
+        Whether to center the color scale on zero when ``vmin`` and ``vmax`` are not given (only for 2D data).
+    show_range : bool, optional
+        Whether to add the minimum and maximum of the data to the title.
     """
     fig = plt.figure()
-    nd_fig_plot(fig, plot_data, title, vmin=vmin, vmax=vmax, reverse_i=reverse_i)
+    nd_fig_plot(
+        fig,
+        plot_data,
+        title,
+        vmin=vmin,
+        vmax=vmax,
+        reverse_i=reverse_i,
+        cmap=cmap,
+        symmetric=symmetric,
+        show_range=show_range,
+    )
     Path(figure_file).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(figure_file)
     plt.close(fig)
@@ -317,7 +389,7 @@ class CustomPColorMesh:
         self,
         plot_data: np.ndarray,
         path_output: Path | str | None = None,
-        cmap: str = "viridis",
+        cmap: str = "coolwarm",
         vmin: float | None = None,
         vmax: float | None = None,
         vmin_quantile: float | None = None,
