@@ -143,6 +143,10 @@ inference:
     - bias_map
     - mean_bias
 
+metric:
+  days_per_year: 365
+  tas_day_threshold: 303.15
+
 plot:
   metric_mapping: # figure of each 2D metric, used for the Comet figures at training and the PNGs saved at inference
     bias_map:

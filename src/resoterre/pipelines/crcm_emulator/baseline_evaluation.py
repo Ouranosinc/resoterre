@@ -13,6 +13,7 @@ import xarray
 from torch.utils import data as td
 from tqdm import tqdm
 
+from resoterre.config.crcm_emulator import CRCMEmulatorMetricConfig
 from resoterre.data_management.cftime_utils import decode_times_as_cftime
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
 from resoterre.pipelines.crcm_emulator.metrics import (
@@ -126,6 +127,7 @@ def evaluate_precomputed_predictions(
     prefetch_factor: int = 2,
     device: str = "cpu",
     desc: str = "Evaluation",
+    metric_config: CRCMEmulatorMetricConfig | None = None,
 ) -> dict[str, float]:
     """
     Score precomputed predictions against the CRCM targets of a dataset.
@@ -154,13 +156,15 @@ def evaluate_precomputed_predictions(
         Device on which the metrics are computed (e.g., "cpu", "cuda").
     desc : str
         Description of the progress bar.
+    metric_config : CRCMEmulatorMetricConfig or None, optional
+        Metric construction settings. None uses defaults.
 
     Returns
     -------
     dict[str, float]
         One consolidated value per metric and variable (``<variable>/<metric>``).
     """
-    metrics = build_metrics(metric_names)
+    metrics = build_metrics(metric_names, metric_config)
     evaluation_dataset = PrecomputedPredictionDataset(dataset, prediction_paths, variable_names)
     data_loader: td.DataLoader[Any] = td.DataLoader(
         evaluation_dataset,
@@ -182,7 +186,9 @@ def evaluate_precomputed_predictions(
                     batch_metrics.update(
                         per_variable_metrics(name, metric_function(target_tensor, output_tensor), variable_names)
                     )
-                running_consolidation(running_metrics, batch_metrics, batch_size=target_tensor.shape[0])
+                running_consolidation(
+                    running_metrics, batch_metrics, batch_size=target_tensor.shape[0], metric_functions=metrics
+                )
     finally:
         evaluation_dataset.close()
-    return consolidation(running_metrics)
+    return consolidation(running_metrics, metric_functions=metrics)
