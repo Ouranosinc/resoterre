@@ -106,7 +106,7 @@ def test_evaluate(tmp_path, monkeypatch, calendar):
 def test_evaluate_threshold_metrics_use_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     baseline = _baseline(tmp_path, monkeypatch, computed_days=[1, 2, 3, 4, 5])
     baseline.config = baseline.config.model_copy(
-        update={"metric": CRCMEmulatorMetricConfig(tas_day_threshold=31.0, days_per_year=6.0)}
+        update={"metrics": CRCMEmulatorMetricConfig(tas_day_threshold=31.0, days_per_year=6.0)}
     )
     results = baseline.evaluate(["days_above_threshold_map", "days_above_threshold"], split="test")
     torch.testing.assert_close(results["tas/days_above_threshold_map_test"], torch.full((TILE_SIZE, TILE_SIZE), -2.0))

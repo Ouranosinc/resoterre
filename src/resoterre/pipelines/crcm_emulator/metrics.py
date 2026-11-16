@@ -862,9 +862,9 @@ def reducer_for_metric(name: str, *, metric_functions: dict[str, Metric]) -> Met
         or the batch-mean fallback for diagnostics.
     """
     metric_name = name.rsplit("/", 1)[-1]
-    metric = metric_functions.get(metric_name)
+    metrics = metric_functions.get(metric_name)
     return getattr(
-        metric,
+        metrics,
         "reducer",
         LOSS_REDUCERS.get(metric_name, BATCH_MEAN_REDUCER),
     )
