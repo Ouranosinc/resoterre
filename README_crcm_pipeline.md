@@ -24,14 +24,15 @@ Use `uv run --frozen <command>` to avoid rewriting `uv.lock` with a different `u
 
 To add a new package, add it to both `environment-dev.yml` and `pyproject.toml`, then run `uv lock` and commit `uv.lock`.
 
-Activate environment:
+To activate environment:
 ```bash
 source .venv/bin/activate
 ```
 
 ## Data preprocessing
+On Slurm, data preprocessing is run with `sbatch [SLURM_OPTIONS] run_files/run_preprocessing_crcm_pipeline.sh <config.yaml> <output_dir> <repo_dir>`
 
-
+Make sure the NetCDF files for GCM, CRCM, and emissions data exist, and their paths are
 
 ## Data analysis
 
