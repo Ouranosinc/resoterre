@@ -103,7 +103,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         self.validation_figure_data: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
         # per metric: (weighted sum, total weight), kept as tensors on the device until consolidation()
         self.running_validation_metrics: dict[str, tuple[torch.Tensor, float]] = {}
-        self.validation_metric_functions = build_metrics(self.config.training.validation_metrics, self.config.metric)
+        self.validation_metric_functions = build_metrics(self.config.training.validation_metrics, self.config.metrics)
         # Interpolation baseline metrics, computed once, re-logged at each validation (see score_interpolation_baseline)
         self.interpolation_baseline_metrics: dict[str, float] = {}
         self.init_unet()
@@ -673,7 +673,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         except FileNotFoundError:
             logger.warning("No best checkpoint found, testing the current model.")
         results = self.evaluate_by_key(
-            test_data_loaders, build_metrics(self.config.inference.evaluation_metrics, self.config.metric), desc="Test"
+            test_data_loaders, build_metrics(self.config.inference.evaluation_metrics, self.config.metrics), desc="Test"
         )
         self.experiment_logger.log_metrics(
             {**with_split(results, "test"), "test_checkpoint_epoch": self.epoch_counter}, step=step, epoch=epoch

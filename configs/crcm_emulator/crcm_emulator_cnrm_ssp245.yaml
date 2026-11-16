@@ -152,9 +152,6 @@ plot:
         cmap: coolwarm
         symmetric: true # colour scale centred on zero
         show_range: true # min and max in the title
-metric:
-  days_per_year: 365
-  tas_day_threshold: 303.15
 
 debug:
   crcm_figures:

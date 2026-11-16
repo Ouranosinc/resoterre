@@ -118,7 +118,7 @@ def test_crcm_emulator_logger_config_from_yaml():
 def test_crcm_emulator_default_metric_plot_mapping(metric_name: str) -> None:
     """Check that spatial diagnostics have default plotting configurations."""
     config = CRCMEmulatorConfig.model_validate({"training": {"validation_metrics": [metric_name]}})
-    assert config.plot.metric_mapping[metric_name] == {"figure_type": "nd_plot", "kwargs": {"reverse_i": True}}
+    assert config.plot.metric_mapping[metric_name] == {"figure_type": "nd_plot", "figure_kwargs": {"reverse_i": True}}
 
 
 def test_crcm_emulator_nested_config_from_yaml():

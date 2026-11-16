@@ -57,7 +57,7 @@ def evaluate_and_save(
     """
     results = runner.evaluate_by_key(
         data_loaders,
-        build_metrics(metric_names, runner.config.metric),
+        build_metrics(metric_names, runner.config.metrics),
         desc=split.capitalize(),
         prediction_writer=prediction_writer,
     )
