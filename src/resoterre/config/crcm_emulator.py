@@ -382,6 +382,8 @@ class CRCMEmulatorConfig(BaseConfig):
         Data loading configuration for training.
     model : CRCMEmulatorModelConfig
         U-Net model configuration.
+    plot : CRCMEmulatorPlotConfig
+        Plotting configuration.
     optimizer : OptimizerConfig
         Optimizer configuration. Default learning rate is 0.01.
     loss : CRCMEmulatorLossConfig
@@ -390,7 +392,7 @@ class CRCMEmulatorConfig(BaseConfig):
         Training loop configuration.
     inference : CRCMEmulatorInferenceConfig
         Inference configuration.
-    metric : CRCMEmulatorMetricConfig
+    metrics : CRCMEmulatorMetricConfig
         Shared metric thresholds and annualization settings for all evaluation paths.
     debug : CRCMEmulatorDebugConfig
         Debugging figures configuration.
@@ -412,7 +414,7 @@ class CRCMEmulatorConfig(BaseConfig):
     training: CRCMEmulatorTrainingConfig = Field(default_factory=CRCMEmulatorTrainingConfig)
     # TODO: not used, consider removing
     inference: CRCMEmulatorInferenceConfig = Field(default_factory=CRCMEmulatorInferenceConfig)
-    metric: CRCMEmulatorMetricConfig = Field(default_factory=CRCMEmulatorMetricConfig)
+    metrics: CRCMEmulatorMetricConfig = Field(default_factory=CRCMEmulatorMetricConfig)
     plot: CRCMEmulatorPlotConfig = Field(default_factory=CRCMEmulatorPlotConfig)
     debug: CRCMEmulatorDebugConfig = Field(default_factory=CRCMEmulatorDebugConfig)
     analysis: CRCMEmulatorAnalysisConfig = Field(default_factory=CRCMEmulatorAnalysisConfig)
