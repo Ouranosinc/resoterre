@@ -22,6 +22,7 @@ from resoterre.config import (
     CRCMEmulatorTrainingConfig,
     OptimizerConfig,
 )
+from resoterre.config.crcm_emulator import CRCMEmulatorMetricConfig
 from resoterre.data_generators.crcm_emulator_mock_dataset import CRCMEmulatorMockDataset
 from resoterre.data_management.timeseries import MultiTimeseries
 from resoterre.logging_utils import start_root_logger
@@ -357,12 +358,13 @@ def test_crcm_emulator_consolidation_weights_losses_by_batch_size():
         running_validation_metrics={},
         validation_metrics=MultiTimeseries(),
         validation_diagnostics={},
+        validation_metric_functions={},
     )
     consolidator = crcm_emulator_training.CRCMEmulatorTrainingFromConfig
     # 128 samples with zero error, then a partial batch of 1 sample with a squared error of 100
     for batch_size, value in ((128, 0.0), (1, 100.0)):
         metrics = {"mse_loss": torch.tensor(value), "some_other_metric": torch.tensor(value)}
-        consolidator.running_consolidation(runner, metrics, batch_size)  # type: ignore[arg-type]
+        consolidator.running_consolidation(runner, metrics, batch_size, metric_functions={})  # type: ignore[arg-type]
     consolidator.consolidation(runner)  # type: ignore[arg-type]
     assert runner.running_validation_metrics == {}
     assert runner.validation_metrics["mse_loss"].values == [pytest.approx(100 / 129)]
@@ -423,6 +425,23 @@ def _baseline_runner(
     runner.config = runner.config.model_copy(update={"preprocessing": preprocessing})
     runner.experiment_logger.experiment = MagicMock()
     return runner
+
+
+def test_evaluate_uses_active_metric_configuration(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = _baseline_runner(str(tmp_path), False, {})
+    runner.validation_metric_functions = build_metrics(
+        ["days_above_threshold"], CRCMEmulatorMetricConfig(tas_day_threshold=310.0, days_per_year=8.0)
+    )
+    active_metrics = build_metrics(
+        ["days_above_threshold"], CRCMEmulatorMetricConfig(tas_day_threshold=290.0, days_per_year=4.0)
+    )
+    target = torch.zeros(2, 2, 1, 2)
+    output = torch.ones_like(target)
+    output[:, 1] = -1.0
+    monkeypatch.setattr(runner, "forward_batch", MagicMock(return_value=(target, target, output)))
+    results = runner.evaluate([{}], active_metrics)
+    assert results["tas/days_above_threshold"] == pytest.approx(4.0)
+    assert results["pr/days_above_threshold"] == pytest.approx(0.0)
 
 
 def test_crcm_emulator_interpolation_baseline_logged_as_constant_line(monkeypatch):
