@@ -11,16 +11,18 @@
 #SBATCH --requeue
 #SBATCH --signal=B:TERM@300
 
-# Usage (from the repository root): sbatch run_files/run_inference_crcm_pipeline.sh <config_file.yaml> [best|latest]
+# Usage (from the repository root):
+#   sbatch run_files/run_inference_crcm_pipeline.sh <config_file.yaml> [best|latest] [--test] [--save-predictions]
 
 set -euo pipefail
 
-CONFIG_FILE=${1:?Usage: sbatch run_files/run_inference_crcm_pipeline.sh <config_file.yaml> [best|latest]}
+CONFIG_FILE=${1:?Usage: sbatch run_files/run_inference_crcm_pipeline.sh <config_file.yaml> [best|latest] [--test] [--save-predictions]}
 CHECKPOINT=${2:-best}
+EXTRA_ARGS=("${@:3}")
 
 cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
 mkdir -p logs
 source .venv/bin/activate
 export PYTHONUNBUFFERED=1
 
-srun python scripts/crcm_emulator/04_inference.py --config "$CONFIG_FILE" --checkpoint "$CHECKPOINT"
+srun python scripts/crcm_emulator/04_inference.py --config "$CONFIG_FILE" --checkpoint "$CHECKPOINT" "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"

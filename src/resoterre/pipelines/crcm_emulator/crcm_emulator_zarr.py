@@ -8,9 +8,9 @@ import dask.array as da
 import numpy as np
 import xarray
 
-from resoterre.data_management.cftime_utils import dates_in_range
+from resoterre.data_management.cftime_utils import dates_in_range, decode_times_as_cftime
 from resoterre.data_management.netcdf_utils import CFVariables
-from resoterre.datasets.cmip6.cmip6_utils import gcm_variable_levels, gcm_vertical_variables
+from resoterre.datasets.cmip6.cmip6_utils import gcm_calendars, gcm_variable_levels, gcm_vertical_variables
 from resoterre.datasets.cmip6.cmip6_variables import gcm_vertical_levels
 from resoterre.datasets.crcm.crcm_utils import (
     crcm_north_america_custom_grid_coordinates,
@@ -443,3 +443,128 @@ def write_crcm_time_slice_of_data(
     xarray_dataset.to_zarr(
         path_output, region={"time": time_slice, "num_variables": slice(variable_idx, variable_idx + 1)}
     )
+
+
+class PredictionZarrWriter:
+    """
+    Write denormalized predictions into one zarr dataset per GCM simulation, in the format of the CRCM data.
+
+    Parameters
+    ----------
+    output_directory : Path
+        Directory of the zarr datasets, named ``<prefix>_<gcm>_<scenario>_<member>.zarr``.
+    prefix : str
+        Prefix of the zarr dataset names.
+    start_datetime : datetime
+        Start datetime of the datasets.
+    end_datetime : datetime
+        End datetime of the datasets.
+    variable_names : list[str]
+        Names of the predicted variables, in channel order.
+    institution : str
+        Name of the institution producing the data.
+    method : str
+        Description of the emulator method.
+    tile_size : int | None
+        Size of the tile extracted from the CRCM grid.
+    chunk_size : int
+        Size of the chunks for the time dimension.
+    """
+
+    def __init__(
+        self,
+        output_directory: Path,
+        prefix: str,
+        start_datetime: datetime,
+        end_datetime: datetime,
+        variable_names: list[str],
+        institution: str,
+        method: str,
+        tile_size: int | None = None,
+        chunk_size: int = 8,
+    ) -> None:
+        self.output_directory = output_directory
+        self.prefix = prefix
+        self.start_datetime = start_datetime
+        self.end_datetime = end_datetime
+        self.variable_names = variable_names
+        self.institution = institution
+        self.method = method
+        self.tile_size = tile_size
+        self.chunk_size = chunk_size
+        self.day_indices: dict[str, dict[tuple[int, int, int], int]] = {}
+
+    def path(self, simulation: str) -> Path:
+        """
+        Get the path of the zarr dataset of a GCM simulation.
+
+        Parameters
+        ----------
+        simulation : str
+            GCM simulation name, ``<gcm>_<scenario>_<member>``.
+
+        Returns
+        -------
+        Path
+            Path to the zarr dataset.
+        """
+        return Path(self.output_directory, f"{self.prefix}_{simulation}.zarr")
+
+    def initialize(self, simulation: str) -> None:
+        """
+        Create the empty zarr dataset of a GCM simulation, replacing an existing one.
+
+        Parameters
+        ----------
+        simulation : str
+            GCM simulation name, ``<gcm>_<scenario>_<member>``.
+        """
+        path = self.path(simulation)
+        crcm_emulator_output_format(
+            path_output=path,
+            start_datetime=self.start_datetime,
+            end_datetime=self.end_datetime,
+            expected_variables=self.variable_names,
+            institution=self.institution,
+            tile_size=self.tile_size,
+            method=self.method,
+            calendar=gcm_calendars[simulation.split("_")[0]],
+            chunk_size=self.chunk_size,
+        )
+        with xarray.open_zarr(path, decode_times=decode_times_as_cftime) as dataset:
+            self.day_indices[simulation] = {
+                (date.year, date.month, date.day): i for i, date in enumerate(dataset["time"].values)
+            }
+
+    def write(
+        self,
+        simulations: list[str],
+        dates: list[tuple[int, int, int]],
+        predictions: np.ndarray,
+    ) -> None:
+        """
+        Write a batch of predictions, initializing the dataset of a simulation the first time it is seen.
+
+        Parameters
+        ----------
+        simulations : list[str]
+            GCM simulation name of each sample.
+        dates : list[tuple[int, int, int]]
+            Date (year, month, day) of each sample.
+        predictions : np.ndarray
+            Predictions in physical units, of shape (samples, variables, rlat, rlon).
+        """
+        for simulation in dict.fromkeys(simulations):
+            if simulation not in self.day_indices:
+                self.initialize(simulation)
+            samples = [i for i, name in enumerate(simulations) if name == simulation]
+            time_idx = np.array([self.day_indices[simulation][dates[i]] for i in samples])
+            runs = np.split(np.arange(len(samples)), np.flatnonzero(np.diff(time_idx) != 1) + 1)
+            for variable_idx, variable_name in enumerate(self.variable_names):
+                for run in runs:
+                    write_crcm_time_slice_of_data(
+                        path_output=self.path(simulation),
+                        variable_name=variable_name,
+                        data=predictions[np.array(samples)[run], variable_idx],
+                        time_slice=slice(int(time_idx[run[0]]), int(time_idx[run[-1]]) + 1),
+                    )

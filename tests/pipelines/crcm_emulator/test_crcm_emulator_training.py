@@ -5,8 +5,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 import torch
+import xarray
 from torch.utils import data as td
 
 from resoterre.config import (
@@ -24,7 +26,8 @@ from resoterre.data_generators.crcm_emulator_mock_dataset import CRCMEmulatorMoc
 from resoterre.data_management.timeseries import MultiTimeseries
 from resoterre.logging_utils import start_root_logger
 from resoterre.pipelines.crcm_emulator import crcm_emulator_training
-from resoterre.pipelines.crcm_emulator.metrics import build_metrics
+from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import PredictionZarrWriter
+from resoterre.pipelines.crcm_emulator.metrics import build_metrics, denormalize_crcm
 
 
 def test_crcm_emulator_training():
@@ -514,3 +517,62 @@ def test_crcm_emulator_interpolation_baseline_read_from_json(monkeypatch, saved_
         }
         saved = json.loads(Path(tmp_dir, "interpolation_baseline_validation_results.json").read_text())["metrics"]
         assert saved == (expected if scored else saved_metrics)
+
+
+class _DatedMockDataset(CRCMEmulatorMockDataset):
+    def __getitem__(self, idx):
+        item = super().__getitem__(idx)
+        item.update(
+            simulation="CNRM-ESM2-1_historical_r1i1p1f2", year=np.array(2000), month=np.array(1), day=np.array(idx + 2)
+        )
+        return item
+
+
+def test_crcm_emulator_evaluate_saves_predictions():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=2, crcm_variables=["tas", "pr"]),
+            model=CRCMEmulatorModelConfig(
+                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+            ),
+            loss=CRCMEmulatorLossConfig(mse_weight=1.0, ssim_weight=0.0),
+            training=CRCMEmulatorTrainingConfig(nb_of_epochs=1, device="cpu"),
+        )
+        runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+        dataset = _DatedMockDataset(
+            num_samples=3, num_input_channels=2, num_output_channels=2, tile_size=128, coarsen_factor=4
+        )
+        runner.dataset = dataset
+        runner.init_unet()
+        data_loader = td.DataLoader(dataset, 2, shuffle=False)
+        writer = PredictionZarrWriter(
+            output_directory=Path(tmp_dir),
+            prefix="test",
+            start_datetime=datetime(2000, 1, 1),
+            end_datetime=datetime(2000, 1, 5),
+            variable_names=["tas", "pr"],
+            institution="test",
+            method="UNet",
+            tile_size=128,
+            chunk_size=2,
+        )
+        runner.evaluate(data_loader, {}, prediction_writer=writer)
+
+        # days 2, 3 and 4 of the month are saved, the others are left empty
+        saved = xarray.open_zarr(Path(tmp_dir, "test_CNRM-ESM2-1_historical_r1i1p1f2.zarr"))
+        assert saved["is_computed"].values.tolist() == [[0, 1, 1, 1, 0]] * 2
+        item = dataset[1]
+        runner.set_eval_mode()
+        with torch.no_grad():
+            _, _, output = runner.forward_batch(
+                {k: torch.as_tensor(v)[None] for k, v in item.items() if k != "simulation"}
+            )
+        expected = denormalize_crcm(output, ["tas", "pr"])[0].numpy()
+        np.testing.assert_allclose(saved["tas"].values[2], expected[0], rtol=1e-4)
+        np.testing.assert_allclose(saved["pr"].values[2], expected[1], rtol=1e-4)

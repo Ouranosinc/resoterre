@@ -293,7 +293,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
             input_first_block["input_first_block_2d"][num_2d_channels, :, :] = mask_data
         return input_first_block
 
-    def __getitem__(self, idx: int) -> dict[str, np.ndarray]:
+    def __getitem__(self, idx: int) -> dict[str, Any]:
         """
         Get the input and target data for a given index.
 
@@ -354,6 +354,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         return {
             **input_first_block,
             "target": target,
+            "simulation": gcm_str,
             "year": np.array(current_datetime.year),
             "month": np.array(current_datetime.month),
             "day": np.array(current_datetime.day),
