@@ -88,7 +88,7 @@ class GCMToZarrFromConfig:
     """
 
     def __init__(self, config: CRCMEmulatorConfig, initialize_zarr: bool = False):
-        self.config = crcm_emulator_parse_config(config)
+        self.config = crcm_emulator_parse_config(config, remove_keys=["_definitions"])
         if self.config.preprocessing.gcm.start_datetime is None:
             raise ValueError("config.preprocessing.gcm.start_datetime is None")
         if self.config.preprocessing.gcm.end_datetime is None:

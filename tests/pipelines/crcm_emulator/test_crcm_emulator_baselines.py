@@ -15,7 +15,8 @@ from resoterre.config import (
     CRCMEmulatorPreprocessingConfig,
     CRCMEmulatorSourcePreprocessingConfig,
 )
-from resoterre.config.crcm_emulator import CRCMEmulatorMetricConfig
+from resoterre.config.climate import DaysAboveThresholdConfig, DaysAboveThresholdMapConfig
+from resoterre.config.ml import BiasMapConfig, CCCConfig, MeanBiasConfig, RMSEConfig
 from resoterre.pipelines.crcm_emulator import crcm_emulator_baselines
 from resoterre.pipelines.crcm_emulator.baseline_evaluation import date_tuples
 from resoterre.pipelines.crcm_emulator.crcm_emulator_baselines import InterpolationBaseline
@@ -97,20 +98,26 @@ def _baseline(
 @pytest.mark.parametrize("calendar", ["standard", "noleap", "360_day"])
 def test_evaluate(tmp_path, monkeypatch, calendar):
     baseline = _baseline(tmp_path, monkeypatch, computed_days=[1, 2, 3, 4, 5], calendar=calendar)
-    results = baseline.evaluate(["rmse", "max_value_absolute_error"], split="test")
+    results = baseline.evaluate([RMSEConfig(), MeanBiasConfig()], split="test")
     # Errors of 1, 2 and 3 in batches of 2 and 1: the mean is 2 only if batches are weighted by their size, and a
     # baseline taken from a shifted day would be at least 7 off.
-    assert results == pytest.approx({"tas/rmse_test": 2.0, "tas/max_value_absolute_error_test": 2.0})
+    assert results == pytest.approx({"tas/rmse_test": 2.0, "tas/mean_bias_test": -2.0})
 
 
 def test_evaluate_threshold_metrics_use_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     baseline = _baseline(tmp_path, monkeypatch, computed_days=[1, 2, 3, 4, 5])
-    baseline.config = baseline.config.model_copy(
-        update={"metric": CRCMEmulatorMetricConfig(tas_day_threshold=31.0, days_per_year=6.0)}
+    results = baseline.evaluate(
+        [
+            DaysAboveThresholdMapConfig(threshold=31.0, days_per_year=6.0),
+            DaysAboveThresholdConfig(threshold=31.0, days_per_year=6.0),
+        ],
+        split="test",
     )
-    results = baseline.evaluate(["days_above_threshold_map", "days_above_threshold"], split="test")
-    torch.testing.assert_close(results["tas/days_above_threshold_map_test"], torch.full((TILE_SIZE, TILE_SIZE), -2.0))
-    assert results["tas/days_above_threshold_test"] == pytest.approx(2.0)
+    torch.testing.assert_close(
+        results["tas/days_above_threshold_map_threshold_31_days_per_year_6_test"],
+        torch.full((TILE_SIZE, TILE_SIZE), -2.0),
+    )
+    assert results["tas/days_above_threshold_threshold_31_days_per_year_6_test"] == pytest.approx(2.0)
 
 
 def test_save_and_load_results_drops_non_single_valued(tmp_path, monkeypatch):
@@ -119,8 +126,8 @@ def test_save_and_load_results_drops_non_single_valued(tmp_path, monkeypatch):
     path = baseline.save_results(results, "test")
     saved = json.loads(path.read_text())
     assert saved == {"metrics": {"tas/rmse_test": 2.0}, "non_single_valued_metrics": ["tas/bias_map_test"]}
-    assert baseline.load_results(["rmse", "bias_map"], "test") == {"tas/rmse_test": 2.0}
-    assert baseline.load_results(["rmse", "ccc"], "test") is None
+    assert baseline.load_results([RMSEConfig(), BiasMapConfig()], "test") == {"tas/rmse_test": 2.0}
+    assert baseline.load_results([RMSEConfig(), CCCConfig()], "test") is None
 
 
 def test_date_tuples_preserves_360_day_dates() -> None:
@@ -132,7 +139,7 @@ def test_date_tuples_preserves_360_day_dates() -> None:
 def test_evaluate_baseline_not_computed(tmp_path, monkeypatch):
     baseline = _baseline(tmp_path, monkeypatch, computed_days=[1, 2, 4, 5])
     with pytest.raises(RuntimeError, match="not computed for time index 2"):
-        baseline.evaluate(["rmse"], split="test")
+        baseline.evaluate([RMSEConfig()], split="test")
 
 
 @pytest.mark.parametrize(
@@ -141,7 +148,7 @@ def test_evaluate_baseline_not_computed(tmp_path, monkeypatch):
 def test_evaluate_invalid_split(tmp_path, monkeypatch, split, match):
     baseline = _baseline(tmp_path, monkeypatch, computed_days=[])
     with pytest.raises(ValueError, match=match):
-        baseline.evaluate(["rmse"], split=split)
+        baseline.evaluate([RMSEConfig()], split=split)
 
 
 def test_run(tmp_path):

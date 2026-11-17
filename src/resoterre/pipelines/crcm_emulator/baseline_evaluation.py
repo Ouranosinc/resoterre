@@ -121,13 +121,12 @@ def evaluate_precomputed_predictions(
     dataset: CRCMEmulatorDataset,
     prediction_paths: dict[str, Path],
     variable_names: list[str],
-    metric_names: list[str],
+    metric_configs: list[CRCMEmulatorMetricConfig],
     batch_size: int,
     num_workers: int = 0,
     prefetch_factor: int = 2,
     device: str = "cpu",
     desc: str = "Evaluation",
-    metric_config: CRCMEmulatorMetricConfig | None = None,
 ) -> dict[str, float]:
     """
     Score precomputed predictions against the CRCM targets of a dataset.
@@ -144,8 +143,8 @@ def evaluate_precomputed_predictions(
         (``<gcm>_<pathway>_<realization>``).
     variable_names : list[str]
         Variables to score, in the order of the target channels.
-    metric_names : list[str]
-        Names of the metrics, as for ``inference.evaluation_metrics``.
+    metric_configs : list[CRCMEmulatorMetricConfig]
+        Metric configurations, as for ``inference.evaluation_metrics``.
     batch_size : int
         Number of samples per batch.
     num_workers : int
@@ -156,15 +155,13 @@ def evaluate_precomputed_predictions(
         Device on which the metrics are computed (e.g., "cpu", "cuda").
     desc : str
         Description of the progress bar.
-    metric_config : CRCMEmulatorMetricConfig or None, optional
-        Metric construction settings. None uses defaults.
 
     Returns
     -------
     dict[str, float]
         One consolidated value per metric and variable (``<variable>/<metric>``).
     """
-    metrics = build_metrics(metric_names, metric_config)
+    metrics = build_metrics(metric_configs)
     evaluation_dataset = PrecomputedPredictionDataset(dataset, prediction_paths, variable_names)
     data_loader: td.DataLoader[Any] = td.DataLoader(
         evaluation_dataset,
@@ -176,19 +173,20 @@ def evaluate_precomputed_predictions(
         pin_memory=device.startswith("cuda"),
     )
     running_metrics: dict[str, tuple[torch.Tensor, float]] = {}
+    configs = {}
+    for metric_config in metric_configs:
+        configs.update({metric_config.unique_string(variable_name): metric_config for variable_name in variable_names})
     try:
         with torch.no_grad():
             for batch in tqdm(data_loader, desc=desc):
                 target_tensor = batch["target"].to(device).float()
                 output_tensor = batch["output"].to(device).float()
                 batch_metrics = {}
-                for name, metric_function in metrics.items():
+                for config, metric_function in metrics.items():
                     batch_metrics.update(
-                        per_variable_metrics(name, metric_function(target_tensor, output_tensor), variable_names)
+                        per_variable_metrics(config, metric_function(target_tensor, output_tensor), variable_names)
                     )
-                running_consolidation(
-                    running_metrics, batch_metrics, batch_size=target_tensor.shape[0], metric_functions=metrics
-                )
+                running_consolidation(running_metrics, batch_metrics, configs, batch_size=target_tensor.shape[0])
     finally:
         evaluation_dataset.close()
-    return consolidation(running_metrics, metric_functions=metrics)
+    return consolidation(running_metrics, configs)

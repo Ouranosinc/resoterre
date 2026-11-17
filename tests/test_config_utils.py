@@ -11,6 +11,14 @@ from pydantic import Field, ValidationError
 
 from resoterre import config_utils
 from resoterre.config import BaseConfig, CRCMEmulatorConfig, OptimizerConfig, RDPSToHRDPSConfig
+from resoterre.config.ml import (
+    BasePlotConfig,
+    BiasMapConfig,
+    CCCConfig,
+    MeanBiasConfig,
+    RMSEConfig,
+    WassersteinDistanceConfig,
+)
 from resoterre.pipelines.crcm_emulator.crcm_emulator_training import CRCMEmulatorTrainingFromConfig
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 
@@ -114,16 +122,9 @@ def test_crcm_emulator_logger_config_from_yaml():
     assert config.data.training_periods["all"][0].year == 2000
 
 
-@pytest.mark.parametrize("metric_name", ["bias_map", "days_above_threshold_map"])  # type: ignore[untyped-decorator]
-def test_crcm_emulator_default_metric_plot_mapping(metric_name: str) -> None:
-    """Check that spatial diagnostics have default plotting configurations."""
-    config = CRCMEmulatorConfig.model_validate({"training": {"validation_metrics": [metric_name]}})
-    assert config.plot.metric_mapping[metric_name] == {"figure_type": "nd_plot", "figure_kwargs": {"reverse_i": True}}
-
-
 def test_crcm_emulator_nested_config_from_yaml():
     path_yaml = Path(__file__).parents[1] / "configs" / "crcm_emulator" / "crcm_emulator_cnrm_ssp245.yaml"
-    config = crcm_emulator_parse_config(path_yaml)
+    config = crcm_emulator_parse_config(path_yaml, remove_keys=["_definitions"])
     assert config.paths.output == Path("/Path/to/output")
     assert config.preprocessing.gcm.path == Path("/Path/to/preprocessed/gcm_preprocessing")
     assert config.preprocessing.crcm.variables == ["tas", "pr", "uas", "vas"]
@@ -135,8 +136,30 @@ def test_crcm_emulator_nested_config_from_yaml():
     assert config.optimizer.lr == 0.001
     assert config.data.prefetch_factor == 4
     assert config.training.figure_every_n_steps == 10
-    assert config.training.validation_metrics == ["rmse", "ccc", "wasserstein_distance", "bias_map", "mean_bias"]
-    assert config.inference.evaluation_metrics == ["rmse", "ccc", "wasserstein_distance", "bias_map", "mean_bias"]
+    assert config.training.validation_metrics == [
+        RMSEConfig(),
+        CCCConfig(),
+        WassersteinDistanceConfig(),
+        BiasMapConfig(
+            plot=BasePlotConfig(
+                figure_type="nd_plot",
+                figure_kwargs={"reverse_i": True, "cmap": "coolwarm", "symmetric": True, "show_range": True},
+            )
+        ),
+        MeanBiasConfig(),
+    ]
+    assert config.inference.evaluation_metrics == [
+        RMSEConfig(),
+        CCCConfig(),
+        WassersteinDistanceConfig(),
+        BiasMapConfig(
+            plot=BasePlotConfig(
+                figure_type="nd_plot",
+                figure_kwargs={"reverse_i": True, "cmap": "coolwarm", "symmetric": True, "show_range": True},
+            )
+        ),
+        MeanBiasConfig(),
+    ]
     assert config.training.device == "cuda"
     assert config.analysis.windows[1] == (datetime(2015, 1, 1), datetime(2100, 12, 31), "ssp245")
     assert config.analysis.surface_variables["tas"] == "ta"

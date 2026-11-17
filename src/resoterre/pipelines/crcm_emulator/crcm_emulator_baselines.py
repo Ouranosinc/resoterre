@@ -10,6 +10,7 @@ import xarray
 from scipy.ndimage import zoom
 
 from resoterre.config import CRCMEmulatorConfig
+from resoterre.config.crcm_emulator import CRCMEmulatorMetricConfig
 from resoterre.data_management.cftime_utils import decode_times_as_cftime
 from resoterre.datasets.cmip6.cmip6_utils import gcm_calendars
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
@@ -54,7 +55,7 @@ class InterpolationBaseline:
     """
 
     def __init__(self, config: CRCMEmulatorConfig, initialize_zarr: bool = False) -> None:
-        self.config = crcm_emulator_parse_config(config)
+        self.config = crcm_emulator_parse_config(config, remove_keys=["_definitions"])
         if initialize_zarr:
             self.initialize_zarr()
 
@@ -98,14 +99,14 @@ class InterpolationBaseline:
             self.config.paths.baselines_out_dirs["interpolation"], f"interpolation_baseline_{split}_results.json"
         )
 
-    def load_results(self, metric_names: list[str], split: str) -> dict[str, float] | None:
+    def load_results(self, metric_configs: list[CRCMEmulatorMetricConfig], split: str) -> dict[str, float] | None:
         """
         Load the saved scores of the interpolation baseline on a data split (see ``save_results``).
 
         Parameters
         ----------
-        metric_names : list[str]
-            Names of the metrics needed.
+        metric_configs : list[CRCMEmulatorMetricConfig]
+            List of metric configurations needed.
         split : str
             Either "test" or "validation".
 
@@ -123,10 +124,10 @@ class InterpolationBaseline:
         saved = content.get("metrics", {})
         not_saved = set(content.get("non_single_valued_metrics", []))
         names = [
-            f"{variable}/{metric}_{key}"
+            f"{metric.unique_string(variable)}_{key}"
             for key in getattr(self.config.data, f"{split}_periods")
             for variable in self.config.data.crcm_variables
-            for metric in metric_names
+            for metric in metric_configs
         ]
         if any(name not in saved and name not in not_saved for name in names):
             return None
@@ -157,14 +158,14 @@ class InterpolationBaseline:
         path.write_text(json.dumps(content, indent=2))
         return path
 
-    def evaluate(self, metric_names: list[str], split: str = "test") -> dict[str, float]:
+    def evaluate(self, metric_configs: list[CRCMEmulatorMetricConfig], split: str = "test") -> dict[str, float]:
         """
         Evaluate the computed baseline against the CRCM data over the validation or test periods, by key.
 
         Parameters
         ----------
-        metric_names : list[str]
-            Names of the metrics, as for ``inference.evaluation_metrics``.
+        metric_configs : list[CRCMEmulatorMetricConfig]
+            Metric configurations, as for ``inference.evaluation_metrics``.
         split : str
             Either "test" or "validation".
 
@@ -202,13 +203,12 @@ class InterpolationBaseline:
                 dataset,
                 {"_".join(x): self.baseline_zarr_path(x) for x in self.config.preprocessing.simulations},
                 variable_names,
-                metric_names,
+                metric_configs,
                 batch_size=self.config.data.batch_size,
                 num_workers=self.config.data.num_workers,
                 prefetch_factor=self.config.data.prefetch_factor,
                 device=self.config.inference.device or self.config.training.device,
                 desc=f"Baseline {split} {key}",
-                metric_config=self.config.metrics,
             )
             results.update({f"{name}_{key}": value for name, value in key_results.items()})
         return results

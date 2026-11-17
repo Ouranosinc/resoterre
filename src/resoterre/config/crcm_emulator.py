@@ -2,12 +2,36 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Annotated
 
 from pydantic import Field
 
 from resoterre.config.base import BaseConfig
-from resoterre.config.ml import OptimizerConfig
+from resoterre.config.climate import DaysAboveThresholdConfig, DaysAboveThresholdMapConfig
+from resoterre.config.ml import (
+    BiasMapConfig,
+    CCCConfig,
+    MeanBiasConfig,
+    OptimizerConfig,
+    RMSEConfig,
+    TemporalQuantileBiasConfig,
+    TemporalQuantileBiasMapConfig,
+    WassersteinDistanceConfig,
+)
+
+
+CRCMEmulatorMetricConfig = Annotated[
+    BiasMapConfig
+    | CCCConfig
+    | DaysAboveThresholdConfig
+    | DaysAboveThresholdMapConfig
+    | MeanBiasConfig
+    | RMSEConfig
+    | TemporalQuantileBiasConfig
+    | TemporalQuantileBiasMapConfig
+    | WassersteinDistanceConfig,
+    Field(discriminator="name"),
+]
 
 
 class ExperimentLoggerConfig(BaseConfig):
@@ -279,8 +303,7 @@ class CRCMEmulatorTrainingConfig(BaseConfig):
     device: str = "cpu"
     seed: int | None = 42
     figure_every_n_steps: int = Field(default=10, ge=0)
-    # TODO: metrics to be different per variable so a dict instead of a list
-    validation_metrics: list[str] = Field(default_factory=lambda: ["max_value_absolute_error"])
+    validation_metrics: list[CRCMEmulatorMetricConfig] = Field(default_factory=lambda: [RMSEConfig()])
     log_interpolation_baseline: bool = False
     # TODO: not used, consider removing
     num_threads: int = 2
@@ -306,47 +329,7 @@ class CRCMEmulatorInferenceConfig(BaseConfig):
     variables: list[str] = Field(default_factory=list)
     periods: list[list[datetime]] | None = None
     device: str | None = None
-    evaluation_metrics: list[str] = Field(default_factory=lambda: ["max_value_absolute_error"])
-
-
-class CRCMEmulatorMetricConfig(BaseConfig):
-    """
-    Metric configuration for the CRCM emulator.
-
-    Attributes
-    ----------
-    tas_day_threshold : float
-        Temperature threshold for the days above threshold metric (default 303.15 K).
-    days_per_year : float
-        Number of days per year used for annualized metrics (default 365).
-    """
-
-    tas_day_threshold: float = 303.15
-    days_per_year: float = 365
-
-
-class CRCMEmulatorPlotConfig(BaseConfig):
-    """
-    Plotting settings of the CRCM emulator.
-
-    Attributes
-    ----------
-    metric_mapping : dict[str, dict[str, Any]]
-        Mapping of metrics to their plotting configurations.
-    variable_mapping : dict[str, dict[str, Any]]
-        Mapping of variables to their plotting configurations.
-    """
-
-    metric_mapping: dict[str, dict[str, Any]] = Field(
-        default_factory=lambda: {
-            "bias_map": {
-                "figure_type": "nd_plot",
-                "figure_kwargs": {"reverse_i": True, "cmap": "coolwarm", "symmetric": True},
-            },
-            "days_above_threshold_map": {"figure_type": "nd_plot", "figure_kwargs": {"reverse_i": True}},
-        }
-    )
-    variable_mapping: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    evaluation_metrics: list[CRCMEmulatorMetricConfig] = Field(default_factory=lambda: [RMSEConfig()])
 
 
 class CRCMEmulatorDebugConfig(BaseConfig):
@@ -417,8 +400,6 @@ class CRCMEmulatorConfig(BaseConfig):
     training: CRCMEmulatorTrainingConfig = Field(default_factory=CRCMEmulatorTrainingConfig)
     # TODO: not used, consider removing
     inference: CRCMEmulatorInferenceConfig = Field(default_factory=CRCMEmulatorInferenceConfig)
-    metrics: CRCMEmulatorMetricConfig = Field(default_factory=CRCMEmulatorMetricConfig)
-    plot: CRCMEmulatorPlotConfig = Field(default_factory=CRCMEmulatorPlotConfig)
     debug: CRCMEmulatorDebugConfig = Field(default_factory=CRCMEmulatorDebugConfig)
     analysis: CRCMEmulatorAnalysisConfig = Field(default_factory=CRCMEmulatorAnalysisConfig)
     logger: ExperimentLoggerConfig | None = None

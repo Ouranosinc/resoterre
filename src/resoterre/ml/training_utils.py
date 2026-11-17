@@ -179,10 +179,9 @@ class NNTraining(ABC):
         self.train_data_loader: td.DataLoader | None = None  # ToDo: can there be more than one data loader?
         self.validation_data_loader: td.DataLoader | None = None
         self.metrics = MultiTimeseries()
+        self.metric_configs: dict[str, Any] = {}
         self.validation_metrics = MultiTimeseries()
         self.validation_diagnostics: dict[str, Any] = {}
-        # ToDo: this structure is getting quite complex, perhaps it needs a class
-        self.diagnostic_figure_mapping: dict[str, dict[str, Any]] = {}
 
         self.best_validation_metrics: dict[str, MetricMinimum] = {}
         # all consolidated validation metrics of the epoch that improved the first monitored metric the most
@@ -555,10 +554,10 @@ class NNTraining(ABC):
         for key, nd_array in self.validation_diagnostics.items():
             # ToDo: Some diagnostic data should also be saved to disk for later use in publication figures.
             figure = figure_dispatcher(
-                figure_type=self.diagnostic_figure_mapping[key]["figure_type"],
+                figure_type=self.metric_configs[key].plot.figure_type,
                 data=nd_array.numpy(),
                 title=diagnostic_title(key),
-                figure_kwargs=self.diagnostic_figure_mapping[key].get("figure_kwargs", {}),
+                figure_kwargs=self.metric_configs[key].plot.figure_kwargs,
             )
             self.experiment_logger.log_figure(figure, name=f"validation_{key}", step=self.total_iterations)
 

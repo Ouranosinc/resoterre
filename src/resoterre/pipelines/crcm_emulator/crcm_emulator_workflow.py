@@ -30,7 +30,10 @@ from resoterre.plots.nd_plots import CustomPColorMesh
 logger = logging.getLogger(__name__)
 
 
-def crcm_emulator_parse_config(config: CRCMEmulatorConfig | Path | str) -> CRCMEmulatorConfig:
+def crcm_emulator_parse_config(
+    config: CRCMEmulatorConfig | Path | str,
+    remove_keys: list[str] | None = None,
+) -> CRCMEmulatorConfig:
     """
     Parse the CRCM emulator configuration from a CRCMEmulatorConfig object or a YAML file.
 
@@ -38,6 +41,8 @@ def crcm_emulator_parse_config(config: CRCMEmulatorConfig | Path | str) -> CRCME
     ----------
     config : CRCMEmulatorConfig | Path | str
         CRCM emulator configuration object or path to a YAML file.
+    remove_keys : list[str] | None
+        List of keys to remove from the YAML configuration before parsing.
 
     Returns
     -------
@@ -53,7 +58,7 @@ def crcm_emulator_parse_config(config: CRCMEmulatorConfig | Path | str) -> CRCME
     if isinstance(config, CRCMEmulatorConfig):
         parsed_config = config
     else:
-        parsed_config = config_from_yaml(CRCMEmulatorConfig, config)
+        parsed_config = config_from_yaml(CRCMEmulatorConfig, config, remove_keys=remove_keys)
     if parsed_config.logger is not None and parsed_config.logger.experiment_name is None:
         parsed_config = parsed_config.model_copy(
             update={
@@ -76,7 +81,7 @@ class CRCMToZarrFromConfig:
     """
 
     def __init__(self, config: CRCMEmulatorConfig, initialize_zarr: bool = False):
-        self.config = crcm_emulator_parse_config(config)
+        self.config = crcm_emulator_parse_config(config, remove_keys=["_definitions"])
         rlon, rlat, _, _ = crcm_north_america_grid_coordinates()
         self.rlon_buffer = (len(rlon) - self.config.data.tile_size) // 2
         self.rlat_buffer = (len(rlat) - self.config.data.tile_size) // 2

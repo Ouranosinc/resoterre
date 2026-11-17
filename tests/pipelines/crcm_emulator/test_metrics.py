@@ -1,10 +1,14 @@
+from typing import Literal
+
 import numpy as np
 import pytest
 import torch
 from fastdigest import TDigest
 from scipy.stats import wasserstein_distance
 
+from resoterre.config.climate import DaysAboveThresholdConfig, DaysAboveThresholdMapConfig
 from resoterre.config.crcm_emulator import CRCMEmulatorMetricConfig
+from resoterre.config.ml import BaseMetricConfig, CCCConfig, MeanBiasConfig, RMSEConfig, TemporalQuantileBiasConfig
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
 from resoterre.ml.data_loader_utils import inverse_normalize
 from resoterre.pipelines.crcm_emulator import metrics
@@ -28,7 +32,8 @@ def test_max_value_absolute_error():
 
 
 def test_days_above_threshold_map() -> None:
-    metric = metrics.build_metrics(["days_above_threshold_map"])["days_above_threshold_map"]
+    config = DaysAboveThresholdMapConfig(threshold=303.15)
+    metric = metrics._build_metric(config)
     assert isinstance(metric, metrics.DaysAboveThresholdMap)
     assert metric.name == "days_above_threshold_map"
     target = torch.zeros(2, 2, 2, 2)
@@ -42,11 +47,11 @@ def test_days_above_threshold_map() -> None:
 
 
 def test_yearly_days_above_threshold_map_consolidation() -> None:
-    days_per_year = 4.0
-    metric_functions = metrics.build_metrics(
-        ["days_above_threshold_map"], CRCMEmulatorMetricConfig(days_per_year=days_per_year)
-    )
-    map_metric = metric_functions["days_above_threshold_map"]
+    config = DaysAboveThresholdMapConfig(threshold=303.15, days_per_year=4.0)
+    assert config.unique_string() == "days_above_threshold_map_threshold_303p15_days_per_year_4"
+    key = config.unique_string("tas")
+    assert key == "tas/days_above_threshold_map_threshold_303p15_days_per_year_4"
+    metric = metrics._build_metric(config)
     running_map: dict[str, metrics.ReducerState] = {}
 
     first_target = torch.zeros(2, 1, 1, 2)
@@ -59,19 +64,20 @@ def test_yearly_days_above_threshold_map_consolidation() -> None:
     second_output[0, 0, 0, 0] = 304.0
 
     for target, output in ((first_target, first_output), (second_target, second_output)):
-        map_batch = metrics.per_variable_metrics(map_metric.name, map_metric(target, output), ["tas"])
-        metrics.running_consolidation(running_map, map_batch, batch_size=2, metric_functions=metric_functions)
+        map_batch = metrics.per_variable_metrics(config, metric(target, output), ["tas"])
+        metrics.running_consolidation(running_map, map_batch, {key: config}, batch_size=2)
 
-    annual_map = metrics.consolidation(running_map, metric_functions=metric_functions)["tas/days_above_threshold_map"]
+    annual_map = metrics.consolidation(running_map, {key: config})[key]
     torch.testing.assert_close(annual_map, torch.tensor([[0.0, -1.0]]))
 
 
 def test_yearly_days_above_threshold_rmse_consolidation() -> None:
-    days_per_year = 4.0
-    metric_functions = metrics.build_metrics(
-        ["days_above_threshold"], CRCMEmulatorMetricConfig(days_per_year=days_per_year)
-    )
-    rmse_metric = metric_functions["days_above_threshold"]
+    config = DaysAboveThresholdConfig(threshold=303.15, days_per_year=4.0)
+    assert config.unique_string() == "days_above_threshold_threshold_303p15_days_per_year_4"
+    key = config.unique_string("tas")
+    assert key == "tas/days_above_threshold_threshold_303p15_days_per_year_4"
+    metric_functions = metrics.build_metrics([config])
+    rmse_metric = metric_functions[config]
     running_rmse: dict[str, metrics.ReducerState] = {}
 
     first_target = torch.zeros(2, 1, 1, 2)
@@ -84,39 +90,52 @@ def test_yearly_days_above_threshold_rmse_consolidation() -> None:
     second_output[0, 0, 0, 0] = 304.0
 
     for target, output in ((first_target, first_output), (second_target, second_output)):
-        rmse_batch = metrics.per_variable_metrics(rmse_metric.name, rmse_metric(target, output), ["tas"])
-        metrics.running_consolidation(running_rmse, rmse_batch, batch_size=2, metric_functions=metric_functions)
+        rmse_batch = metrics.per_variable_metrics(config, rmse_metric(target, output), ["tas"])
+        metrics.running_consolidation(
+            running_rmse,
+            rmse_batch,
+            {key: config},
+            batch_size=2,
+        )
 
-    annual_rmse = metrics.consolidation(running_rmse, metric_functions=metric_functions)["tas/days_above_threshold"]
+    annual_rmse = metrics.consolidation(running_rmse, {key: config})[key]
     assert annual_rmse == pytest.approx((0.5) ** 0.5)
 
 
-@pytest.mark.parametrize("metric_name", ["days_above_threshold", "days_above_threshold_map"])  # type: ignore[untyped-decorator]
-def test_metric_configuration_is_isolated(metric_name: str) -> None:
-    configured = metrics.build_metrics(
-        [metric_name], CRCMEmulatorMetricConfig(tas_day_threshold=310.0, days_per_year=4.0)
-    )
-    defaults = metrics.build_metrics([metric_name])
+@pytest.mark.parametrize("metric_config", [DaysAboveThresholdConfig, DaysAboveThresholdMapConfig])  # type: ignore[untyped-decorator]
+def test_metric_configuration_is_isolated(metric_config: type[CRCMEmulatorMetricConfig]) -> None:
+    kwargs = {"threshold": 310.0, "days_per_year": 4.0}
+    config_default = metric_config(threshold=303.15)
+    config = metric_config(**kwargs)
+    configured = metrics.build_metrics([config])
+    defaults = metrics.build_metrics([config_default])
     target = torch.zeros(1, 1, 1, 2)
     output = torch.tensor([[[[305.0, 311.0]]]])
-    torch.testing.assert_close(configured[metric_name](target, output), torch.tensor([[[0, 1]]]))
-    torch.testing.assert_close(defaults[metric_name](target, output), torch.tensor([[[1, 1]]]))
-    reducer = metrics.reducer_for_metric(f"tas/{metric_name}", metric_functions=configured)
-    assert reducer is configured[metric_name].reducer
-    assert defaults[metric_name].reducer.days_per_year == CRCMEmulatorMetricConfig().days_per_year
+    torch.testing.assert_close(configured[config](target, output), torch.tensor([[[0, 1]]]))
+    torch.testing.assert_close(defaults[config_default](target, output), torch.tensor([[[1, 1]]]))
+    reducer = metrics.reducer_for_metric(config)
+    assert reducer is configured[config].reducer
+    assert defaults[config_default].reducer.days_per_year == DaysAboveThresholdConfig(threshold=303.15).days_per_year
 
 
 def test_configured_metrics_preserve_loss_and_unknown_fallbacks() -> None:
-    metric_functions = metrics.build_metrics(["rmse", "ccc"])
-    assert isinstance(metric_functions["ccc"], metrics.CCC)
-    assert isinstance(metrics.reducer_for_metric("loss", metric_functions=metric_functions), metrics.SampleMeanReducer)
-    assert isinstance(
-        metrics.reducer_for_metric("unknown", metric_functions=metric_functions), metrics.BatchMeanReducer
-    )
+    class LossMetricConfig(BaseMetricConfig):
+        name: Literal["loss"] = "loss"
+
+    class UnknownMetricConfig(BaseMetricConfig):
+        name: Literal["unknown_metric"] = "unknown_metric"
+
+    config_1 = RMSEConfig()
+    config_2 = CCCConfig()
+    metric_functions = metrics.build_metrics([config_1, config_2])
+    assert isinstance(metric_functions[config_2], metrics.CCC)
+    assert isinstance(metrics.reducer_for_metric(LossMetricConfig()), metrics.SampleMeanReducer)
+    assert isinstance(metrics.reducer_for_metric(UnknownMetricConfig()), metrics.BatchMeanReducer)
 
 
 def test_per_variable_metrics():
-    result = metrics.per_variable_metrics("rmse", torch.tensor([1.0, 2.0]), ["tas", "pr"])
+    config = RMSEConfig()
+    result = metrics.per_variable_metrics(config, torch.tensor([1.0, 2.0]), ["tas", "pr"])
     assert {name: value.item() for name, value in result.items()} == {"tas/rmse": 1.0, "pr/rmse": 2.0}
 
 
@@ -128,44 +147,40 @@ def test_metrics_are_reported_per_variable():
 
 
 def test_reducer_lookup_handles_metric_prefixes_and_fallbacks() -> None:
-    metric_functions = metrics.build_metrics(["rmse", "ccc", "days_above_threshold_map", "days_above_threshold"])
-    expected_reducers = {
-        "tas/rmse": metrics.SampleMeanReducer,
-        "mse_loss": metrics.SampleMeanReducer,
-        "tas/unknown_metric": metrics.BatchMeanReducer,
-        "ccc": metrics.SampleMeanReducer,
-        "tas/days_above_threshold_map": metrics.YearlyMeanReducer,
-        "pr/days_above_threshold": metrics.AnnualizedSpatialRMSEReducer,
-    }
-    for metric_key, reducer_class in expected_reducers.items():
-        assert isinstance(metrics.reducer_for_metric(metric_key, metric_functions=metric_functions), reducer_class)
+    class MSELossConfig(BaseMetricConfig):
+        name: Literal["mse_loss"] = "mse_loss"
+
+    class UnknownMetricConfig(BaseMetricConfig):
+        name: Literal["unknown_metric"] = "unknown_metric"
+
+    expected_reducers = [
+        (RMSEConfig(variables=["tas"]), metrics.SampleMeanReducer),
+        (MSELossConfig(), metrics.SampleMeanReducer),
+        (UnknownMetricConfig(), metrics.BatchMeanReducer),
+        (CCCConfig(), metrics.SampleMeanReducer),
+        (DaysAboveThresholdMapConfig(variables=["tas"], threshold=303.15), metrics.YearlyMeanReducer),
+        (DaysAboveThresholdConfig(variables=["pr"], threshold=303.15), metrics.AnnualizedSpatialRMSEReducer),
+    ]
+    for config, reducer_class in expected_reducers:
+        assert isinstance(metrics.reducer_for_metric(config), reducer_class)
 
 
 def test_consolidation_supports_all_reductions() -> None:
-    class ReducedMetric(metrics.Metric):
-        def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
-            return target_data.sum()
+    class MinMetricConfig(BaseMetricConfig):
+        name: Literal["min"] = "min"
 
-    class MaxMetric(ReducedMetric):
-        name = "test_max"
-        reducer = metrics.ExtremumReducer(torch.maximum)
+    class MaxMetricConfig(BaseMetricConfig):
+        name: Literal["max"] = "max"
 
-    class MinMetric(ReducedMetric):
-        name = "test_min"
-        reducer = metrics.ExtremumReducer(torch.minimum)
+    class SumMetricConfig(BaseMetricConfig):
+        name: Literal["sum"] = "sum"
 
-    class SumMetric(ReducedMetric):
-        name = "test_sum"
-        reducer = metrics.SumReducer()
-
-    metric_functions: dict[str, metrics.Metric] = {
-        metric_class.name: metric_class() for metric_class in (MaxMetric, MinMetric, SumMetric)
-    }
+    configs = {"test_max": MaxMetricConfig(), "test_min": MinMetricConfig(), "test_sum": SumMetricConfig()}
     running: dict[str, tuple[torch.Tensor, float]] = {}
     for batch_size, value in ((4, 3.0), (4, 7.0), (1, 2.0)):
         batch = {f"test_{r}": torch.tensor(value) for r in ("max", "min", "sum")}
-        metrics.running_consolidation(running, batch, batch_size, metric_functions=metric_functions)
-    assert metrics.consolidation(running, metric_functions=metric_functions) == {
+        metrics.running_consolidation(running, batch, configs, batch_size)
+    assert metrics.consolidation(running, configs) == {
         "test_max": 7.0,
         "test_min": 2.0,
         "test_sum": 12.0,
@@ -173,29 +188,26 @@ def test_consolidation_supports_all_reductions() -> None:
 
 
 def test_consolidation_weights_losses_by_batch_size():
+    class UnknownMetricConfig(BaseMetricConfig):
+        name: Literal["unknown_metric"] = "unknown_metric"
+
+    configs = {"mse_loss": RMSEConfig(), "some_other_metric": UnknownMetricConfig()}
     running: dict[str, tuple[torch.Tensor, float]] = {}
     # 128 samples with zero error, then a partial batch of 1 sample with a squared error of 100
     for batch_size, value in ((128, 0.0), (1, 100.0)):
         metrics.running_consolidation(
             running,
             {"mse_loss": torch.tensor(value), "some_other_metric": torch.tensor(value)},
+            configs,
             batch_size,
-            metric_functions={},
         )
-    result = metrics.consolidation(running, metric_functions={})
+    result = metrics.consolidation(running, configs=configs)
     assert result["mse_loss"] == pytest.approx(100 / 129)
     assert result["some_other_metric"] == pytest.approx(50.0)
 
 
 def test_consolidation_empty():
-    assert metrics.consolidation({}, metric_functions={}) == {}
-
-
-def test_build_metrics():
-    assert list(metrics.build_metrics(["max_value_absolute_error"])) == ["max_value_absolute_error"]
-    assert metrics.build_metrics([]) == {}
-    with pytest.raises(ValueError, match="Unknown metrics"):
-        metrics.build_metrics(["not_a_metric"])
+    assert metrics.consolidation({}, configs={}) == {}
 
 
 def test_rmse():
@@ -278,17 +290,21 @@ def test_mean_bias_consolidate():
     target = torch.ones(2, 1, 4, 4)
     output = target + 2.5  # initial bias of 2.5, batch size 2
     metric_result = metric(target, output)
+    config = MeanBiasConfig()
+    assert config.unique_string() == "mean_bias"
+    key = config.unique_string("tas")
+    assert key == "tas/mean_bias"
     running_metrics: dict[str, tuple[torch.Tensor, float]] = {}
-    metrics.running_consolidation(running_metrics, {"tas/mean_bias": metric_result}, batch_size=2)
-    assert running_metrics["tas/mean_bias"][0].item() == pytest.approx(5.0, rel=1e-5)
-    assert running_metrics["tas/mean_bias"][1] == 2
+    metrics.running_consolidation(running_metrics, {key: metric_result}, {key: config}, batch_size=2)
+    assert running_metrics[key][0].item() == pytest.approx(5.0, rel=1e-5)
+    assert running_metrics[key][1] == 2
     output = target + 7.5  # next batch has bias of 7.5, mean bias is now 5.0
     metric_result = metric(target, output)
-    metrics.running_consolidation(running_metrics, {"tas/mean_bias": metric_result}, batch_size=2)
-    assert running_metrics["tas/mean_bias"][0].item() == pytest.approx(20.0, rel=1e-5)
-    assert running_metrics["tas/mean_bias"][1] == 4
-    consolidate_result = metrics.consolidation(running_metrics)
-    assert consolidate_result["tas/mean_bias"] == pytest.approx(5.0, rel=1e-5)
+    metrics.running_consolidation(running_metrics, {key: metric_result}, {key: config}, batch_size=2)
+    assert running_metrics[key][0].item() == pytest.approx(20.0, rel=1e-5)
+    assert running_metrics[key][1] == 4
+    consolidate_result = metrics.consolidation(running_metrics, {key: config})
+    assert consolidate_result[key] == pytest.approx(5.0, rel=1e-5)
 
 
 def test_temporal_quantile_bias():
@@ -314,31 +330,57 @@ def test_temporal_quantile_bias_consolidate():
     target = torch.tensor(np.arange(128 * 3 * 2 * 2).reshape(128, 3, 2, 2), dtype=torch.float32)
     output = target + 10.0  # output bias of 10.0 everywhere
     metric_results = metric(target, output)
+    config = TemporalQuantileBiasConfig(quantile=0.95)
+    assert config.unique_string() == "temporal_quantile_bias_quantile_0p95"
+    key = config.unique_string("pr")
+    assert key == "pr/temporal_quantile_bias_quantile_0p95"
     running_metrics: dict[str, tuple[torch.Tensor, float]] = {}
-    metric_name = "tas/temporal_quantile_bias_95"
-    metrics.running_consolidation(running_metrics, {metric_name: metric_results}, batch_size=target.shape[0])
-    assert len(running_metrics[metric_name]) == 2  # (value, weight)
-    assert len(running_metrics[metric_name][0]) == 2  # (np.ndarray[TDigest], np.ndarray[TDigest])
-    assert running_metrics[metric_name][0][0][0, 0, 0].quantile(0.5) == pytest.approx(762.0, rel=1e-5)
-    assert running_metrics[metric_name][0][0][0, 0, 0].quantile(0.95) == pytest.approx(1447.8, rel=1e-5)
-    assert running_metrics[metric_name][1] == 1.0  # weight remains 1.0 for tdigest_quantile
+    metrics.running_consolidation(running_metrics, {key: metric_results}, {key: config}, batch_size=target.shape[0])
+    assert len(running_metrics[key]) == 2  # (value, weight)
+    assert len(running_metrics[key][0]) == 2  # (np.ndarray[TDigest], np.ndarray[TDigest])
+    assert running_metrics[key][0][0][0, 0, 0].quantile(0.5) == pytest.approx(762.0, rel=1e-5)
+    assert running_metrics[key][0][0][0, 0, 0].quantile(0.95) == pytest.approx(1447.8, rel=1e-5)
+    assert running_metrics[key][1] == 1.0  # weight remains 1.0 for tdigest_quantile
     target = target + 100.0
     output = target + 10.0
     metric_results = metric(target, output)
-    metrics.running_consolidation(running_metrics, {metric_name: metric_results}, batch_size=target.shape[0])
-    assert running_metrics[metric_name][0][0][0, 0, 0].quantile(0.5) == pytest.approx(812.0, rel=1e-5)
-    assert running_metrics[metric_name][0][0][0, 0, 0].quantile(0.95) == pytest.approx(1501.0, rel=1e-5)
-    assert running_metrics[metric_name][1] == 1.0
-    consolidate_result = metrics.consolidation(running_metrics)
-    assert consolidate_result[metric_name] == pytest.approx(10.0, rel=1e-5)
+    metrics.running_consolidation(running_metrics, {key: metric_results}, {key: config}, batch_size=target.shape[0])
+    assert running_metrics[key][0][0][0, 0, 0].quantile(0.5) == pytest.approx(812.0, rel=1e-5)
+    assert running_metrics[key][0][0][0, 0, 0].quantile(0.95) == pytest.approx(1501.0, rel=1e-5)
+    assert running_metrics[key][1] == 1.0
+    consolidate_result = metrics.consolidation(running_metrics, {key: config})
+    assert consolidate_result[key] == pytest.approx(10.0, rel=1e-5)
 
 
-def test_build_metrics_rmse_ccc():
-    assert list(metrics.build_metrics(["rmse", "ccc", "wasserstein_distance"])) == [
-        "rmse",
-        "ccc",
-        "wasserstein_distance",
-    ]
+def test_build_metrics_cache():
+    config = RMSEConfig()
+    metric_obj_1 = metrics._build_metric(config)  # in this case config is already hashable
+    assert isinstance(metric_obj_1, metrics.RMSE)
+    metric_obj_2 = metrics._build_metric(config.to_key())
+    assert metric_obj_1 is metric_obj_2  # Cached instance should be returned
+
+
+def test_build_metrics_no_cache():
+    config = CCCConfig()
+    metric_obj_1 = metrics._build_metric(config.to_key())
+    assert isinstance(metric_obj_1, metrics.CCC)
+    config = CCCConfig(eps=1e-8)
+    metric_obj_2 = metrics._build_metric(config.to_key())
+    assert metric_obj_1 is metric_obj_2
+    config = CCCConfig(eps=1e-7)
+    metric_obj_3 = metrics._build_metric(config.to_key())
+    assert metric_obj_1 is not metric_obj_3
+
+
+def test_build_metrics():
+    config_1 = CCCConfig()
+    config_2 = CCCConfig(eps=1e-7)
+    list_of_metrics_dict = metrics.build_metrics([config_1, config_2])
+    assert len(list_of_metrics_dict) == 2
+    assert list(list_of_metrics_dict.keys())[0] is not config_1  # A Copy was returned by to_key()
+    assert list(list_of_metrics_dict.keys())[0] == config_1
+    for v in list_of_metrics_dict.values():
+        assert isinstance(v, metrics.CCC)
 
 
 def test_denormalize_crcm_matches_inverse_normalize() -> None:
