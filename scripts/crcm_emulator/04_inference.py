@@ -26,14 +26,12 @@ from resoterre.pipelines.crcm_emulator.crcm_emulator_training import CRCMEmulato
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import PredictionZarrWriter
 from resoterre.pipelines.crcm_emulator.diagnostics_output import save_diagnostics
-from resoterre.pipelines.crcm_emulator.metrics import build_metrics
 
 
 def evaluate_and_save(
     runner: CRCMEmulatorTrainingFromConfig,
     split: str,
     data_loaders: dict[str, td.DataLoader[Any]],
-    metric_names: list[str],
     output_directory: Path,
     prediction_writer: PredictionZarrWriter | None = None,
 ) -> None:
@@ -48,8 +46,6 @@ def evaluate_and_save(
         Either "test" or "validation", used in the output file name.
     data_loaders : dict[str, td.DataLoader]
         Data loaders by key of the periods of the split.
-    metric_names : list[str]
-        Names of the extra metrics to compute, in addition to the losses.
     output_directory : Path
         Directory of the output file ``<experiment_name>_<split>_results.json``.
     prediction_writer : PredictionZarrWriter | None
@@ -57,7 +53,6 @@ def evaluate_and_save(
     """
     results = runner.evaluate_by_key(
         data_loaders,
-        build_metrics(metric_names, runner.config.metrics),
         desc=split.capitalize(),
         prediction_writer=prediction_writer,
     )
@@ -132,14 +127,11 @@ def main(config_path: Path, checkpoint: str = "latest", test: bool = False, save
         runner,
         "validation",
         runner.validation_data_loaders,
-        config.inference.evaluation_metrics,
         output_directory,
         prediction_writer,
     )
     if test:
-        evaluate_and_save(
-            runner, "test", test_data_loaders, config.inference.evaluation_metrics, output_directory, prediction_writer
-        )
+        evaluate_and_save(runner, "test", test_data_loaders, output_directory, prediction_writer)
 
 
 if __name__ == "__main__":
