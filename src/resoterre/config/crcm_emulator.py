@@ -273,12 +273,26 @@ class CRCMEmulatorTrainingConfig(BaseConfig):
         Score the precomputed interpolation baseline (``paths.baselines_out_dirs.interpolation``) at the start of
         training and log it to Comet ML, as a constant line next to the validation metrics. The baseline is only
         scored, never computed: it is skipped with a warning if missing or incomplete.
+    lr_scheduler : bool
+        Decay the learning rate with cosine annealing over ``nb_of_epochs`` (stepped once per epoch), after an optional
+        linear warm-up. If False, the learning rate stays constant.
+    lr_warmup_epochs : int
+        Number of linear warm-up epochs, only used if ``lr_scheduler`` is True. Must be smaller than ``nb_of_epochs``.
+    lr_min : float
+        Minimum learning rate reached by the cosine annealing, only used if ``lr_scheduler`` is True.
+    early_stopping_patience : int, optional
+        Stop training after this many consecutive epochs without improvement of the monitored validation loss.
+        None disables early stopping.
     """
 
     nb_of_epochs: int = 10
     device: str = "cpu"
     seed: int | None = 42
     figure_every_n_steps: int = Field(default=10, ge=0)
+    lr_scheduler: bool = False
+    lr_warmup_epochs: int = Field(default=0, ge=0)
+    lr_min: float = Field(default=0.0, ge=0.0)
+    early_stopping_patience: int | None = Field(default=None, ge=1)
     # TODO: metrics to be different per variable so a dict instead of a list
     validation_metrics: list[str] = Field(default_factory=lambda: ["max_value_absolute_error"])
     log_interpolation_baseline: bool = False

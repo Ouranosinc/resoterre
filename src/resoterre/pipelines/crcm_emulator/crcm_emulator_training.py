@@ -70,6 +70,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             validation_metrics_monitor=["validation_loss"],
             logger_config=self.config.logger,
         )
+        self.train_generator: torch.Generator | None = None
         self.dataset = self.build_dataset(list(self.config.data.training_periods.values()))
         if len(self.dataset) > 0:
             self.train_data_loader = self.build_data_loader(self.dataset, shuffle=True)
@@ -164,10 +165,16 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             The data loader.
         """
         num_workers = self.config.data.num_workers
+        generator = None
+        if shuffle and self.config.training.seed is not None:
+            # dedicated generator for the shuffling order and the worker seeds, reseeded every epoch (see train_loop)
+            self.train_generator = torch.Generator().manual_seed(self.config.training.seed)
+            generator = self.train_generator
         return td.DataLoader(
             dataset,
             batch_size=self.config.data.batch_size,
             shuffle=shuffle,
+            generator=generator,
             num_workers=num_workers,
             prefetch_factor=self.config.data.prefetch_factor if num_workers > 0 else None,
             persistent_workers=num_workers > 0,
@@ -235,6 +242,14 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         self.optimizers["UNet"] = NeuralNetworksManager.optimizer_setup(
             self.models["UNet"].parameters(), self.config.optimizer
         )
+        training_config = self.config.training
+        if training_config.lr_scheduler:
+            self.setup_lr_schedulers(
+                total_epochs=training_config.nb_of_epochs,
+                warmup_epochs=training_config.lr_warmup_epochs,
+                eta_min=training_config.lr_min,
+            )
+        self.patience = training_config.early_stopping_patience
 
     def training_loss_computation(
         self, target_data: torch.Tensor, output: torch.Tensor
@@ -623,6 +638,26 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         results["config"] = self.config_dict()
         return results
 
+    def train_loop(self, epoch: int) -> None:
+        """
+        Perform a full training loop for one epoch.
+
+        Parameters
+        ----------
+        epoch : int
+            The current epoch number.
+
+        Notes
+        -----
+        With ``training.seed``, the data loader generator is reseeded from the seed and the epoch, so the shuffling
+        order of an epoch does not depend on the other consumers of the global random number generators, and a
+        resumed run shuffles like an uninterrupted one.
+        """
+        seed = self.config.training.seed
+        if seed is not None and self.train_generator is not None:
+            self.train_generator.manual_seed(seed + epoch)
+        super().train_loop(epoch)
+
     def training_loop(self, test: bool = False) -> None:
         """
         Execute the main training loop for the model.
@@ -635,11 +670,14 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         Notes
         -----
         Trains until ``training.nb_of_epochs`` epochs are completed in total, so a trainer whose state was
-        restored with ``load_state`` only trains the remaining epochs.
+        restored with ``load_state`` only trains the remaining epochs, or until early stopping is triggered
+        (``training.early_stopping_patience``).
         """
         self.score_interpolation_baseline()
         for _ in range(self.epoch_counter, self.config.training.nb_of_epochs):
             self(epoch=self.epoch_counter + 1, device=self.config.training.device)
+            if self.early_stopping_triggered:
+                break
         if test:
             self.test()
         self.close()
