@@ -3,6 +3,7 @@
 The CRCM emulator learns to downscale daily GCM fields (CMIP6, regridded and coarsened) to the CRCM5 North American
 grid. Every step is driven by a single YAML configuration, e.g.
 `configs/crcm_emulator/crcm_emulator_cnrm_ssp245.yaml`.
+Make sure to edit your own YAML
 
 All commands below are run from the repository root.
 
@@ -30,11 +31,64 @@ source .venv/bin/activate
 ```
 
 ## Data preprocessing
-On Slurm, data preprocessing is run with `sbatch [SLURM_OPTIONS] run_files/run_preprocessing_crcm_pipeline.sh <config.yaml> <output_dir> <repo_dir>`
+Preprocessing converts the raw daily CRCM and GCM NetCDF files into Zarr datasets. Adapt the experiment file `configs/crcm_emulator/crcm_emulator_cnrm_ssp245.yaml` for your needs, and set the input paths, output paths, simulations, variables,
+and date ranges in that file.
 
-Make sure the NetCDF files for GCM, CRCM, and emissions data exist, and their paths are
+| YAML setting | Used for |
+| --- | --- |
+| `paths.crcm_data` | Directory containing the raw CRCM NetCDF files. |
+| `paths.gcm_data` | Directory containing the raw GCM NetCDF files. |
+| `paths.emission_data` | Directory containing the historical and scenario greenhouse-gas files used for GCM preprocessing. |
+| `paths.regridding_weights` | Directory for GCM-to-CRCM regridding weights. If unset, weights are stored under `preprocessing.gcm.path/csr_matrix`. |
+| `preprocessing.simulations` | Simulations to process, each as `[GCM, scenario, realization]`. |
+| `preprocessing.crcm` | CRCM output `path`, input `variables`, and `start_datetime`/`end_datetime`. |
+| `preprocessing.gcm` | GCM output `path`, input `variables`, and `start_datetime`/`end_datetime`. |
+| `preprocessing.chunk_size`, `preprocessing.chunks_per_task` | Number of days grouped into each Snakemake task. |
+
+The wrapper runs `01_crcm_to_zarr.smk` first, then `02_gcm_to_zarr.smk`. The generated CRCM and GCM Zarr datasets are written to
+`preprocessing.crcm.path` and `preprocessing.gcm.path`, respectively. The `OUTPUT_DIR` argument below is a separate workflow
+directory for Snakemake manifests and per-task logs; it does not replace either Zarr output path in the YAML.
+
+From the repository root on Slurm, create the Slurm log directory and submit the wrapper with **three positional arguments in
+this order**: the config YAML, a workflow directory (where to save the preprocessed files), and the repository directory. Use absolute paths so the config and output
+locations resolve consistently on the compute node:
+
+```bash
+cd /path/to/resoterre
+mkdir -p logs
+sbatch --cpus-per-task=8 --mem=24G --time=05:00:00 \
+  run_files/run_preprocessing_crcm_pipeline.sh \
+  /absolute/path/to/configs/crcm_emulator/my_experiment.yaml \
+  /absolute/path/to/workflows/preprocessed_experiment-name \
+  /absolute/path/to/resoterre
+```
+
+Replace `my_experiment.yaml` with the YAML for the experiment you intend to run. Slurm stdout/stderr are written under `logs/`, and detailed task logs and
+Snakemake manifests are kept in the workflow directory. The wrapper creates a temporary environment under `$SLURM_TMPDIR`,
+installs the repository with `uv sync --all-extras --all-groups`, and runs conversion of both GCM and CRCM data.
+
+Before environment setup, the wrapper schedules `run_files/run_summary.sh` to append Slurm accounting to the job's
+stdout log after the job ends, including on failure. The table includes separate `crcm_to_zarr` and `gcm_to_zarr`
+steps with elapsed time, allocated CPUs, total CPU time, and peak memory (`MaxRSS`), alongside the overall job.
+Only steps that started are included. Step memory statistics require Slurm accounting to be enabled on the cluster.
+The summary job's own log is saved beside the preprocessing log as `usage_<job_name>_<summary_job_id>.log`.
+
+Observed Mila resource usage:
+
+| Dataset size | Stage | CPUs | Memory | Wall time | Observed runtime |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Toy | CRCM | 4 | 4 GB | 15 min | ~30 sec |
+| Toy | GCM | 4 | 8 GB | 20 min | ~2.5 min |
+| Mini | CRCM | 8 | 16 GB | 1 h | ~20 min (12.8 GB peak) |
+| Mini | GCM | 8 | 24 GB | 1 h 40 min | ~1 h 5 min (15 GB peak) |
+| Main | CRCM | 8 | 24 GB | 1 h 30 min | ~53 min (15.87 GB peak) |
+| Main | GCM | 8 | 24 GB | 4 h | ~3 h 15 min (14.6 GB peak) |
+
+Request resources for the larger-memory stage (usually GCM), and allow for the combined CRCM and GCM runtime plus a buffer. The wrapper's
+Slurm defaults are 8 CPUs, 24 GB, and 5 hours; pass `sbatch` options to override them for the selected config.
 
 ## Data analysis
+Run
 
 ## Training
 

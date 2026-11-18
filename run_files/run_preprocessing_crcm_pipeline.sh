@@ -57,6 +57,7 @@ OUTPUT_DIR=$(cd "$OUTPUT_DIR" && pwd)
 REPO_DIR=$(cd "$REPO_DIR" && pwd)
 
 cd "$REPO_DIR"
+source "${REPO_DIR}/run_files/run_summary.sh" ""
 export PATH="$HOME/.local/bin:$PATH"
 export PYTHONUNBUFFERED=1
 uv venv "$SLURM_TMPDIR/venv"
@@ -79,7 +80,9 @@ echo " ===== Running preprocessing for experiment: $EXPERIMENT ====="
 
 for RULE in 01_crcm_to_zarr.smk 02_gcm_to_zarr.smk; do
   echo ">> Starting ${RULE}..."
-  srun --ntasks=1 --cpus-per-task="$SLURM_CPUS_PER_TASK" \
+  STEP_NAME=${RULE#*_}
+  STEP_NAME=${STEP_NAME%.smk}
+  srun --job-name="$STEP_NAME" --ntasks=1 --cpus-per-task="$SLURM_CPUS_PER_TASK" \
     python3 -m snakemake \
     -s "${REPO_DIR}/scripts/meta_workflows/crcm_emulator/rules/${RULE}" \
     -j "$SLURM_CPUS_PER_TASK" --rerun-incomplete \
