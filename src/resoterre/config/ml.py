@@ -2,7 +2,7 @@
 
 import re
 from pathlib import Path
-from typing import Any, ClassVar, Literal, Self, get_args, get_origin
+from typing import Any, ClassVar, Literal, Self
 
 from pydantic import Field, model_validator
 
@@ -172,6 +172,8 @@ class BaseMetricConfig(BaseConfig):
 
     Attributes
     ----------
+    name : str
+        Name of the metric. This is used to resolve the appropriate subclass.
     variables : tuple[str, ...], optional
         List of variables to compute the metric for. Default is all variables.
     plot : PlotConfig, optional
@@ -195,19 +197,10 @@ class BaseMetricConfig(BaseConfig):
         """
         super().__init_subclass__(**kwargs)
 
-        # 1. Check if the subclass defined a default string value directly (e.g., name: Literal["rmse"] = "rmse")
         metric_name = cls.__dict__.get("name")
-
-        # 2. Fallback: extract from Literal annotation if no default was set (e.g., name: Literal["rmse"])
         if not isinstance(metric_name, str):
-            annotation = cls.__annotations__.get("name")
-            if get_origin(annotation) is Literal:
-                args = get_args(annotation)
-                if args and isinstance(args[0], str):
-                    metric_name = args[0]
-
-        if isinstance(metric_name, str):
-            BaseMetricConfig._registry[metric_name] = cls
+            raise ValueError(f"Metric subclass {cls.__name__} must define a default string value for 'name'.")
+        BaseMetricConfig._registry[metric_name] = cls
 
     @model_validator(mode="wrap")  # type: ignore[untyped-decorator]
     @classmethod
@@ -231,12 +224,8 @@ class BaseMetricConfig(BaseConfig):
         if cls is BaseMetricConfig and isinstance(value, dict):
             metric_name: Any | None = value.get("name")
             target_cls = cls._registry.get(metric_name) if isinstance(metric_name, str) else None
-            if target_cls is None:
-                raise ValueError(
-                    f"Unknown metric name: {metric_name!r}. Registered metrics: {list(cls._registry.keys())}"
-                )
-            return target_cls.model_validate(value)  # type: ignore[no-any-return]
-
+            if target_cls is not None:
+                return target_cls.model_validate(value)  # type: ignore[no-any-return]
         # Otherwise, proceed with normal validation for the target subclass
         return handler(value)  # type: ignore[no-any-return]
 
@@ -277,7 +266,7 @@ class BaseMetricConfig(BaseConfig):
                 if isinstance(v, (int, float)) and not isinstance(v, bool):
                     if isinstance(v, float):
                         v = f"{v:.6g}"
-                    v = v.replace("-", "neg").replace("+", "pos").replace(".", "p")
+                    v = str(v).replace("-", "neg").replace("+", "pos").replace(".", "p")
                     v = re.sub(r"[^a-zA-Z0-9_-]", "", v)
                 metric_str += f"_{k}_{v}"
         if target_variable is not None:

@@ -553,11 +553,14 @@ class NNTraining(ABC):
         )
         for key, nd_array in self.validation_diagnostics.items():
             # ToDo: Some diagnostic data should also be saved to disk for later use in publication figures.
+            plot_config = self.metric_configs[key].plot
+            if plot_config is None:
+                continue
             figure = figure_dispatcher(
-                figure_type=self.metric_configs[key].plot.figure_type,
+                figure_type=plot_config.figure_type,
                 data=nd_array.numpy(),
                 title=diagnostic_title(key),
-                figure_kwargs=self.metric_configs[key].plot.figure_kwargs,
+                figure_kwargs=plot_config.figure_kwargs,
             )
             self.experiment_logger.log_figure(figure, name=f"validation_{key}", step=self.total_iterations)
 

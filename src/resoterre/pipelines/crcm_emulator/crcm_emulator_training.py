@@ -513,6 +513,13 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         consolidated = consolidation(self.running_validation_metrics, self.metric_configs)
         self.running_validation_metrics = {}
         suffix = f"_{key}" if key else ""
+        self.metric_configs.update(
+            {
+                f"{name}{suffix}": self.metric_configs[name]
+                for name, value in consolidated.items()
+                if not isinstance(value, (float, int)) and name in self.metric_configs
+            }
+        )
         single_values_metrics = {
             f"{name}{suffix}": value for name, value in consolidated.items() if isinstance(value, (float, int))
         }

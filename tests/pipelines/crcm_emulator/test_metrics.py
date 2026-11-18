@@ -7,10 +7,70 @@ from fastdigest import TDigest
 from scipy.stats import wasserstein_distance
 
 from resoterre.config.climate import DaysAboveThresholdConfig, DaysAboveThresholdMapConfig
-from resoterre.config.ml import BaseMetricConfig, CCCConfig, MeanBiasConfig, RMSEConfig, TemporalQuantileBiasConfig
+from resoterre.config.ml import (
+    BaseMetricConfig,
+    BasePlotConfig,
+    CCCConfig,
+    MeanBiasConfig,
+    RMSEConfig,
+    TemporalQuantileBiasConfig,
+)
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
 from resoterre.ml.data_loader_utils import inverse_normalize
 from resoterre.pipelines.crcm_emulator import metrics
+
+
+def test_custom_metric():
+    class CustomMetricConfig(BaseMetricConfig):
+        name: Literal["custom_metric"] = "custom_metric"
+        param1: int = 7
+        param2: float = 3.14
+        param3: str = "default"
+
+    config = CustomMetricConfig(variables=["tas", "pr"], plot=BasePlotConfig())
+    assert config.variables == ("tas", "pr")
+    assert "custom_metric" in BaseMetricConfig._registry
+
+
+def test_custom_metric_to_key():
+    class CustomMetricConfig(BaseMetricConfig):
+        name: Literal["custom_metric"] = "custom_metric"
+        param1: int = 7
+        param2: float = 3.14
+        param3: str = "default"
+
+    config = CustomMetricConfig(variables=["tas", "pr"], plot=BasePlotConfig())
+    hashable_config = config.to_key()
+    assert isinstance(hashable_config, CustomMetricConfig)
+    assert hashable_config.plot is None
+    assert {hashable_config: None}
+
+
+def test_custom_metric_unique_string():
+    class CustomMetricConfig(BaseMetricConfig):
+        name: Literal["custom_metric"] = "custom_metric"
+        param1: int = 7
+        param2: float = 3.14
+        param3: str = "default"
+
+    config = CustomMetricConfig(variables=["tas", "pr"], plot=BasePlotConfig())
+    assert config.unique_string() == "custom_metric_param1_7_param2_3p14_param3_default"
+
+
+def test_parent_model_validate():
+    class CustomMetricConfig(BaseMetricConfig):
+        name: Literal["custom_metric"] = "custom_metric"
+        param1: int = 7
+        param2: float = 3.14
+        param3: str = "default"
+
+    metric_config = BaseMetricConfig.model_validate(
+        {"name": "custom_metric", "param1": 7, "param2": 3.14, "param3": "default"}
+    )
+    assert isinstance(metric_config, CustomMetricConfig)
+    assert metric_config.param1 == 7
+    assert metric_config.param2 == 3.14
+    assert metric_config.param3 == "default"
 
 
 def test_metrics_to_floats():

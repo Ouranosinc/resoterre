@@ -6,19 +6,16 @@ Notes
 Adding new metrics:
 
 1. Define a class inheriting from ``Metric`` and give it a unique ``name``.
-2. Implement ``__call__`` to compute the batch value. Return a tensor with variables on the first axis; trailing
-    dimensions are preserved for map-valued metrics.
+2. Implement ``__call__`` to compute the batch value or aggregator.
+    Default behavior should return a tensor with variables on the first axis.
+    Trailing dimensions can be preserved for map-valued metrics.
 3. Set the ``reducer`` strategy. ``Metric`` defaults to ``SampleMeanReducer``. Reuse an existing reducer or implement
     the ``MetricReducer`` protocol's ``accumulate`` and ``finalize`` methods for custom behavior. Reducers can also
     compose existing behavior, for example annualizing a map before computing a spatial RMSE.
 4. Add metric tests in ``test_metrics.py``.
 5. Add the class to ``AVAILABLE_METRICS`` so it can be selected by name.
-6. If the metric has configurable parameters, add them to ``CRCMEmulatorMetricConfig`` and ensure they are used in the
-    metric's computation.
-    Implement ``__init__`` to accept the configuration parameters and store them as instance attributes.
-    Override ``from_config`` as a class method to pass the relevant config values to the constructor.
-7. If the metric produces a diagnostic figure, specify its figure type in ``CRCMEmulatorPlotConfig``. Add new figure
-    types to the dispatcher in ``plots/utils.py``.
+6. For integration with configurations, create a ``BaseMetricConfig`` subclass in a config module.
+    If the metric config defines a new figure type, add it to the dispatcher in ``plots/utils.py``.
 
 Instances are shared: keep metric and reducer configuration unchanged after construction,
 and keep accumulation state external.
@@ -28,7 +25,7 @@ import math
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from functools import cache
-from typing import Any, Protocol, Self, TypeAlias
+from typing import Any, Protocol
 
 import numpy as np
 import torch
@@ -40,8 +37,6 @@ from resoterre.datasets.crcm.crcm_variables import crcm_variables
 
 # Losses are averaged over samples, so batches are weighted by their size (the last one can be partial).
 LOSS_NAMES = ("loss", "mse_loss", "ssim_loss")
-
-TensorOrNumpy: TypeAlias = torch.Tensor | np.ndarray
 
 
 def denormalize_crcm(data: torch.Tensor, variable_names: list[str]) -> torch.Tensor:
@@ -184,7 +179,7 @@ class MetricReducer(Protocol):
         """
         ...
 
-    def finalize(self, state: ReducerState) -> TensorOrNumpy:
+    def finalize(self, state: ReducerState) -> torch.Tensor:
         """
         Convert accumulated state into the final metric value.
 
@@ -195,7 +190,7 @@ class MetricReducer(Protocol):
 
         Returns
         -------
-        TensorOrNumpy
+        torch.Tensor
             Final metric value.
         """
         ...
@@ -246,7 +241,7 @@ class WeightedMeanReducer:
             weight = previous_weight + weight
         return value, weight
 
-    def finalize(self, state: ReducerState) -> TensorOrNumpy:
+    def finalize(self, state: ReducerState) -> torch.Tensor:
         """
         Divide the accumulated value by its total weight.
 
@@ -257,7 +252,7 @@ class WeightedMeanReducer:
 
         Returns
         -------
-        TensorOrNumpy
+        torch.Tensor
             Weighted mean.
         """
         value, weight = state
@@ -347,7 +342,7 @@ class YearlyMeanReducer(WeightedMeanReducer):
 class AnnualizedSpatialRMSEReducer(YearlyMeanReducer):
     """Takes a spatial bias map, computes yearly mean, and returns RMSE over the spatial domain."""
 
-    def finalize(self, state: ReducerState) -> TensorOrNumpy:
+    def finalize(self, state: ReducerState) -> torch.Tensor:
         """
         Finalize the annualized map as a spatial RMSE.
 
@@ -358,7 +353,7 @@ class AnnualizedSpatialRMSEReducer(YearlyMeanReducer):
 
         Returns
         -------
-        TensorOrNumpy
+        torch.Tensor
             Spatial RMSE of the annualized map.
         """
         annual_bias_map = super().finalize(state)
@@ -392,7 +387,7 @@ class SumReducer:
             value = previous_value + value
         return value, 1.0
 
-    def finalize(self, state: ReducerState) -> TensorOrNumpy:
+    def finalize(self, state: ReducerState) -> torch.Tensor:
         """
         Return the accumulated total.
 
@@ -403,7 +398,7 @@ class SumReducer:
 
         Returns
         -------
-        TensorOrNumpy
+        torch.Tensor
             Sum of the batch values.
         """
         value, _ = state
@@ -455,7 +450,7 @@ class ExtremumReducer:
             value = self.operation(previous_value, value)
         return value, 1.0
 
-    def finalize(self, state: ReducerState) -> TensorOrNumpy:
+    def finalize(self, state: ReducerState) -> torch.Tensor:
         """
         Return the accumulated extremum.
 
@@ -466,7 +461,7 @@ class ExtremumReducer:
 
         Returns
         -------
-        TensorOrNumpy
+        torch.Tensor
             Elementwise maximum or minimum.
         """
         value, _ = state
@@ -515,7 +510,7 @@ class TDigestMapReducer:
             updated_metric[1][index] = state[0][1][index].merge(batch_value[1][index])
         return updated_metric, 1.0
 
-    def finalize(self, state: ReducerState) -> TensorOrNumpy:
+    def finalize(self, state: ReducerState) -> torch.Tensor:
         """
         Return the accumulated total.
 
@@ -526,7 +521,7 @@ class TDigestMapReducer:
 
         Returns
         -------
-        TensorOrNumpy
+        torch.Tensor
             Quantile bias computed from the accumulated TDigest states.
         """
         target_quantile_values = np.empty_like(state[0][0], dtype=float)
@@ -535,13 +530,13 @@ class TDigestMapReducer:
             target_quantile_values[index] = state[0][0][index].quantile(self.quantile)
             output_quantile_values[index] = state[0][1][index].quantile(self.quantile)
         quantile_bias = output_quantile_values - target_quantile_values
-        return quantile_bias
+        return torch.from_numpy(quantile_bias)
 
 
 class TDigestReducer(TDigestMapReducer):
     """Update TDigest batches."""
 
-    def finalize(self, state: ReducerState) -> TensorOrNumpy:
+    def finalize(self, state: ReducerState) -> torch.Tensor:
         """
         Return the accumulated total.
 
@@ -552,7 +547,7 @@ class TDigestReducer(TDigestMapReducer):
 
         Returns
         -------
-        TensorOrNumpy
+        torch.Tensor
             Quantile bias computed from the accumulated TDigest states.
         """
         quantile_bias_map = super().finalize(state)
@@ -587,23 +582,6 @@ class Metric(ABC):
 
     name: str
     reducer: MetricReducer = SAMPLE_MEAN_REDUCER
-
-    @classmethod
-    def from_config(cls, config: BaseMetricConfig) -> Self:
-        """
-        Construct a metric using its relevant configuration settings.
-
-        Parameters
-        ----------
-        config : BaseMetricConfig
-            Metric settings; ignored by metrics without configurable settings.
-
-        Returns
-        -------
-        Self
-            Constructed metric.
-        """
-        return cls()
 
     @abstractmethod
     def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> Any:
@@ -783,23 +761,6 @@ class DaysAboveThresholdMap(Metric):
         self.threshold = threshold
         self.reducer = self.reducer_class(days_per_year=days_per_year)
 
-    @classmethod
-    def from_config(cls, config: BaseMetricConfig) -> Self:
-        """
-        Construct a threshold metric from its temperature and year settings.
-
-        Parameters
-        ----------
-        config : BaseMetricConfig
-            Threshold and annualization settings.
-
-        Returns
-        -------
-        Self
-            Configured threshold metric.
-        """
-        return cls(threshold=config.tas_day_threshold, days_per_year=config.days_per_year)
-
     def __call__(self, target_data: torch.Tensor, output: torch.Tensor, threshold: float | None = None) -> torch.Tensor:
         """
         Compute the metric.
@@ -968,7 +929,7 @@ class TemporalQuantileBiasMap(Metric):
     Tracks TDigest objects to allow computation of temporal quantiles on the consolidated data.
     """
 
-    name = "temporal_quantile_bias"
+    name = "temporal_quantile_bias_map"
 
     def __init__(self, quantile: float):
         self.quantile = quantile
@@ -1015,6 +976,8 @@ class TemporalQuantileBias(TemporalQuantileBiasMap):
     -----
     Tracks TDigest objects to allow computation of temporal quantiles on the consolidated data.
     """
+
+    name = "temporal_quantile_bias"
 
     def __init__(self, quantile: float):
         self.quantile = quantile
