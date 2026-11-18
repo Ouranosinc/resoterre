@@ -43,39 +43,8 @@ if [[ $# -ne 3 ]]; then
 fi
 
 : "${SLURM_CPUS_PER_TASK:?Submit this script with sbatch}"
-: "${SLURM_TMPDIR:?A node-local temporary directory is required for environment setup}"
 cd "${SLURM_SUBMIT_DIR:-$PWD}"
-
-CONFIG=$1
-OUTPUT_DIR=$2
-REPO_DIR=$3
-[[ -f "$CONFIG" ]] || { echo "Config not found: $CONFIG" >&2; exit 1; }
-[[ -d "$REPO_DIR" ]] || { echo "Repo dir not found: $REPO_DIR" >&2; exit 1; }
-mkdir -p "$OUTPUT_DIR"
-CONFIG="$(cd "$(dirname "$CONFIG")" && pwd)/$(basename "$CONFIG")"
-OUTPUT_DIR=$(cd "$OUTPUT_DIR" && pwd)
-REPO_DIR=$(cd "$REPO_DIR" && pwd)
-
-cd "$REPO_DIR"
-source "${REPO_DIR}/run_files/run_summary.sh" ""
-export PATH="$HOME/.local/bin:$PATH"
-export PYTHONUNBUFFERED=1
-uv venv "$SLURM_TMPDIR/venv"
-UV_PROJECT_ENVIRONMENT="$SLURM_TMPDIR/venv" uv sync --all-extras --all-groups
-source "$SLURM_TMPDIR/venv/bin/activate"
-
-echo "   config: ${CONFIG}"
-echo "   output: ${OUTPUT_DIR}"
-
-EXPERIMENT=$(python3 - "$CONFIG" <<'PY'
-import sys
-import yaml
-
-with open(sys.argv[1]) as config_file:
-    config = yaml.safe_load(config_file)
-print(config["experiment_name"])
-PY
-)
+source "$3/run_files/run_setup.sh" "$1" "$3" "$2"
 echo " ===== Running preprocessing for experiment: $EXPERIMENT ====="
 
 for RULE in 01_crcm_to_zarr.smk 02_gcm_to_zarr.smk; do
