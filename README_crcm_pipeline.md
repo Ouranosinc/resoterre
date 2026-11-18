@@ -49,7 +49,7 @@ sbatch [SLURM_OPTIONS] run_files/run_preprocessing_crcm_pipeline.sh CONFIG OUTPU
 | `preprocessing.simulations` | Simulations to process, each as `[GCM, scenario, realization]`. |
 | `preprocessing.crcm` | CRCM output `path`, input `variables`, and `start_datetime`/`end_datetime`. |
 | `preprocessing.gcm` | GCM output `path`, input `variables`, and `start_datetime`/`end_datetime`. |
-| `preprocessing.chunk_size`, `preprocessing.chunks_per_task` | Number of days grouped into each Snakemake task. |
+| `preprocessing.chunk_size`, `preprocessing.chunks_per_task` | Number of days grouped into each Snakemake task. Make sure chunk_size * chunks_per_task < number of days total between start_datetime - end_datetime|
 
 The script runs `01_crcm_to_zarr.smk` first, then `02_gcm_to_zarr.smk`. The generated CRCM and GCM Zarr datasets are written to
 `preprocessing.crcm.path` and `preprocessing.gcm.path`, respectively. The `OUTPUT_DIR` argument below is a separate workflow

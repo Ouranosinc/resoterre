@@ -10,6 +10,7 @@ Contributors: Contributors: Francis Charette-Migneault (:user:`fmigneault`), Bla
 
 Changes
 ^^^^^^^
+* Add Slurm scripts for preprocessing and data analysis of the CRCM emulator. Document workflow in the repository README. (:issue:`180`, :pull:`203`).
 * Refactor CRCM emulator metric consolidation to use reducer strategies instead of if/else statements, and add an annualized spatial map and RMSE for days above a temperature threshold (default 30C). Configure ``metric.tas_day_threshold`` (Kelvin) and ``metric.days_per_year`` consistently across validation, inference and baseline evaluation using isolated metric instances. (:issue:`193`, :pull:`198`).
 * Save the two-dimensional metrics of the CRCM emulator evaluations (e.g. ``bias_map``), which ``04_inference.py`` and ``02_score_baselines.py`` used to drop, as ``<prefix>_diagnostics.nc`` and as PNG figures for the metrics of ``plot.metric_mapping`` (``resoterre.pipelines.crcm_emulator.diagnostics_output``). (:issue:`191`, :pull:`192`).
 * Add ``--save-predictions`` to the CRCM emulator ``04_inference.py`` to optionally save the U-Net predictions on the validation periods (and test periods with ``--test``) in the same zarr format as the baselines, one ``<experiment_name>_<gcm>_<scenario>_<member>.zarr`` per simulation in ``paths.output``. Predictions are not saved by default. (:issue:`189`, :pull:`188`).
