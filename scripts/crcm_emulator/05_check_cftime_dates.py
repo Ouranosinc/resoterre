@@ -17,7 +17,6 @@ import numpy as np
 import xarray
 
 from resoterre.config import CRCMEmulatorConfig
-from resoterre.config_utils import config_from_yaml
 from resoterre.data_analysis.summary_stats import filter_data
 from resoterre.data_management.cftime_utils import (
     daily_time_index,
@@ -28,6 +27,7 @@ from resoterre.data_management.cftime_utils import (
 )
 from resoterre.datasets.cmip6.cmip6_utils import get_gcm_calendar
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 
 
 last_historical_day = (2014, 12, 31)
@@ -251,7 +251,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Check cftime date handling of the CRCM emulator data")
     parser.add_argument("--config", type=str, required=True, help="Yaml configuration file")
     args = parser.parse_args()
-    config = config_from_yaml(CRCMEmulatorConfig, args.config)
+    config = crcm_emulator_parse_config(args.config)
     preprocessing = config.preprocessing
     gcm_start, gcm_end = preprocessing.gcm.start_datetime, preprocessing.gcm.end_datetime
     crcm_start, crcm_end = preprocessing.crcm.start_datetime, preprocessing.crcm.end_datetime

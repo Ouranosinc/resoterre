@@ -23,7 +23,10 @@ from typing import Any, cast
 import torch.utils.data as td
 
 from resoterre.pipelines.crcm_emulator.crcm_emulator_training import CRCMEmulatorTrainingFromConfig
-from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import (
+    crcm_emulator_metrics_mapping,
+    crcm_emulator_parse_config,
+)
 from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import PredictionZarrWriter
 from resoterre.pipelines.crcm_emulator.diagnostics_output import save_diagnostics
 
@@ -51,6 +54,7 @@ def evaluate_and_save(
     prediction_writer : PredictionZarrWriter | None
         If given, the predictions are saved with it.
     """
+    metric_mapping = crcm_emulator_metrics_mapping(runner.config)
     results = runner.evaluate_by_key(
         data_loaders,
         desc=split.capitalize(),
@@ -71,9 +75,7 @@ def evaluate_and_save(
         )
     print(json.dumps(single_valued_results, indent=4))
     print(f"{split.capitalize()} results saved to {output_path}")
-    for path in save_diagnostics(
-        results, output_directory, f"{runner.config.experiment_name}_{split}", runner.config.plot.metric_mapping
-    ):
+    for path in save_diagnostics(results, output_directory, f"{runner.config.experiment_name}_{split}", metric_mapping):
         print(f"{split.capitalize()} diagnostic saved to {path}")
 
 

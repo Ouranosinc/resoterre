@@ -9,14 +9,13 @@ import argparse
 import logging
 from pathlib import Path
 
-from resoterre.config import CRCMEmulatorConfig
-from resoterre.config_utils import config_from_yaml
 from resoterre.data_analysis.summary_stats import (
     check_forcings,
     describe_stores,
 )
 from resoterre.data_analysis.utils import write_dataframe_to_csv
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 
 
 def main() -> None:
@@ -27,7 +26,7 @@ def main() -> None:
     args = parser.parse_args()
 
     # ===== LOAD CONFIG =====
-    config = config_from_yaml(CRCMEmulatorConfig, args.config)
+    config = crcm_emulator_parse_config(args.config)
 
     # ===== LOGGING SETUP =====
     if config.paths.output is None:

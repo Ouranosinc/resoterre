@@ -2,21 +2,21 @@ import numpy as np
 import torch
 import xarray
 
+from resoterre.config.ml import BasePlotConfig, BiasMapConfig
 from resoterre.pipelines.crcm_emulator.diagnostics_output import (
     diagnostic_title,
-    metric_figure_spec,
     save_diagnostics,
     variable_units,
 )
 
 
-MAPPING = {"bias_map": {"figure_type": "nd_plot", "figure_kwargs": {"reverse_i": True}}}
-
-
-def test_metric_figure_spec():
-    assert metric_figure_spec("tas/bias_map_historical", MAPPING) == MAPPING["bias_map"]
-    assert metric_figure_spec("tas/bias_map", MAPPING) == MAPPING["bias_map"]
-    assert metric_figure_spec("tas/rmse_historical", MAPPING) is None
+bias_map_config = BiasMapConfig(plot=BasePlotConfig(figure_type="nd_plot", figure_kwargs={"reverse_i": True}))
+MAPPING = {
+    "bias_map": bias_map_config,
+    "tas/bias_map": bias_map_config,
+    "tas/bias_map_historical": bias_map_config,
+    "tas/bias_map_future": bias_map_config,
+}
 
 
 def test_save_diagnostics(tmp_path):

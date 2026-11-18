@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import xarray
 
-from resoterre.config import CRCMEmulatorConfig
+from resoterre.config import BaseMetricConfig, CRCMEmulatorConfig
 from resoterre.config_utils import config_from_yaml
 from resoterre.data_management.cftime_utils import (
     check_netcdf_calendar,
@@ -61,6 +61,36 @@ def crcm_emulator_parse_config(config: CRCMEmulatorConfig | Path | str) -> CRCME
             }
         )
     return parsed_config
+
+
+def crcm_emulator_metrics_mapping(config: CRCMEmulatorConfig) -> dict[str, BaseMetricConfig]:
+    """
+    Generate a mapping of metric names to their corresponding configurations for the CRCM emulator.
+
+    Parameters
+    ----------
+    config : CRCMEmulatorConfig
+        CRCM emulator configuration object.
+
+    Returns
+    -------
+    dict[str, BaseMetricConfig]
+        Mapping of metric names to their configurations.
+    """
+    d = {}
+    period_names: set[str] = set()
+    period_names.update(config.data.training_periods.keys())
+    period_names.update(config.data.validation_periods.keys())
+    period_names.update(config.data.test_periods.keys())
+    for variable_name in config.data.crcm_variables:
+        for metric_config in config.training.validation_metrics + config.inference.evaluation_metrics:
+            if metric_config.variables is not None and variable_name not in metric_config.variables:
+                continue
+            d[metric_config.unique_string()] = metric_config
+            d[metric_config.unique_string(variable_name)] = metric_config
+            for period_name in period_names:
+                d[f"{metric_config.unique_string(variable_name)}_{period_name}"] = metric_config
+    return d
 
 
 class CRCMToZarrFromConfig:

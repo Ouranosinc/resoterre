@@ -39,6 +39,7 @@ from resoterre.config.downscaling import (
     UNetReconstructionRunnerConfig,
 )
 from resoterre.config.ml import (
+    BaseMetricConfig,
     DataLoaderConfig,
     DenseUNetConfig,
     LossPlotConfig,
@@ -53,6 +54,7 @@ from resoterre.config.ml import (
 
 __all__ = [
     "BaseConfig",
+    "BaseMetricConfig",
     "CRCMEmulatorAnalysisConfig",
     "CRCMEmulatorConfig",
     "CRCMEmulatorDataConfig",
