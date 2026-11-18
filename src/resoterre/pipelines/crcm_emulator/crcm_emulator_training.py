@@ -16,8 +16,7 @@ from torchmetrics.image import MultiScaleStructuralSimilarityIndexMeasure
 from tqdm import tqdm
 
 from resoterre.config import CRCMEmulatorConfig
-from resoterre.config.crcm_emulator import CRCMEmulatorMetricConfig
-from resoterre.config.ml import LossConfig, MSELossConfig, SSIMLossConfig
+from resoterre.config.ml import BaseMetricConfig, LossConfig, MSELossConfig, SSIMLossConfig
 from resoterre.data_management.timeseries import MultiTimeseries
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
 from resoterre.logging_utils import CustomLogging
@@ -55,7 +54,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
     """
 
     def __init__(self, config: CRCMEmulatorConfig) -> None:
-        self.config = crcm_emulator_parse_config(config, remove_keys=["_definitions"])
+        self.config = crcm_emulator_parse_config(config)
         # ToDo: choose between self.config.paths.output and self.config.paths.models
         if self.config.experiment_name is None:
             raise ValueError("Experiment name must be specified in the configuration.")
@@ -319,7 +318,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
     def evaluation_step(
         self,
         item: dict[str, torch.Tensor],
-        metric_configs: list[CRCMEmulatorMetricConfig] | None = None,
+        metric_configs: list[BaseMetricConfig] | None = None,
         custom_metrics: list[dict[str, Any]] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
@@ -332,7 +331,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         ----------
         item : dict[str, torch.Tensor]
             A batch of data.
-        metric_configs : list[CRCMEmulatorMetricConfig]
+        metric_configs : list[BaseMetricConfig]
             List of metric configuration objects to compute for this batch.
         custom_metrics : list[dict[str, Any]]
             List of custom metric functions to compute for this batch.
@@ -398,7 +397,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         data_loader: td.DataLoader[Any],
         desc: str = "Evaluation",
         prediction_writer: PredictionZarrWriter | None = None,
-        evaluation_metrics: list[CRCMEmulatorMetricConfig] | None = None,
+        evaluation_metrics: list[BaseMetricConfig] | None = None,
     ) -> dict[str, float]:
         """
         Evaluate the model on a dataset, e.g. the test data.
@@ -411,7 +410,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             Description of the progress bar.
         prediction_writer : PredictionZarrWriter | None
             If given, the predictions (in physical units) are saved with it.
-        evaluation_metrics : list[CRCMEmulatorMetricConfig] | None
+        evaluation_metrics : list[BaseMetricConfig] | None
             List of evaluation metrics to use. If None, the default metrics from the configuration are used.
 
         Returns
@@ -475,7 +474,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
     def running_consolidation(
         self,
         metrics: dict[str, torch.Tensor],
-        configs: dict[str, CRCMEmulatorMetricConfig],
+        configs: dict[str, BaseMetricConfig],
         batch_size: int,
     ) -> None:
         """
@@ -485,7 +484,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         ----------
         metrics : dict[str, torch.Tensor]
             Scalar metric tensors of the batch, possibly on the GPU.
-        configs : dict[str, CRCMEmulatorMetricConfig]
+        configs : dict[str, BaseMetricConfig]
             Metric configurations by unique string.
         batch_size : int
             Number of samples in the batch.
@@ -728,7 +727,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         self.log_interpolation_baseline_metrics(epoch=self.epoch_counter)
 
     def _score_interpolation_baseline_split(
-        self, baseline: InterpolationBaseline, metric_configs: list[CRCMEmulatorMetricConfig], split: str
+        self, baseline: InterpolationBaseline, metric_configs: list[BaseMetricConfig], split: str
     ) -> dict[str, float]:
         """
         Score the precomputed interpolation baseline on a data split, and save the scores for the next training.
@@ -737,7 +736,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         ----------
         baseline : InterpolationBaseline
             The interpolation baseline.
-        metric_configs : list[CRCMEmulatorMetricConfig]
+        metric_configs : list[BaseMetricConfig]
             List of metric configurations to use for scoring.
         split : str
             Either "test" or "validation".

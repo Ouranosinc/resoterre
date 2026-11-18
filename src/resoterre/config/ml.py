@@ -2,9 +2,9 @@
 
 import re
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Any, ClassVar, Literal, Self, get_args, get_origin
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from resoterre.config.base import BaseConfig
 
@@ -178,8 +178,67 @@ class BaseMetricConfig(BaseConfig):
         Plot configuration for the metric.
     """
 
+    name: str
     variables: tuple[str, ...] | None = None
     plot: BasePlotConfig | None = None
+
+    _registry: ClassVar[dict[str, type["BaseMetricConfig"]]] = {}
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """
+        Register the subclass in the metric registry based on its name attribute.
+
+        Parameters
+        ----------
+        **kwargs : Any
+            Additional keyword arguments passed to the subclass.
+        """
+        super().__init_subclass__(**kwargs)
+
+        # 1. Check if the subclass defined a default string value directly (e.g., name: Literal["rmse"] = "rmse")
+        metric_name = cls.__dict__.get("name")
+
+        # 2. Fallback: extract from Literal annotation if no default was set (e.g., name: Literal["rmse"])
+        if not isinstance(metric_name, str):
+            annotation = cls.__annotations__.get("name")
+            if get_origin(annotation) is Literal:
+                args = get_args(annotation)
+                if args and isinstance(args[0], str):
+                    metric_name = args[0]
+
+        if isinstance(metric_name, str):
+            BaseMetricConfig._registry[metric_name] = cls
+
+    @model_validator(mode="wrap")  # type: ignore[untyped-decorator]
+    @classmethod
+    def _resolve_subclass(cls, value: Any, handler: Any) -> "BaseMetricConfig":
+        """
+        Resolve the appropriate subclass of BaseMetricConfig based on the "name" attribute in the input value.
+
+        Parameters
+        ----------
+        value : Any
+            The input value to validate.
+        handler : Any
+            The default validation handler to call if no subclass resolution is needed.
+
+        Returns
+        -------
+        BaseMetricConfig
+            An instance of the appropriate subclass of BaseMetricConfig.
+        """
+        # Only dispatch when validating against BaseMetricConfig directly with a dict
+        if cls is BaseMetricConfig and isinstance(value, dict):
+            metric_name: Any | None = value.get("name")
+            target_cls = cls._registry.get(metric_name) if isinstance(metric_name, str) else None
+            if target_cls is None:
+                raise ValueError(
+                    f"Unknown metric name: {metric_name!r}. Registered metrics: {list(cls._registry.keys())}"
+                )
+            return target_cls.model_validate(value)  # type: ignore[no-any-return]
+
+        # Otherwise, proceed with normal validation for the target subclass
+        return handler(value)  # type: ignore[no-any-return]
 
     def to_key(self) -> Self:
         """

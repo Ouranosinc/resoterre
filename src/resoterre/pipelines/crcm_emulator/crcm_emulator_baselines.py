@@ -10,7 +10,7 @@ import xarray
 from scipy.ndimage import zoom
 
 from resoterre.config import CRCMEmulatorConfig
-from resoterre.config.crcm_emulator import CRCMEmulatorMetricConfig
+from resoterre.config.ml import BaseMetricConfig
 from resoterre.data_management.cftime_utils import decode_times_as_cftime
 from resoterre.datasets.cmip6.cmip6_utils import gcm_calendars
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
@@ -55,7 +55,7 @@ class InterpolationBaseline:
     """
 
     def __init__(self, config: CRCMEmulatorConfig, initialize_zarr: bool = False) -> None:
-        self.config = crcm_emulator_parse_config(config, remove_keys=["_definitions"])
+        self.config = crcm_emulator_parse_config(config)
         if initialize_zarr:
             self.initialize_zarr()
 
@@ -99,13 +99,13 @@ class InterpolationBaseline:
             self.config.paths.baselines_out_dirs["interpolation"], f"interpolation_baseline_{split}_results.json"
         )
 
-    def load_results(self, metric_configs: list[CRCMEmulatorMetricConfig], split: str) -> dict[str, float] | None:
+    def load_results(self, metric_configs: list[BaseMetricConfig], split: str) -> dict[str, float] | None:
         """
         Load the saved scores of the interpolation baseline on a data split (see ``save_results``).
 
         Parameters
         ----------
-        metric_configs : list[CRCMEmulatorMetricConfig]
+        metric_configs : list[BaseMetricConfig]
             List of metric configurations needed.
         split : str
             Either "test" or "validation".
@@ -158,13 +158,13 @@ class InterpolationBaseline:
         path.write_text(json.dumps(content, indent=2))
         return path
 
-    def evaluate(self, metric_configs: list[CRCMEmulatorMetricConfig], split: str = "test") -> dict[str, float]:
+    def evaluate(self, metric_configs: list[BaseMetricConfig], split: str = "test") -> dict[str, float]:
         """
         Evaluate the computed baseline against the CRCM data over the validation or test periods, by key.
 
         Parameters
         ----------
-        metric_configs : list[CRCMEmulatorMetricConfig]
+        metric_configs : list[BaseMetricConfig]
             Metric configurations, as for ``inference.evaluation_metrics``.
         split : str
             Either "test" or "validation".

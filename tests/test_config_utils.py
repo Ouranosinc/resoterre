@@ -124,7 +124,7 @@ def test_crcm_emulator_logger_config_from_yaml():
 
 def test_crcm_emulator_nested_config_from_yaml():
     path_yaml = Path(__file__).parents[1] / "configs" / "crcm_emulator" / "crcm_emulator_cnrm_ssp245.yaml"
-    config = crcm_emulator_parse_config(path_yaml, remove_keys=["_definitions"])
+    config = crcm_emulator_parse_config(path_yaml)
     assert config.paths.output == Path("/Path/to/output")
     assert config.preprocessing.gcm.path == Path("/Path/to/preprocessed/gcm_preprocessing")
     assert config.preprocessing.crcm.variables == ["tas", "pr", "uas", "vas"]

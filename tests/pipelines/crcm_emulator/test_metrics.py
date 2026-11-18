@@ -7,7 +7,6 @@ from fastdigest import TDigest
 from scipy.stats import wasserstein_distance
 
 from resoterre.config.climate import DaysAboveThresholdConfig, DaysAboveThresholdMapConfig
-from resoterre.config.crcm_emulator import CRCMEmulatorMetricConfig
 from resoterre.config.ml import BaseMetricConfig, CCCConfig, MeanBiasConfig, RMSEConfig, TemporalQuantileBiasConfig
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
 from resoterre.ml.data_loader_utils import inverse_normalize
@@ -103,7 +102,7 @@ def test_yearly_days_above_threshold_rmse_consolidation() -> None:
 
 
 @pytest.mark.parametrize("metric_config", [DaysAboveThresholdConfig, DaysAboveThresholdMapConfig])  # type: ignore[untyped-decorator]
-def test_metric_configuration_is_isolated(metric_config: type[CRCMEmulatorMetricConfig]) -> None:
+def test_metric_configuration_is_isolated(metric_config: type[BaseMetricConfig]) -> None:
     kwargs = {"threshold": 310.0, "days_per_year": 4.0}
     config_default = metric_config(threshold=303.15)
     config = metric_config(**kwargs)

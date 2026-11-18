@@ -34,7 +34,7 @@ import numpy as np
 import torch
 from fastdigest import TDigest
 
-from resoterre.config.crcm_emulator import CRCMEmulatorMetricConfig
+from resoterre.config.ml import BaseMetricConfig
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
 
 
@@ -123,14 +123,14 @@ def metrics_to_floats(metrics: dict[str, torch.Tensor]) -> dict[str, float]:
 
 
 def per_variable_metrics(
-    config: CRCMEmulatorMetricConfig, values: torch.Tensor, variable_names: list[str]
+    config: BaseMetricConfig, values: torch.Tensor, variable_names: list[str]
 ) -> dict[str, torch.Tensor]:
     """
     Split a metric computed for each variable into one scalar metric per variable.
 
     Parameters
     ----------
-    config : CRCMEmulatorMetricConfig
+    config : BaseMetricConfig
         Metric configuration containing the name of the metric.
     values : torch.Tensor
         Metric values with variables on the first axis. Any remaining dimensions are preserved per variable.
@@ -589,13 +589,13 @@ class Metric(ABC):
     reducer: MetricReducer = SAMPLE_MEAN_REDUCER
 
     @classmethod
-    def from_config(cls, config: CRCMEmulatorMetricConfig) -> Self:
+    def from_config(cls, config: BaseMetricConfig) -> Self:
         """
         Construct a metric using its relevant configuration settings.
 
         Parameters
         ----------
-        config : CRCMEmulatorMetricConfig
+        config : BaseMetricConfig
             Metric settings; ignored by metrics without configurable settings.
 
         Returns
@@ -784,13 +784,13 @@ class DaysAboveThresholdMap(Metric):
         self.reducer = self.reducer_class(days_per_year=days_per_year)
 
     @classmethod
-    def from_config(cls, config: CRCMEmulatorMetricConfig) -> Self:
+    def from_config(cls, config: BaseMetricConfig) -> Self:
         """
         Construct a threshold metric from its temperature and year settings.
 
         Parameters
         ----------
-        config : CRCMEmulatorMetricConfig
+        config : BaseMetricConfig
             Threshold and annualization settings.
 
         Returns
@@ -1125,13 +1125,13 @@ AVAILABLE_METRICS: dict[str, type[Metric]] = {
 
 
 @cache
-def _build_metric(config: CRCMEmulatorMetricConfig) -> Metric:
+def _build_metric(config: BaseMetricConfig) -> Metric:
     """
     Build and return an instance of the metric corresponding to the given name.
 
     Parameters
     ----------
-    config : CRCMEmulatorMetricConfig
+    config : BaseMetricConfig
         Metric configuration object.
 
     Returns
@@ -1143,18 +1143,18 @@ def _build_metric(config: CRCMEmulatorMetricConfig) -> Metric:
     return AVAILABLE_METRICS[config.name](**kwargs)
 
 
-def build_metrics(configs: list[CRCMEmulatorMetricConfig]) -> dict[CRCMEmulatorMetricConfig, Metric]:
+def build_metrics(configs: list[BaseMetricConfig]) -> dict[BaseMetricConfig, Metric]:
     """
     Instantiate metrics from their names.
 
     Parameters
     ----------
-    configs : list[CRCMEmulatorMetricConfig]
+    configs : list[BaseMetricConfig]
         List of metric configuration objects to instantiate.
 
     Returns
     -------
-    dict[CRCMEmulatorMetricConfig, Metric]
+    dict[BaseMetricConfig, Metric]
         The metric callables with their corresponding configuration objects.
 
     Raises
@@ -1168,13 +1168,13 @@ def build_metrics(configs: list[CRCMEmulatorMetricConfig]) -> dict[CRCMEmulatorM
     return {config.to_key(): _build_metric(config.to_key()) for config in configs}
 
 
-def reducer_for_metric(config: CRCMEmulatorMetricConfig) -> MetricReducer:
+def reducer_for_metric(config: BaseMetricConfig) -> MetricReducer:
     """
     Get a metric's reducer.
 
     Parameters
     ----------
-    config : CRCMEmulatorMetricConfig
+    config : BaseMetricConfig
         Metric configuration object.
 
     Returns
@@ -1191,7 +1191,7 @@ def reducer_for_metric(config: CRCMEmulatorMetricConfig) -> MetricReducer:
 def running_consolidation(
     running_metrics: dict[str, ReducerState],
     metrics: dict[str, Any],
-    configs: dict[str, CRCMEmulatorMetricConfig],
+    configs: dict[str, BaseMetricConfig],
     batch_size: int,
 ) -> None:
     """
@@ -1203,7 +1203,7 @@ def running_consolidation(
         Running statistics keyed by metric as ReducerState (running value, total weight). Updated in place.
     metrics : dict[str, Any]
         Batch metric tensors, possibly on the GPU if they are torch tensors.
-    configs : dict[str, CRCMEmulatorMetricConfig]
+    configs : dict[str, BaseMetricConfig]
         Metric configuration objects keyed by metric as string.
     batch_size : int
         Number of samples in the batch.
@@ -1227,7 +1227,7 @@ def running_consolidation(
 
 def consolidation(
     running_metrics: dict[str, ReducerState],
-    configs: dict[str, CRCMEmulatorMetricConfig],
+    configs: dict[str, BaseMetricConfig],
 ) -> dict[str, float | torch.Tensor | np.ndarray]:
     """
     Consolidate the running statistics into one value per metric, whatever its reduction.
@@ -1236,7 +1236,7 @@ def consolidation(
     ----------
     running_metrics : dict[str, ReducerState]
         Running statistics keyed by metric as string, with values (running value, total weight).
-    configs : dict[str, CRCMEmulatorMetricConfig]
+    configs : dict[str, BaseMetricConfig]
         Metric configuration objects keyed by metric as string.
 
     Returns

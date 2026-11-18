@@ -13,7 +13,7 @@ import xarray
 from torch.utils import data as td
 from tqdm import tqdm
 
-from resoterre.config.crcm_emulator import CRCMEmulatorMetricConfig
+from resoterre.config.ml import BaseMetricConfig
 from resoterre.data_management.cftime_utils import decode_times_as_cftime
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
 from resoterre.pipelines.crcm_emulator.metrics import (
@@ -121,7 +121,7 @@ def evaluate_precomputed_predictions(
     dataset: CRCMEmulatorDataset,
     prediction_paths: dict[str, Path],
     variable_names: list[str],
-    metric_configs: list[CRCMEmulatorMetricConfig],
+    metric_configs: list[BaseMetricConfig],
     batch_size: int,
     num_workers: int = 0,
     prefetch_factor: int = 2,
@@ -143,7 +143,7 @@ def evaluate_precomputed_predictions(
         (``<gcm>_<pathway>_<realization>``).
     variable_names : list[str]
         Variables to score, in the order of the target channels.
-    metric_configs : list[CRCMEmulatorMetricConfig]
+    metric_configs : list[BaseMetricConfig]
         Metric configurations, as for ``inference.evaluation_metrics``.
     batch_size : int
         Number of samples per batch.

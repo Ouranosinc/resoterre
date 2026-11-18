@@ -2,36 +2,11 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated
 
 from pydantic import Field
 
 from resoterre.config.base import BaseConfig
-from resoterre.config.climate import DaysAboveThresholdConfig, DaysAboveThresholdMapConfig
-from resoterre.config.ml import (
-    BiasMapConfig,
-    CCCConfig,
-    MeanBiasConfig,
-    OptimizerConfig,
-    RMSEConfig,
-    TemporalQuantileBiasConfig,
-    TemporalQuantileBiasMapConfig,
-    WassersteinDistanceConfig,
-)
-
-
-CRCMEmulatorMetricConfig = Annotated[
-    BiasMapConfig
-    | CCCConfig
-    | DaysAboveThresholdConfig
-    | DaysAboveThresholdMapConfig
-    | MeanBiasConfig
-    | RMSEConfig
-    | TemporalQuantileBiasConfig
-    | TemporalQuantileBiasMapConfig
-    | WassersteinDistanceConfig,
-    Field(discriminator="name"),
-]
+from resoterre.config.ml import BaseMetricConfig, OptimizerConfig, RMSEConfig
 
 
 class ExperimentLoggerConfig(BaseConfig):
@@ -303,7 +278,7 @@ class CRCMEmulatorTrainingConfig(BaseConfig):
     device: str = "cpu"
     seed: int | None = 42
     figure_every_n_steps: int = Field(default=10, ge=0)
-    validation_metrics: list[CRCMEmulatorMetricConfig] = Field(default_factory=lambda: [RMSEConfig()])
+    validation_metrics: list[BaseMetricConfig] = Field(default_factory=lambda: [RMSEConfig()])
     log_interpolation_baseline: bool = False
     # TODO: not used, consider removing
     num_threads: int = 2
@@ -329,7 +304,7 @@ class CRCMEmulatorInferenceConfig(BaseConfig):
     variables: list[str] = Field(default_factory=list)
     periods: list[list[datetime]] | None = None
     device: str | None = None
-    evaluation_metrics: list[CRCMEmulatorMetricConfig] = Field(default_factory=lambda: [RMSEConfig()])
+    evaluation_metrics: list[BaseMetricConfig] = Field(default_factory=lambda: [RMSEConfig()])
 
 
 class CRCMEmulatorDebugConfig(BaseConfig):

@@ -6,13 +6,11 @@ snakemake -s 03_crcm_emulator_training.smk -j1 --config config_yaml=config.yaml 
 
 from pathlib import Path
 
-from resoterre.config_utils import config_from_yaml
-
-from resoterre.config import CRCMEmulatorConfig
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 
 snakefile_dir = Path(str(workflow.snakefile)).parent
 workflow_dir = Path.cwd()
-config_obj = config_from_yaml(CRCMEmulatorConfig, config["config_yaml"])
+config_obj = crcm_emulator_parse_config(config["config_yaml"])
 upstream_manifest = config.get("upstream_manifest")
 upstream_input = [upstream_manifest] if upstream_manifest else []
 nb_of_epochs = config_obj.training.nb_of_epochs
