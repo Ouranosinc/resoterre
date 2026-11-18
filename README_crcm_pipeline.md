@@ -34,6 +34,12 @@ source .venv/bin/activate
 Preprocessing converts the raw daily CRCM and GCM NetCDF files into Zarr datasets. Adapt the experiment file `configs/crcm_emulator/crcm_emulator_cnrm_ssp245.yaml` for your needs, and set the input paths, output paths, simulations, variables,
 and date ranges in that file.
 
+Usage:
+```bash
+mkdir -p logs
+sbatch [SLURM_OPTIONS] run_files/run_preprocessing_crcm_pipeline.sh CONFIG OUTPUT_DIR REPO_DIR
+```
+
 | YAML setting | Used for |
 | --- | --- |
 | `paths.crcm_data` | Directory containing the raw CRCM NetCDF files. |
@@ -45,14 +51,15 @@ and date ranges in that file.
 | `preprocessing.gcm` | GCM output `path`, input `variables`, and `start_datetime`/`end_datetime`. |
 | `preprocessing.chunk_size`, `preprocessing.chunks_per_task` | Number of days grouped into each Snakemake task. |
 
-The wrapper runs `01_crcm_to_zarr.smk` first, then `02_gcm_to_zarr.smk`. The generated CRCM and GCM Zarr datasets are written to
+The script runs `01_crcm_to_zarr.smk` first, then `02_gcm_to_zarr.smk`. The generated CRCM and GCM Zarr datasets are written to
 `preprocessing.crcm.path` and `preprocessing.gcm.path`, respectively. The `OUTPUT_DIR` argument below is a separate workflow
-directory for Snakemake manifests and per-task logs; it does not replace either Zarr output path in the YAML.
+directory for Snakemake manifests and per-task logs; it does not replace either Zarr output path in the YAML, but you can use the same parent directory ex. `absolute/path/to/workflows/preprocessed_experiment_name`
 
 From the repository root on Slurm, create the Slurm log directory and submit the wrapper with **three positional arguments in
-this order**: the config YAML, a workflow directory (where to save the preprocessed files), and the repository directory. Use absolute paths so the config and output
-locations resolve consistently on the compute node:
+this order**: 1) CONFIG: the config YAML, 2) OUTPUT_DIR: a workflow directory (where to save the snakemake logs), 3) REPO_DIR: the repository directory. Use absolute paths so the config and output
+locations resolve consistently on the compute node.
 
+Example:
 ```bash
 cd /path/to/resoterre
 mkdir -p logs
@@ -63,7 +70,7 @@ sbatch --cpus-per-task=8 --mem=24G --time=05:00:00 \
   /absolute/path/to/resoterre
 ```
 
-Replace `my_experiment.yaml` with the YAML for the experiment you intend to run. Slurm stdout/stderr are written under `logs/`, and detailed task logs and
+Replace `my_experiment.yaml` with the YAML for the experiment you intend to run. Slurm stdout/stderr are written under `resoterre/logs/`, and detailed task logs and
 Snakemake manifests are kept in the workflow directory. The wrapper creates a temporary environment under `$SLURM_TMPDIR`,
 installs the repository with `uv sync --all-extras --all-groups`, and runs conversion of both GCM and CRCM data.
 
@@ -72,6 +79,7 @@ stdout log after the job ends, including on failure. The table includes separate
 steps with elapsed time, allocated CPUs, total CPU time, and peak memory (`MaxRSS`), alongside the overall job.
 Only steps that started are included. Step memory statistics require Slurm accounting to be enabled on the cluster.
 The summary job's own log is saved beside the preprocessing log as `usage_<job_name>_<summary_job_id>.log`.
+The summary can be used to determine optimale cpu/memory requests for future sbatch jobs.
 
 Observed Mila resource usage:
 
@@ -88,7 +96,38 @@ Request resources for the larger-memory stage (usually GCM), and allow for the c
 Slurm defaults are 8 CPUs, 24 GB, and 5 hours; pass `sbatch` options to override them for the selected config.
 
 ## Data analysis
-Run
+
+After preprocessing, use data analysis to compute normalization stats, check for missing values, and compare the GCM and CRCM datasets. It reads the preprocessed Zarr stores configured in `preprocessing.gcm.path` and `preprocessing.crcm.path`.
+
+To run data analysis on Slurm, submit from the repository root:
+
+```bash
+sbatch run_files/run_data_analysis.sh /path/to/experiment.yaml "$PWD" \
+  --components normalize_stats range_and_mean
+```
+
+`resoterre/logs` should already exist after the preprocessing step. If not, `mkdir -p logs` before submitting the job.
+
+Pass the YAML config and repository directory first, then optionally `--components` followed by one or more names. Omit `--components` to run all components. Slurm logs go to `logs/`; pass resource overrides such as `--time=02:00:00` before the script name.
+
+You can also run the Python script directly in the activated environment in an interactive session / on a compute node, with the same component options.
+
+```bash
+python scripts/crcm_emulator/01_data_analysis.py --config /path/to/experiment.yaml \
+  --components normalize_stats range_and_mean
+```
+
+| Component | What it does |
+| --- | --- |
+| `normalize_stats` | Writes CSVs with summary stats for GCM and CRCM variables and forcings. |
+| `range_and_mean` | Plots the min, max, and mean of GCM and CRCM variables. |
+| `forcings_range_and_mean` | Plots the min, max, and mean of forcings. |
+| `nan_clusters` | Finds clusters of missing values in GCM variables. |
+| `temporal_mean_and_sample` | Maps the temporal mean and first sample. |
+| `gcm_vs_crcm` | Compares GCM fields with CRCM fields coarsened using `data.coarsen_factor`. |
+| `gcm_vs_crcm_plots` | Runs the same comparison and plots the results. |
+
+The first three components use `data.training_periods` and write under `<paths.output>/data_analysis/`. The others use `analysis.windows` and write to scenario subdirectories under `paths.output`.
 
 ## Training
 
