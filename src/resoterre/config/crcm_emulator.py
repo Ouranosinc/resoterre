@@ -2,8 +2,9 @@
 
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from resoterre.config.base import BaseConfig
 from resoterre.config.ml import BaseMetricConfig, OptimizerConfig, RMSEConfig
@@ -363,6 +364,26 @@ class CRCMEmulatorConfig(BaseConfig):
         Configuration for the Comet ML experiment logger used during training. If None, a disabled
         (no-op) logger configuration is used.
     """
+
+    @model_validator(mode="before")  # type: ignore[untyped-decorator]
+    @classmethod
+    def _drop_definitions(cls, data: Any) -> Any:
+        """
+        Remove the "_definitions" key from the input data if it exists.
+
+        Parameters
+        ----------
+        data : Any
+            Input data to be validated.
+
+        Returns
+        -------
+        Any
+            The input data with the "_definitions" key removed if it was present.
+        """
+        if isinstance(data, dict):
+            data.pop("_definitions", None)
+        return data
 
     experiment_name: str | None = None
     executing_institution: str = "unspecified"

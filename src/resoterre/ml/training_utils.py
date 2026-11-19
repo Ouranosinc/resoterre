@@ -179,7 +179,7 @@ class NNTraining(ABC):
         self.train_data_loader: td.DataLoader | None = None  # ToDo: can there be more than one data loader?
         self.validation_data_loader: td.DataLoader | None = None
         self.metrics = MultiTimeseries()
-        self.metric_configs: dict[str, Any] = {}
+        self.metric_config_mapping: dict[str, Any] = {}
         self.validation_metrics = MultiTimeseries()
         self.validation_diagnostics: dict[str, Any] = {}
 
@@ -553,7 +553,7 @@ class NNTraining(ABC):
         )
         for key, nd_array in self.validation_diagnostics.items():
             # ToDo: Some diagnostic data should also be saved to disk for later use in publication figures.
-            plot_config = self.metric_configs[key].plot
+            plot_config = self.metric_config_mapping[key].plot
             if plot_config is None:
                 continue
             figure = figure_dispatcher(

@@ -7,6 +7,7 @@ import numpy as np
 import xarray
 
 from resoterre.config import BaseMetricConfig, CRCMEmulatorConfig
+from resoterre.config.ml import LossConfig, MSELossConfig, SSIMLossConfig
 from resoterre.config_utils import config_from_yaml
 from resoterre.data_management.cftime_utils import (
     check_netcdf_calendar,
@@ -53,7 +54,7 @@ def crcm_emulator_parse_config(config: CRCMEmulatorConfig | Path | str) -> CRCME
     if isinstance(config, CRCMEmulatorConfig):
         parsed_config = config
     else:
-        parsed_config = config_from_yaml(CRCMEmulatorConfig, config, remove_keys=["_definitions"])
+        parsed_config = config_from_yaml(CRCMEmulatorConfig, config)
     if parsed_config.logger is not None and parsed_config.logger.experiment_name is None:
         parsed_config = parsed_config.model_copy(
             update={
@@ -63,7 +64,9 @@ def crcm_emulator_parse_config(config: CRCMEmulatorConfig | Path | str) -> CRCME
     return parsed_config
 
 
-def crcm_emulator_metrics_mapping(config: CRCMEmulatorConfig) -> dict[str, BaseMetricConfig]:
+def crcm_emulator_metrics_mapping(
+    config: CRCMEmulatorConfig, custom_metrics: list[BaseMetricConfig] | None = None
+) -> dict[str, BaseMetricConfig]:
     """
     Generate a mapping of metric names to their corresponding configurations for the CRCM emulator.
 
@@ -71,19 +74,26 @@ def crcm_emulator_metrics_mapping(config: CRCMEmulatorConfig) -> dict[str, BaseM
     ----------
     config : CRCMEmulatorConfig
         CRCM emulator configuration object.
+    custom_metrics : list[BaseMetricConfig], optional
+        List of custom metric configurations to include.
 
     Returns
     -------
     dict[str, BaseMetricConfig]
         Mapping of metric names to their configurations.
     """
+    custom_metrics = custom_metrics or []
     d = {}
     period_names: set[str] = set()
     period_names.update(config.data.training_periods.keys())
     period_names.update(config.data.validation_periods.keys())
     period_names.update(config.data.test_periods.keys())
+    default_configs = [LossConfig(), MSELossConfig(), SSIMLossConfig()]
+    configs_list = (
+        default_configs + config.training.validation_metrics + config.inference.evaluation_metrics + custom_metrics
+    )
     for variable_name in config.data.crcm_variables:
-        for metric_config in config.training.validation_metrics + config.inference.evaluation_metrics:
+        for metric_config in configs_list:
             if metric_config.variables is not None and variable_name not in metric_config.variables:
                 continue
             d[metric_config.unique_string()] = metric_config

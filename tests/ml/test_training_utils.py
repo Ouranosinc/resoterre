@@ -542,7 +542,7 @@ def test_log_validation_metrics_to_experiment_local_figure():
             validation_metrics={},
             experiment_logger=CometMLLogger(config=dummy_experiment_logger_config),  # type: ignore[arg-type]
             validation_diagnostics={"tas/bias_map": torch.tensor([[1, 2], [3, 4]])},
-            metric_configs={
+            metric_config_mapping={
                 "tas/bias_map": BiasMapConfig(
                     plot=BasePlotConfig(figure_type="nd_plot", figure_kwargs={"reverse_i": True})
                 )

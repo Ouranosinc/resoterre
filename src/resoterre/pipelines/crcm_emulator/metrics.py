@@ -141,6 +141,7 @@ def per_variable_metrics(
     return {
         f"{config.unique_string(variable_name)}": value
         for variable_name, value in zip(variable_names, values, strict=True)
+        if not config.variables or variable_name in config.variables
     }
 
 
@@ -569,6 +570,8 @@ class Metric(ABC):
     ----------
     name : str
         Name under which the metric is reported.
+    allow_per_batch_evaluation : bool
+        Whether the metric returns a per-batch Tensor with independent variables as first dimension.
     reducer : MetricReducer
         Strategy used to aggregate batch values and finalize the metric.
 
@@ -581,6 +584,7 @@ class Metric(ABC):
     """
 
     name: str
+    allow_per_batch_evaluation: bool = True
     reducer: MetricReducer = SAMPLE_MEAN_REDUCER
 
     @abstractmethod
@@ -930,6 +934,7 @@ class TemporalQuantileBiasMap(Metric):
     """
 
     name = "temporal_quantile_bias_map"
+    allow_per_batch_evaluation = False
 
     def __init__(self, quantile: float):
         self.quantile = quantile
@@ -978,6 +983,7 @@ class TemporalQuantileBias(TemporalQuantileBiasMap):
     """
 
     name = "temporal_quantile_bias"
+    allow_per_batch_evaluation = False
 
     def __init__(self, quantile: float):
         self.quantile = quantile

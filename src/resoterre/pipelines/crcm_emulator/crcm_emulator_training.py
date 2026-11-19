@@ -16,7 +16,7 @@ from torchmetrics.image import MultiScaleStructuralSimilarityIndexMeasure
 from tqdm import tqdm
 
 from resoterre.config import CRCMEmulatorConfig
-from resoterre.config.ml import BaseMetricConfig, LossConfig, MSELossConfig, SSIMLossConfig
+from resoterre.config.ml import BaseMetricConfig
 from resoterre.data_management.timeseries import MultiTimeseries
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
 from resoterre.logging_utils import CustomLogging
@@ -25,10 +25,14 @@ from resoterre.ml.neural_networks_basic import CyclicalDateEncoding
 from resoterre.ml.neural_networks_unet import UNet
 from resoterre.ml.training_utils import NNTraining, with_split
 from resoterre.pipelines.crcm_emulator.crcm_emulator_baselines import InterpolationBaseline, single_valued_results
-from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import (
+    crcm_emulator_metrics_mapping,
+    crcm_emulator_parse_config,
+)
 from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import PredictionZarrWriter
 from resoterre.pipelines.crcm_emulator.experiment_logger import config_to_experiment_parameters
 from resoterre.pipelines.crcm_emulator.metrics import (
+    AVAILABLE_METRICS,
     build_metrics,
     consolidation,
     denormalize_crcm,
@@ -110,11 +114,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             "MSELoss": nn.MSELoss(),
             "SSIMLoss": MultiScaleStructuralSimilarityIndexMeasure(data_range=(-1.0, 1.0)),
         }
-        self.metric_configs = {
-            "loss": LossConfig(),
-            "mse_loss": MSELossConfig(),
-            "ssim_loss": SSIMLossConfig(),
-        }
+        self.metric_config_mapping = crcm_emulator_metrics_mapping(self.config)
 
     def build_dataset(self, time_periods: list[list[datetime]]) -> CRCMEmulatorDataset:
         """
@@ -290,7 +290,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         )
         gases = torch.vstack([item["CO2"], item["CH4"], item["N2O"], item["CFC12"], item["CFC11_eq"]]).T
         linear_data = torch.cat([date_encoding, gases.to(self.config.training.device)], dim=1)
-        output = self.models["UNet"](input_data, x_linear=linear_data)
+        output = self.models["UNet"](input_data, x_linear=linear_data.float())
         return input_data, target_data, output
 
     def training_step(self, item: dict[str, torch.Tensor], epoch: int) -> None:
@@ -331,9 +331,9 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         ----------
         item : dict[str, torch.Tensor]
             A batch of data.
-        metric_configs : list[BaseMetricConfig]
+        metric_configs : list[BaseMetricConfig], optional
             List of metric configuration objects to compute for this batch.
-        custom_metrics : list[dict[str, Any]]
+        custom_metrics : list[dict[str, Any]], optional
             List of custom metric functions to compute for this batch.
 
         Returns
@@ -343,6 +343,10 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         """
         metric_configs = metric_configs or []
         custom_metrics = custom_metrics or []
+        # Ensure that metric config mapping includes non-config metrics
+        self.metric_config_mapping = crcm_emulator_metrics_mapping(
+            self.config, metric_configs + [x["config"] for x in custom_metrics]
+        )
         input_data, target_data, output = self.forward_batch(item)
         _, metrics = self.training_loss_computation(target_data, output)
         if metric_configs or custom_metrics:
@@ -351,26 +355,20 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             target_physical = denormalize_crcm(target_data, variable_names)
             output_physical = denormalize_crcm(output, variable_names)
             for config in metric_configs:
-                # ToDo: there will most likely be variable specific metrics. Suggestion: have a
-                #       metric_function.per_variable boolean flag and handle accordingly in the update.
-                metrics.update(
-                    per_variable_metrics(
-                        config, metric_functions[config.to_key()](target_physical, output_physical), variable_names
-                    )
-                )
-                self.metric_configs.update(
-                    {config.unique_string(variable_name): config for variable_name in variable_names}
-                )
+                batch_metric_values = metric_functions[config.to_key()](target_physical, output_physical)
+                if metric_functions[config.to_key()].allow_per_batch_evaluation:
+                    metrics.update(per_variable_metrics(config, batch_metric_values, variable_names))
+                else:
+                    metrics[config.unique_string()] = batch_metric_values
             for custom_metric in custom_metrics:
                 custom_config = custom_metric["config"]
                 custom_fn = custom_metric["function"]
-                metrics.update(
-                    per_variable_metrics(custom_config, custom_fn(target_physical, output_physical), variable_names)
-                )
-                self.metric_configs.update(
-                    {f"{variable_name}/{custom_config.name}": custom_config for variable_name in variable_names}
-                )
-        self.running_consolidation(metrics, self.metric_configs, batch_size=input_data.shape[0])
+                batch_metric_values = custom_fn(target_physical, output_physical)
+                if custom_fn.allow_per_batch_evaluation:
+                    metrics.update(per_variable_metrics(custom_config, batch_metric_values, variable_names))
+                else:
+                    metrics[custom_config.unique_string()] = batch_metric_values
+        self.running_consolidation(metrics, self.metric_config_mapping, batch_size=input_data.shape[0])
         return input_data, target_data, output
 
     def validation_step(self, item: dict[str, torch.Tensor]) -> None:
@@ -438,7 +436,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
                         ),
                         denormalize_crcm(output, self.config.data.crcm_variables).cpu().numpy(),
                     )
-        results = consolidation(self.running_validation_metrics, self.metric_configs)
+        results = consolidation(self.running_validation_metrics, self.metric_config_mapping)
         self.running_validation_metrics = {}
         return results
 
@@ -510,16 +508,32 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         """
         if not self.running_validation_metrics:
             return
-        consolidated = consolidation(self.running_validation_metrics, self.metric_configs)
+        consolidated = consolidation(self.running_validation_metrics, self.metric_config_mapping)
+        metric_keys_to_remove = []
+        metrics_to_add = {}
+        for metric_key, value in consolidated.items():
+            if metric_key not in self.metric_config_mapping:
+                continue
+            metric_config = self.metric_config_mapping[metric_key]
+            if metric_config.name not in AVAILABLE_METRICS:
+                continue
+            metric_fn = build_metrics([metric_config])[metric_config.to_key()]
+            if not metric_fn.allow_per_batch_evaluation:
+                # values still contain all variables.
+                per_variable_metrics_dict = per_variable_metrics(metric_config, value, self.config.data.crcm_variables)
+                # ToDo: this is a repetition of the logic in consolidation, consider refactoring to avoid duplication.
+                for var_key, var_value in per_variable_metrics_dict.items():
+                    if isinstance(var_value, torch.Tensor):
+                        per_variable_metrics_dict[var_key] = var_value.cpu()
+                    if math.prod(per_variable_metrics_dict[var_key].shape) == 1:
+                        per_variable_metrics_dict[var_key] = per_variable_metrics_dict[var_key].item()
+                metrics_to_add.update(per_variable_metrics_dict)
+                metric_keys_to_remove.append(metric_key)
+        consolidated.update(metrics_to_add)
+        for metric_key in metric_keys_to_remove:
+            consolidated.pop(metric_key)
         self.running_validation_metrics = {}
         suffix = f"_{key}" if key else ""
-        self.metric_configs.update(
-            {
-                f"{name}{suffix}": self.metric_configs[name]
-                for name, value in consolidated.items()
-                if not isinstance(value, (float, int)) and name in self.metric_configs
-            }
-        )
         single_values_metrics = {
             f"{name}{suffix}": value for name, value in consolidated.items() if isinstance(value, (float, int))
         }

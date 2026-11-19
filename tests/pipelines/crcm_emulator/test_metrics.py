@@ -198,6 +198,12 @@ def test_per_variable_metrics():
     assert {name: value.item() for name, value in result.items()} == {"tas/rmse": 1.0, "pr/rmse": 2.0}
 
 
+def test_per_variable_metrics_skip_variable():
+    config = RMSEConfig(variables=["tas"])
+    result = metrics.per_variable_metrics(config, torch.tensor([1.0, 2.0]), ["tas", "pr"])
+    assert {name: value.item() for name, value in result.items()} == {"tas/rmse": 1.0}
+
+
 def test_metrics_are_reported_per_variable():
     target = torch.zeros(2, 2, 3, 3)
     output = torch.zeros(2, 2, 3, 3)

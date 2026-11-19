@@ -24,7 +24,7 @@ from resoterre.config import (
     OptimizerConfig,
 )
 from resoterre.config.climate import DaysAboveThresholdConfig
-from resoterre.config.ml import BaseMetricConfig, MSELossConfig, MeanBiasConfig, RMSEConfig
+from resoterre.config.ml import BaseMetricConfig, MSELossConfig, MeanBiasConfig, RMSEConfig, TemporalQuantileBiasConfig
 from resoterre.data_generators.crcm_emulator_mock_dataset import CRCMEmulatorMockDataset
 from resoterre.data_management.timeseries import MultiTimeseries
 from resoterre.logging_utils import start_root_logger
@@ -88,6 +88,69 @@ def test_crcm_emulator_training():
         assert results["BestVal loss_val"] == results["LastVal loss_val"]  # a single epoch is the best epoch
         assert "LastVal mse_loss_val" in results
         assert not list(Path(config.paths.output).glob("training_visualization_*.png"))
+
+
+def test_crcm_emulator_training_with_non_tensor_batch_metrics():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(
+                tile_size=128,
+                coarsen_factor=4,
+                batch_size=4,
+                crcm_variables=["tas", "pr"],
+                training_periods={"historical": ("2000-01-01", "2010-12-31")},
+            ),
+            model=CRCMEmulatorModelConfig(kernel_size=3, initial_num_of_hidden_channels=8, depth=2),
+            optimizer=OptimizerConfig(lr=1e-3, weight_decay=1e-5),
+            loss=CRCMEmulatorLossConfig(mse_weight=1.0, ssim_weight=0.0),
+            training=CRCMEmulatorTrainingConfig(
+                nb_of_epochs=2,
+                device="cpu",
+                validation_metrics=[TemporalQuantileBiasConfig(variables=["tas"], quantile=0.95)],
+            ),
+        )
+        _ = start_root_logger(basic_config_args={"filename": Path(tmp_dir, "training.log")})
+        runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+
+        # Bypassing data loader from zarr files
+        if config.data.coarsen_factor is None:
+            raise ValueError("coarsen_factor must be specified in the configuration.")
+        runner.dataset = CRCMEmulatorMockDataset(
+            num_samples=64,
+            num_input_channels=2,
+            num_output_channels=2,
+            tile_size=config.data.tile_size,
+            coarsen_factor=config.data.coarsen_factor,
+        )
+        runner.train_data_loader = td.DataLoader(runner.dataset, runner.config.data.batch_size, shuffle=True)
+        validation_dataset = CRCMEmulatorMockDataset(
+            num_samples=16,
+            num_input_channels=2,
+            num_output_channels=2,
+            tile_size=config.data.tile_size,
+            coarsen_factor=config.data.coarsen_factor,
+        )
+        runner.validation_data_loaders = {
+            "historical": td.DataLoader(validation_dataset, runner.config.data.batch_size, shuffle=False)
+        }
+        runner.validation_data_loader = runner.validation_data_loaders["historical"]
+        runner.init_unet()
+
+        runner(epoch=1, device=runner.config.training.device)
+        if config.paths.output is None:
+            raise ValueError("path_output must be specified in the configuration.")
+        assert Path(config.paths.output, "training.log").is_file()
+        assert Path(config.paths.output, "test_epoch_001_latest.pth").is_file()
+        assert Path(config.paths.output, "test_epoch_001_best.pth").is_file()
+        results = json.loads(Path(config.paths.output, "test_training_results.json").read_text())
+        assert "BestVal tas/temporal_quantile_bias_quantile_0p95_historical" in results
+        assert "BestVal pr/temporal_quantile_bias_quantile_0p95_historical" not in results
 
 
 def test_crcm_emulator_training_resume():
@@ -331,11 +394,12 @@ def test_crcm_emulator_figure_channel_names_exclude_mask():
 
 
 def test_crcm_emulator_consolidation_weights_losses_by_batch_size():
+
     runner = SimpleNamespace(
         running_validation_metrics={},
         validation_metrics=MultiTimeseries(),
         validation_diagnostics={},
-        metric_configs={},
+        metric_config_mapping={"mse_loss": MSELossConfig()},
     )
     consolidator = crcm_emulator_training.CRCMEmulatorTrainingFromConfig
     # 128 samples with zero error, then a partial batch of 1 sample with a squared error of 100
@@ -372,15 +436,19 @@ def test_crcm_emulator_metrics_use_denormalized_data_but_losses_do_not():
         runner.init_unet()
         seen: dict[str, torch.Tensor] = {}
 
-        def record(target: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
-            seen["target"] = target
-            return target.amax(dim=(0, 2, 3))
+        class RecordMetric:
+            allow_per_batch_evaluation = True
+
+            def __call__(self, target: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+                seen["target"] = target
+                return target.amax(dim=(0, 2, 3))
 
         class RecordMetricConfig(BaseMetricConfig):
             name: Literal["record"] = "record"
 
         runner.evaluation_step(
-            next(iter(td.DataLoader(dataset, 2))), custom_metrics=[{"config": RecordMetricConfig(), "function": record}]
+            next(iter(td.DataLoader(dataset, 2))),
+            custom_metrics=[{"config": RecordMetricConfig(), "function": RecordMetric()}],
         )
         assert seen["target"].min() >= 243.15
         assert seen["target"].max() <= 303.15
