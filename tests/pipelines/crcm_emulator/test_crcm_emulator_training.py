@@ -47,7 +47,7 @@ def test_crcm_emulator_training():
                 kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
             ),
             optimizer=OptimizerConfig(lr=1e-3, weight_decay=1e-5),
-            loss=CRCMEmulatorLossConfig(mse_weight=1.0, ssim_weight=0.0),
+            loss=CRCMEmulatorLossConfig(),
         )
         _ = start_root_logger(basic_config_args={"filename": Path(tmp_dir, "training.log")})
         runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
@@ -104,7 +104,7 @@ def test_crcm_emulator_training_resume():
                 kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
             ),
             optimizer=OptimizerConfig(lr=1e-3, weight_decay=1e-5),
-            loss=CRCMEmulatorLossConfig(mse_weight=1.0, ssim_weight=0.0),
+            loss=CRCMEmulatorLossConfig(),
             training=CRCMEmulatorTrainingConfig(nb_of_epochs=2, device="cpu"),
         )
 
@@ -227,7 +227,7 @@ def test_crcm_emulator_test_evaluation_reports_test_metrics():
             model=CRCMEmulatorModelConfig(
                 kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
             ),
-            loss=CRCMEmulatorLossConfig(mse_weight=1.0, ssim_weight=0.0),
+            loss=CRCMEmulatorLossConfig(),
             training=CRCMEmulatorTrainingConfig(nb_of_epochs=1, device="cpu"),
         )
         mock_kwargs = {"num_input_channels": 2, "num_output_channels": 2, "tile_size": 128, "coarsen_factor": 4}
@@ -251,9 +251,16 @@ def test_crcm_emulator_test_evaluation_reports_test_metrics():
         for test_metrics, expected in (
             (
                 ["max_value_absolute_error"],
-                {"loss", "mse_loss", "tas/max_value_absolute_error", "pr/max_value_absolute_error"},
+                {
+                    "loss",
+                    "mse_loss",
+                    "tas/mse_loss",
+                    "pr/mse_loss",
+                    "tas/max_value_absolute_error",
+                    "pr/max_value_absolute_error",
+                },
             ),
-            ([], {"loss", "mse_loss"}),
+            ([], {"loss", "mse_loss", "tas/mse_loss", "pr/mse_loss"}),
         ):
             runner = make_runner(config.training)
             runner.load_state(Path(tmp_dir), tag="latest")
@@ -333,6 +340,89 @@ def test_crcm_emulator_training_shuffling_depends_on_seed_and_epoch_only():
         assert epoch_order(1) != epoch_order(2)
 
 
+def _two_variable_runner(tmp_dir: str, loss: CRCMEmulatorLossConfig) -> Any:
+    config = CRCMEmulatorConfig(
+        experiment_name="test",
+        paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+        preprocessing=CRCMEmulatorPreprocessingConfig(
+            gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+            crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+        ),
+        data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
+        model=CRCMEmulatorModelConfig(kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None),
+        loss=loss,
+    )
+    return crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+
+
+def test_crcm_emulator_loss_is_the_weighted_sum_over_variables_and_terms():
+    target = torch.zeros(2, 2, 16, 16)
+    output = torch.stack([torch.ones(2, 16, 16), 3 * torch.ones(2, 16, 16)], dim=1)  # squared errors: tas 1, pr 9
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        default = _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig())
+        loss, metrics = default.training_loss_computation(target, output)
+        assert loss.item() == pytest.approx(5.0)
+        assert metrics["tas/mse_loss"].item() == pytest.approx(1.0)
+        assert metrics["pr/mse_loss"].item() == pytest.approx(9.0)
+        assert metrics["mse_loss"].item() == pytest.approx(loss.item())
+
+        # a larger weight makes a variable count more
+        weighted = _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig(variables={"pr": {"mse": 3.0}}))
+        loss, metrics = weighted.training_loss_computation(target, output)
+        assert loss.item() == pytest.approx((1 * 1 + 3 * 9) / 4)
+        assert metrics["pr/mse_loss"].item() == pytest.approx(9.0)
+
+        # a variable whose weights are all 0 is left out
+        excluded = _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig(variables={"tas": {"mse": 0.0}}))
+        loss, metrics = excluded.training_loss_computation(target, output)
+        assert loss.item() == pytest.approx(9.0)
+        assert "tas/mse_loss" not in metrics
+
+        # only the ratios between weights matter
+        scaled = _two_variable_runner(
+            tmp_dir, CRCMEmulatorLossConfig(variables={"tas": {"mse": 2.0}, "pr": {"mse": 0.5}})
+        )
+        assert scaled.training_loss_computation(target, output)[0].item() == pytest.approx((2 * 1 + 0.5 * 9) / 2.5)
+
+
+def test_crcm_emulator_variables_use_a_different_loss_per_variable():
+    output = torch.zeros(2, 2, 16, 16)
+    target = torch.stack([torch.full((2, 16, 16), 2.0), torch.full((2, 16, 16), 3.0)], dim=1)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        runner = _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig(variables={"pr": {"mae": 1.0}}))
+        loss, metrics = runner.training_loss_computation(output, target)
+        assert loss.item() == pytest.approx((4.0 + 3.0) / 2)  # tas uses default (mse), pr uses mae, equal weights
+        assert metrics["tas/mse_loss"].item() == pytest.approx(4.0)
+        assert metrics["pr/mae_loss"].item() == pytest.approx(3.0)
+        assert "pr/mse_loss" not in metrics
+        assert metrics["mse_loss"].item() + metrics["mae_loss"].item() == pytest.approx(loss.item())
+
+
+def test_crcm_emulator_loss_terms_combine_and_are_validated():
+    target = torch.rand(2, 2, 192, 192)
+    output = torch.rand(2, 2, 192, 192)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        mse_only = _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig(default={"mse": 1.0}))
+        both = _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig(default={"mse": 2.0, "ssim": 0.5}))
+        mse_loss = mse_only.training_loss_computation(target, output)[0]
+        loss, metrics = both.training_loss_computation(target, output)
+        # weights per variable: mse 2.0 and ssim 0.5, so the total weight is 2 * (2.0 + 0.5)
+        assert metrics["mse_loss"].item() == pytest.approx(mse_loss.item() * 4.0 / 5.0, rel=1e-5)
+        assert loss.item() == pytest.approx(metrics["mse_loss"].item() + metrics["ssim_loss"].item(), rel=1e-5)
+        assert {"tas/ssim_loss", "pr/ssim_loss"} <= set(metrics)
+
+        with pytest.raises(ValueError, match="not in data.crcm_variables"):
+            _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig(variables={"uas": {"mse": 1.0}}))
+        with pytest.raises(ValueError, match="Unknown losses"):
+            _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig(default={"bad": 1.0}))
+        with pytest.raises(ValueError, match="Unknown losses"):
+            _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig(variables={"pr": {"huber": 1.0}}))
+        with pytest.raises(ValueError, match="positive weight"):
+            _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig(default={"mse": 0.0}))
+    with pytest.raises(ValueError, match="greater than or equal to 0"):
+        CRCMEmulatorLossConfig(default={"mse": -1.0})
+
+
 def test_crcm_emulator_training_seed():
     with tempfile.TemporaryDirectory() as tmp_dir:
 
@@ -391,7 +481,7 @@ def test_crcm_emulator_validation_figure_logged_to_comet_only():
                 kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
             ),
             optimizer=OptimizerConfig(lr=1e-3, weight_decay=1e-5),
-            loss=CRCMEmulatorLossConfig(mse_weight=1.0, ssim_weight=0.0),
+            loss=CRCMEmulatorLossConfig(),
         )
         runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
         runner.experiment_logger.experiment = MagicMock()
@@ -522,9 +612,9 @@ def test_crcm_emulator_celsius_target_normalization_is_denormalized_to_kelvin():
 @pytest.mark.parametrize(("variable", "mode"), [("tas", "celsius"), ("pr", "mm_per_day")])  # type: ignore[untyped-decorator]
 def test_crcm_emulator_unit_only_target_normalization_is_incompatible_with_ssim(variable: str, mode: str) -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
-        with pytest.raises(ValueError, match="ssim_weight"):
+        with pytest.raises(ValueError, match="ssim"):
             crcm_emulator_training.CRCMEmulatorTrainingFromConfig(
-                config=_celsius_config(tmp_dir, mode, variable, mse_weight=0.0, ssim_weight=1.0)
+                config=_celsius_config(tmp_dir, mode, variable, default={"ssim": 1.0})
             )
 
 
@@ -683,7 +773,7 @@ def test_crcm_emulator_evaluate_saves_predictions():
             model=CRCMEmulatorModelConfig(
                 kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
             ),
-            loss=CRCMEmulatorLossConfig(mse_weight=1.0, ssim_weight=0.0),
+            loss=CRCMEmulatorLossConfig(),
             training=CRCMEmulatorTrainingConfig(nb_of_epochs=1, device="cpu"),
         )
         runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)

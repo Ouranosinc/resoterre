@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
@@ -152,7 +152,7 @@ class CRCMEmulatorDataConfig(BaseConfig):
         How each CRCM variable is scaled as a training target. Variables that are not listed use ``"min_max"``, a
         linear scaling to [-1, 1] over the range of the variable. ``"celsius"`` only converts kelvin to degrees
         Celsius (tas) and ``"mm_per_day"`` only converts kg m-2 s-1 to mm/day (pr), both without scaling. These two
-        are not compatible with ``ssim_weight`` > 0.
+        are not compatible with a positive ``loss.default`` or ``loss.variables`` of ``ssim``.
     training_periods : dict[str, list[datetime]]
         Named training periods, keyed by a user-chosen label. Each period has the form [start_datetime, end_datetime].
     validation_periods : dict[str, list[datetime]]
@@ -242,16 +242,22 @@ class CRCMEmulatorLossConfig(BaseConfig):
     """
     Weights of the loss terms used to train the CRCM emulator.
 
+    The training loss is the weighted mean over variables and loss terms, the sum of ``weight * loss`` divided by the
+    sum of the weights. Only the ratios between weights matter (they do not need to sum to 1), a larger weight makes
+    a variable (or a term) count more, and a weight of 0 disables it.
+
     Attributes
     ----------
-    mse_weight : float | None
-        Weight of the mean squared error loss.
-    ssim_weight : float | None
-        Weight of the structural similarity index loss.
+    default : dict[str, float]
+        Weight of each loss term by name (``"mse"``, ``"mae"`` or ``"ssim"``, see ``AVAILABLE_LOSSES`` in
+        ``resoterre.pipelines.crcm_emulator.losses``) for the variables not listed in ``variables``.
+    variables : dict[str, dict[str, float]] | None
+        Weight of each loss term of specific CRCM variables, as ``{variable: {loss name: weight}}`` (e.g.
+        ``{"pr": {"mae": 2.0}}``), replacing ``default`` for these variables.
     """
 
-    mse_weight: float | None = 1.0
-    ssim_weight: float | None = 0.0
+    default: dict[str, Annotated[float, Field(ge=0)]] = Field(default_factory=lambda: {"mse": 1.0})
+    variables: dict[str, dict[str, Annotated[float, Field(ge=0)]]] | None = None
 
 
 class CRCMEmulatorTrainingConfig(BaseConfig):

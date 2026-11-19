@@ -10,9 +10,7 @@ from typing import Any, cast
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn as nn
 from torch.utils import data as td
-from torchmetrics.image import MultiScaleStructuralSimilarityIndexMeasure
 from tqdm import tqdm
 
 from resoterre.config import CRCMEmulatorConfig
@@ -28,6 +26,7 @@ from resoterre.pipelines.crcm_emulator.crcm_emulator_baselines import Interpolat
 from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import PredictionZarrWriter
 from resoterre.pipelines.crcm_emulator.experiment_logger import config_to_experiment_parameters
+from resoterre.pipelines.crcm_emulator.losses import AVAILABLE_LOSSES, Loss
 from resoterre.pipelines.crcm_emulator.metrics import (
     Metric,
     build_metrics,
@@ -101,6 +100,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             self.validation_data_loader = next(iter(self.validation_data_loaders.values()))
         if self.config.data.coarsen_factor is None:
             raise ValueError("Coarsen factor must be specified in the configuration.")
+        self.check_loss_weights()
         self.check_target_normalization()
         self.date_encoding = CyclicalDateEncoding().to(self.config.training.device)
         self.validation_figure_data: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
@@ -110,10 +110,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         # Interpolation baseline metrics, computed once, re-logged at each validation (see score_interpolation_baseline)
         self.interpolation_baseline_metrics: dict[str, float] = {}
         self.init_unet()
-        self.loss_functions = {
-            "MSELoss": nn.MSELoss(),
-            "SSIMLoss": MultiScaleStructuralSimilarityIndexMeasure(data_range=(-1.0, 1.0)),
-        }
+        self.loss_functions = {name: loss_class() for name, loss_class in AVAILABLE_LOSSES.items()}
         # ToDo: this may have to be expanded for variable-specific figure mappings
         for variable_name in config.data.crcm_variables:
             for metric_name in config.training.validation_metrics:
@@ -254,6 +251,30 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             )
         self.patience = training_config.early_stopping_patience
 
+    def check_loss_weights(self) -> None:
+        """
+        Check the variables, names and weights of the loss terms.
+
+        Raises
+        ------
+        ValueError
+            If a variable or loss name is unknown, or no loss term has a positive weight.
+        """
+        variable_weights = self.config.loss.variables or {}
+        unknown_variables = set(variable_weights) - set(self.config.data.crcm_variables)
+        if unknown_variables:
+            raise ValueError(f"loss.variables has variables not in data.crcm_variables: {sorted(unknown_variables)}")
+        for location, weights in [("loss.default", self.config.loss.default)] + [
+            (f"loss.variables['{name}']", weights) for name, weights in variable_weights.items()
+        ]:
+            unknown = set(weights) - set(AVAILABLE_LOSSES)
+            if unknown:
+                raise ValueError(
+                    f"Unknown losses {sorted(unknown)} in {location}, available: {sorted(AVAILABLE_LOSSES)}."
+                )
+        if not any(weight > 0 for weights in self.resolved_loss_weights().values() for weight in weights.values()):
+            raise ValueError("At least one loss term must have a positive weight in loss.default or loss.variables.")
+
     def check_target_normalization(self) -> None:
         """
         Check that the target normalization is compatible with the loss.
@@ -261,22 +282,37 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         Raises
         ------
         ValueError
-            If the SSIM loss is used with a unit-only target normalization (``"celsius"`` or ``"mm_per_day"``), since
-            SSIM assumes targets in [-1, 1].
+            If the SSIM loss is used for a variable with a unit-only target normalization (``"celsius"`` or
+            ``"mm_per_day"``), since SSIM assumes targets in [-1, 1].
         """
-        if self.config.loss.ssim_weight and any(
-            is_unit_only_normalization(mode) for mode in self.config.data.target_normalization.values()
-        ):
-            raise ValueError(
-                "loss.ssim_weight > 0 requires targets in [-1, 1], not a 'celsius' or 'mm_per_day' target "
-                "normalization."
-            )
+        for variable_name, weights in self.resolved_loss_weights().items():
+            mode = self.config.data.target_normalization.get(variable_name)
+            if weights.get("ssim", 0.0) > 0 and mode is not None and is_unit_only_normalization(mode):
+                raise ValueError(
+                    f"The ssim loss of '{variable_name}' requires targets in [-1, 1], not a '{mode}' target "
+                    "normalization."
+                )
+
+    def resolved_loss_weights(self) -> dict[str, dict[str, float]]:
+        """
+        Get the loss weights of each CRCM variable.
+
+        Returns
+        -------
+        dict[str, dict[str, float]]
+            ``loss.variables`` for the variables listed in it, ``loss.default`` for the others.
+        """
+        variable_weights = self.config.loss.variables or {}
+        return {name: variable_weights.get(name, self.config.loss.default) for name in self.config.data.crcm_variables}
 
     def training_loss_computation(
         self, target_data: torch.Tensor, output: torch.Tensor
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """
         Compute training metrics for the CRCM emulator.
+
+        The loss is the weighted mean over variables and loss terms, the sum of ``weight * loss`` divided by the sum of
+        the weights.
 
         Parameters
         ----------
@@ -288,23 +324,28 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         Returns
         -------
         (torch.Tensor, dict[str, torch.Tensor])
-            A tuple containing the computed loss and a dictionary of detached scalar metric tensors, including the
-            total ``loss``, left on the device to avoid a GPU synchronization per metric (see ``metrics_to_floats``).
+            A tuple containing the computed loss and a dictionary of detached scalar metric tensors, left on the
+            device to avoid a GPU synchronization per metric (see ``metrics_to_floats``). It contains the total
+            ``loss``, the contribution ``<name>_loss`` of each loss term to it, and the ``<variable>/<name>_loss``
+            of each variable and term in use.
         """
-        loss_terms = {}
-        metrics = {}
-        weights = []
-        if self.config.loss.mse_weight is not None and self.config.loss.mse_weight > 0:
-            loss_terms["mse_loss"] = self.loss_functions["MSELoss"](output, target_data)
-            weights.append(self.config.loss.mse_weight)
-            metrics["mse_loss"] = loss_terms["mse_loss"].detach()
-        if self.config.loss.ssim_weight is not None and self.config.loss.ssim_weight > 0:
-            loss_terms["ssim_loss"] = 1 - self.loss_functions["SSIMLoss"](output, target_data)
-            weights.append(self.config.loss.ssim_weight)
-            metrics["ssim_loss"] = loss_terms["ssim_loss"].detach()
-        if not loss_terms:
-            raise ValueError("At least one loss term must be specified in the configuration.")
-        loss = sum(loss_terms[term] * weight for term, weight in zip(loss_terms.keys(), weights, strict=True))
+        variables = self.config.data.crcm_variables
+        resolved = self.resolved_loss_weights()
+        total_weight = sum(weight for weights in resolved.values() for weight in weights.values())
+        metrics: dict[str, torch.Tensor] = {}
+        terms = []
+        for name in AVAILABLE_LOSSES:
+            weights = torch.tensor([resolved[variable].get(name, 0.0) for variable in variables], device=output.device)
+            if not (weights > 0).any():
+                continue
+            per_variable = cast(Loss, self.loss_functions[name]).per_variable(output, target_data)
+            for variable, value, weight in zip(variables, per_variable.detach(), weights, strict=True):
+                if weight > 0:
+                    metrics[f"{variable}/{name}_loss"] = value
+            term = (per_variable * weights).sum() / total_weight
+            metrics[f"{name}_loss"] = term.detach()
+            terms.append(term)
+        loss = torch.stack(terms).sum()
         metrics["loss"] = loss.detach()
         return loss, metrics
 
