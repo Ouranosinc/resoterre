@@ -127,7 +127,7 @@ python scripts/crcm_emulator/01_data_analysis.py --config /path/to/experiment.ya
 | `gcm_vs_crcm` | Compares GCM fields with CRCM fields coarsened using `data.coarsen_factor`. |
 | `gcm_vs_crcm_plots` | Runs the same comparison and plots the results. |
 
-The first three components use `data.training_periods` and write under `<paths.output>/data_analysis/`. The others use `analysis.windows` and write to scenario subdirectories under `paths.output`.
+The first three components use `data.training_periods` and write under `<paths.output>/data_analysis/`. The others use `analysis.windows` and write to scenario subdirectories under `<paths.output>/data_analysis/`.
 
 ## Training
 
@@ -136,6 +136,32 @@ On Slurm, training and inference are run with `sbatch run_files/run_train_crcm_p
 With `--test`, `03_train.py` evaluates the best checkpoint once training is done on `data.test_periods` with
 `inference.evaluation_metrics`, and logs the results to Comet ML by key of `data.test_periods`
 (e.g. `tas/test_rmse_historical`, plus `test_checkpoint_epoch`). Without it, the test periods are not evaluated.
+
+### Comet ML logging
+
+To log training metrics and figures to Comet ML, enable the logger in your experiment YAML and set the Comet project
+and workspace:
+
+```yaml
+logger:
+  disabled: false
+  offline: false
+  project_name: your-project
+  workspace: your-workspace
+  tags: ["crcm-emulator"]
+```
+
+The top-level `experiment_name` is used as the Comet experiment name unless `logger.experiment_name` is set. Keep the
+API key out of the YAML; export it in the shell before submitting the Slurm job:
+
+```bash
+export COMET_API_KEY="your-api-key"
+sbatch run_files/run_train_crcm_pipeline.sh <config.yaml>
+```
+
+The training wrapper checks for `COMET_API_KEY` when online logging is enabled. For offline logging, set
+`offline: true`; no API key is required, and you can set `offline_directory` to choose where local Comet data is stored.
+Set `disabled: true` to turn logging off.
 
 ### Inference
 

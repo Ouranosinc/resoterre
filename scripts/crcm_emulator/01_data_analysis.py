@@ -166,12 +166,13 @@ def run_multiple_window_components(
     config : CRCMEmulatorConfig
         Analysis configuration, including ``analysis.windows``.
     output_dir : Path
-        Directory where outputs are written, one subdirectory per scenario.
+        Experiment directory. Outputs are written to its ``data_analysis`` subdirectory, one folder per scenario.
     """
     run_gcm_vs_crcm = bool(components & {"gcm_vs_crcm", "gcm_vs_crcm_plots"})
+    analysis_dir = output_dir / "data_analysis"
 
     for start_date, end_date, scenario in config.analysis.windows:
-        scenario_dir = output_dir / scenario
+        scenario_dir = analysis_dir / scenario
         scenario_dir.mkdir(parents=True, exist_ok=True)
         logger.info("Filtering data for %s from %s to %s", scenario, start_date, end_date)
         data_gcm, data_crcm = filter_data(
