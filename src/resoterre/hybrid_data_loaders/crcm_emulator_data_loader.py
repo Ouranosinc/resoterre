@@ -17,6 +17,10 @@ from resoterre.ml.data_loader_utils import normalize
 
 logger = logging.getLogger(__name__)
 
+EMISSION_NAMES = ["CO2", "CH4", "N2O", "CFC12", "CFC11_eq"]
+# Cyclical date encoding (sin, cos) plus the greenhouse gases
+NUM_LINEAR_INPUTS = 2 + len(EMISSION_NAMES)
+
 
 class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
     """
@@ -81,6 +85,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                 break
         self.num_input_channels = len(gcm_variables) + self.mask_dimensions
         self.num_output_channels = len(crcm_variables)
+        self.num_linear_inputs = NUM_LINEAR_INPUTS
         for simulation in simulations:
             gcm_str = f"{simulation[0]}_{simulation[1]}_{simulation[2]}"
             self.valid_time_idx[gcm_str] = []
@@ -315,7 +320,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         else:
             input_first_block = self.input_first_block_as_2d_channels(xarray_dataset_gcm, gcm_idx)
         emission_data = {}
-        for emission_name in ["CO2", "CH4", "N2O", "CFC12", "CFC11_eq"]:
+        for emission_name in EMISSION_NAMES:
             emission_value = xarray_dataset_gcm[emission_name][gcm_idx].values
             if self.normalize:
                 emission_value = np.clip(

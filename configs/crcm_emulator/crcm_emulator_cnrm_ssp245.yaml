@@ -127,6 +127,10 @@ training:
   device: cuda
   seed: 42 # random seed for weight initialization and data shuffling, null to disable
   figure_every_n_steps: 10 # Comet ML training figure frequency, 0 to disable
+  lr_scheduler: true # warm-up then cosine annealing of the learning rate over nb_of_epochs
+  lr_warmup_epochs: 1 # linear warm-up epochs
+  lr_min: 1.0e-5 # minimum learning rate of the cosine annealing
+  early_stopping_patience: null # null to disable, if enabled, it should be around 1/3 of training epochs
   validation_metrics: # extra metrics reported during validation, in addition to the losses
     - rmse
     - ccc

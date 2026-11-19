@@ -9,6 +9,7 @@ import xarray
 from torch.utils import data as td
 
 from resoterre.datasets.crcm.crcm_utils import crcm_north_america_grid_coordinates
+from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import NUM_LINEAR_INPUTS
 
 
 logger = logging.getLogger(__name__)
@@ -214,6 +215,7 @@ class CRCMEmulatorMockDataset(td.Dataset):  # type: ignore[misc]
         self.num_samples = num_samples
         self.num_input_channels = num_input_channels
         self.num_output_channels = num_output_channels
+        self.num_linear_inputs = NUM_LINEAR_INPUTS
         self.tile_size = tile_size
         self.coarsen_factor = coarsen_factor
         self.coarse_size = tile_size // coarsen_factor
