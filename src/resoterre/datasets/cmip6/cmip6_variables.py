@@ -1,40 +1,16 @@
 """Specifications for CMIP6 variables."""
 
 import copy
-import csv
-from importlib.resources import files
 from typing import Any
 
-from resoterre.data_management.variables import VariableHandler, VariableHandlerCollection
+from resoterre.data_management.variables import VariableHandler, VariableHandlerCollection, read_normalization_stats
 
 
 gcm_vertical_levels: list[float] = [100000.0, 85000.0, 70000.0, 50000.0, 25000.0, 10000.0, 5000.0, 1000.0]
 
-_stats_directory = files("resoterre").joinpath("data", "cnrm_ssp245", "data_analysis")
-_stats_scenario = "historical+ssp245"
-
-
-def _read_stats(file_name: str) -> list[dict[str, str]]:
-    """
-    Read the rows of a normalization statistics file that cover the combined historical and ssp245 periods.
-
-    Parameters
-    ----------
-    file_name : str
-        Name of the CSV file in the ``data/cnrm_ssp245/data_analysis`` directory.
-
-    Returns
-    -------
-    list[dict[str, str]]
-        Rows of the file for the combined historical and ssp245 scenario.
-    """
-    with _stats_directory.joinpath(file_name).open("r", encoding="utf-8") as f:
-        return [row for row in csv.DictReader(f) if row["scenario"] == _stats_scenario]
-
-
-csv_data = _read_stats("normalization_stats_climate_vars_1951-1984_2015-2069.csv") + _read_stats(
-    "normalization_stats_forcings_1951-1984_2015-2069.csv"
-)
+csv_data = read_normalization_stats(
+    "normalization_stats_climate_vars_1951-1984_2015-2069.csv"
+) + read_normalization_stats("normalization_stats_forcings_1951-1984_2015-2069.csv")
 
 _nonnegative_variables = ["hus", "pr", "psl", "ta", "tas"]
 for variable_name in ["hus", "ta"]:

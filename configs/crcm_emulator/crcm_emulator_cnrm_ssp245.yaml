@@ -85,6 +85,12 @@ data:
     - N2O
     - CFC12
     - CFC11_eq
+  # Target normalization per variable: min_max (default), celsius (tas: K to degC shift only) or
+  # mm_per_day (pr: kg m-2 s-1 to mm/day only). celsius and mm_per_day are incompatible with loss.ssim_weight > 0.
+  target_normalization:
+    tas: min_max
+    pr: min_max
+
   training_periods:
     historical:
       - "1951-01-01"

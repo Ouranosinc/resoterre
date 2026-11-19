@@ -3,7 +3,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -28,6 +28,7 @@ from resoterre.config.metrics import MSELossConfig, MeanBiasConfig, RMSEConfig, 
 from resoterre.config.metrics_climate import DaysAboveThresholdConfig
 from resoterre.data_generators.crcm_emulator_mock_dataset import CRCMEmulatorMockDataset
 from resoterre.data_management.timeseries import MultiTimeseries
+from resoterre.datasets.crcm.crcm_variables import crcm_variables
 from resoterre.logging_utils import start_root_logger
 from resoterre.pipelines.crcm_emulator import crcm_emulator_training
 from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import PredictionZarrWriter
@@ -576,6 +577,64 @@ def test_crcm_emulator_custom_emission_names_set_linear_inputs():
         assert {"CO2", "CH4"} <= batch.keys() and "N2O" not in batch
         _, _, output = runner.forward_batch(batch)
         assert output.shape[0] == 4
+
+
+
+def _celsius_config(
+    tmp_dir: str, mode: str = "celsius", variable: str = "tas", **loss_kwargs: Any
+) -> CRCMEmulatorConfig:
+    return CRCMEmulatorConfig(
+        experiment_name="test",
+        paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+        preprocessing=CRCMEmulatorPreprocessingConfig(
+            gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+            crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+        ),
+        data=CRCMEmulatorDataConfig(
+            tile_size=128,
+            coarsen_factor=4,
+            batch_size=4,
+            crcm_variables=[variable],
+            target_normalization={variable: cast(Any, mode)},
+        ),
+        loss=CRCMEmulatorLossConfig(**loss_kwargs),
+        model=CRCMEmulatorModelConfig(kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None),
+        training=CRCMEmulatorTrainingConfig(device="cpu"),
+    )
+
+
+def test_crcm_emulator_celsius_target_normalization_is_denormalized_to_kelvin():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=_celsius_config(tmp_dir))
+        dataset = CRCMEmulatorMockDataset(
+            num_samples=2, num_input_channels=2, num_output_channels=1, tile_size=128, coarsen_factor=4
+        )
+        runner.dataset = dataset
+        runner.init_unet()
+        seen: dict[str, torch.Tensor] = {}
+
+        class RecordMetric:
+            allow_per_batch_evaluation = True
+
+            def __call__(self, target: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+                seen["target"] = target
+                return target.amax(dim=(0, 2, 3))
+
+        class RecordMetricConfig(BaseMetricConfig):
+            name: Literal["record"] = "record"
+
+        batch = next(iter(td.DataLoader(dataset, 2)))
+        runner.evaluation_step(batch, custom_metrics=[{"config": RecordMetricConfig(), "function": RecordMetric()}])
+        assert seen["target"].numpy() == pytest.approx((batch["target"] + 273.15).numpy())
+
+
+@pytest.mark.parametrize(("variable", "mode"), [("tas", "celsius"), ("pr", "mm_per_day")])  # type: ignore[untyped-decorator]
+def test_crcm_emulator_unit_only_target_normalization_is_incompatible_with_ssim(variable: str, mode: str) -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        with pytest.raises(ValueError, match="ssim_weight"):
+            crcm_emulator_training.CRCMEmulatorTrainingFromConfig(
+                config=_celsius_config(tmp_dir, mode, variable, mse_weight=0.0, ssim_weight=1.0)
+            )
 
 
 def _baseline_runner(

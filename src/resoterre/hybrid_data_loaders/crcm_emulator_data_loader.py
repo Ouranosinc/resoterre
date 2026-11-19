@@ -1,6 +1,7 @@
 """Module for loading CRCM emulator data from zarr files."""
 
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,12 @@ from resoterre.config.crcm_emulator import DEFAULT_EMISSION_NAMES
 from resoterre.data_management.cftime_utils import decode_times_as_cftime, get_intersection_slices
 from resoterre.datasets.cmip6.cmip6_utils import gcm_variable_levels
 from resoterre.datasets.cmip6.cmip6_variables import cmip6_variables
-from resoterre.datasets.crcm.crcm_variables import crcm_variables
+from resoterre.datasets.crcm.crcm_variables import (
+    check_target_normalization,
+    crcm_variables,
+    is_unit_only_normalization,
+    to_target_units,
+)
 from resoterre.ml.data_loader_utils import normalize
 
 
@@ -51,6 +57,9 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         Name of the experiment.
     emission_names : list[str], optional
         Names of the greenhouse gas forcings, ``DEFAULT_EMISSION_NAMES`` if not provided.
+    target_normalization : Mapping[str, str], optional
+        Normalization of each CRCM variable as a target, ``"min_max"``, ``"celsius"`` or ``"mm_per_day"``. Variables
+        that are not listed use ``"min_max"``. Only applied if ``normalize`` is True.
     """
 
     def __init__(
@@ -66,6 +75,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         max_open_datasets: int = 2,
         experiment_name: str = "",
         emission_names: list[str] | None = None,
+        target_normalization: Mapping[str, str] | None = None,
     ) -> None:
         self.experiment_name = experiment_name
         self.path_gcm_preprocessing = path_gcm_preprocessing
@@ -79,6 +89,8 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         self.crcm_open_dataset: dict[str, xarray.Dataset] = {}
         self.keep_3d_variables = keep_3d_variables
         self.normalize = normalize
+        self.target_normalization = target_normalization or {}
+        check_target_normalization(self.target_normalization)
         self.max_open_datasets = max_open_datasets
         # Only using 850 hPa level for the mask
         self.mask_dimensions = 0
@@ -347,7 +359,10 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                     (len(self.crcm_variables), xarray_variable.shape[1], xarray_variable.shape[2]), dtype=np.float32
                 )
             crcm_data = xarray_variable.isel(time=crcm_idx).values
-            if self.normalize:
+            mode = self.target_normalization.get(variable_name)
+            if self.normalize and is_unit_only_normalization(mode):
+                crcm_data = to_target_units(crcm_data, str(mode))
+            elif self.normalize:
                 crcm_data = normalize(
                     crcm_data,
                     valid_min=crcm_variables[variable_name].normalize_min,

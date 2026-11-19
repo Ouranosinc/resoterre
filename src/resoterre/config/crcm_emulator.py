@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, model_validator
 
@@ -155,6 +155,11 @@ class CRCMEmulatorDataConfig(BaseConfig):
     emission_names : list[str]
         Names of the greenhouse gas forcings given to the emulator as linear inputs, in channel order. They must be
         in the GCM zarr data and in the normalization statistics.
+    target_normalization : dict[str, Literal["min_max", "celsius", "mm_per_day"]]
+        How each CRCM variable is scaled as a training target. Variables that are not listed use ``"min_max"``, a
+        linear scaling to [-1, 1] over the range of the variable. ``"celsius"`` only converts kelvin to degrees
+        Celsius (tas) and ``"mm_per_day"`` only converts kg m-2 s-1 to mm/day (pr), both without scaling. These two
+        are not compatible with ``ssim_weight`` > 0.
     training_periods : dict[str, list[datetime]]
         Named training periods, keyed by a user-chosen label. Each period has the form [start_datetime, end_datetime].
     validation_periods : dict[str, list[datetime]]
@@ -176,6 +181,7 @@ class CRCMEmulatorDataConfig(BaseConfig):
     gcm_variables: list[str] = Field(default_factory=list)
     crcm_variables: list[str] = Field(default_factory=list)
     emission_names: list[str] = Field(default_factory=lambda: list(DEFAULT_EMISSION_NAMES))
+    target_normalization: dict[str, Literal["min_max", "celsius", "mm_per_day"]] = Field(default_factory=dict)
     training_periods: dict[str, list[datetime]] = Field(default_factory=dict)
     validation_periods: dict[str, list[datetime]] = Field(default_factory=dict)
     test_periods: dict[str, list[datetime]] = Field(default_factory=dict)
