@@ -35,6 +35,6 @@ import yaml
 
 with open(sys.argv[1]) as config_file:
     config = yaml.safe_load(config_file)
-print(config["experiment_name"])
+print(config.get("experiment_name"))
 PY
 )
