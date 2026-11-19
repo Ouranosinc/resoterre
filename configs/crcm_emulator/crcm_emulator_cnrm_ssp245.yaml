@@ -91,7 +91,7 @@ data:
   forcings_normalization_stats_file: normalization_stats_forcings_1951-1984_2015-2069.csv
   # Target normalization per variable: min_max (default), celsius (tas: K to degC shift only),
   # z_score (tas: mean/std standardization) or mm_per_day (pr: kg m-2 s-1 to mm/day only).
-  # celsius, z_score and mm_per_day are incompatible with loss.ssim_weight > 0.
+  # celsius, z_score and mm_per_day are incompatible with a positive loss.default / loss.variables ssim.
   target_normalization:
     tas: min_max
     pr: min_max
@@ -135,8 +135,17 @@ optimizer:
   weight_decay: 0.001
 
 loss:
-  mse_weight: 1.0
-  ssim_weight: 0.0
+  # Weight of each loss term of each variable, the loss is their weighted mean (only the ratios matter).
+  # A weight of 0 disables a term. Available: mse, mae, ssim.
+  default:
+    mse: 1.0
+    mae: 0.0
+    ssim: 0.0
+  # Optional, loss weights of specific variables (listed in crcm_variables), replacing default for them. Use it to
+  # train variables with different losses, or to give a variable more weight.
+  # variables:
+  #   tas: {mse: 1.0}
+  #   pr: {mae: 1.0}
 
 _definitions:
   default_plot: &default_plot
