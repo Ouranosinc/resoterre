@@ -14,7 +14,7 @@ from resoterre.config import (
     CRCMEmulatorSourcePreprocessingConfig,
     CRCMEmulatorTrainingConfig,
 )
-from resoterre.config.ml import (
+from resoterre.config.metrics import (
     BiasMapConfig,
     RMSEConfig,
     TemporalQuantileBiasConfig,

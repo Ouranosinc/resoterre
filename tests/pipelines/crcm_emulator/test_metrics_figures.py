@@ -3,7 +3,7 @@ from pathlib import Path
 
 import torch
 
-from resoterre.config.ml import BasePlotConfig
+from resoterre.config import BasePlotConfig
 from resoterre.pipelines.crcm_emulator import metrics
 from resoterre.plots.utils import figure_dispatcher
 

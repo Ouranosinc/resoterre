@@ -15,8 +15,8 @@ from resoterre.config import (
     CRCMEmulatorPreprocessingConfig,
     CRCMEmulatorSourcePreprocessingConfig,
 )
-from resoterre.config.climate import DaysAboveThresholdConfig, DaysAboveThresholdMapConfig
-from resoterre.config.ml import BiasMapConfig, CCCConfig, MeanBiasConfig, RMSEConfig
+from resoterre.config.metrics import BiasMapConfig, CCCConfig, MeanBiasConfig, RMSEConfig
+from resoterre.config.metrics_climate import DaysAboveThresholdConfig, DaysAboveThresholdMapConfig
 from resoterre.pipelines.crcm_emulator import crcm_emulator_baselines
 from resoterre.pipelines.crcm_emulator.baseline_evaluation import date_tuples
 from resoterre.pipelines.crcm_emulator.crcm_emulator_baselines import InterpolationBaseline

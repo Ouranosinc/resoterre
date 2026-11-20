@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from resoterre.config.ml import BaseMetricConfig
+from resoterre.config.metrics import BaseMetricConfig
 
 
 class DaysAboveThresholdConfig(BaseMetricConfig):
@@ -10,7 +10,7 @@ class DaysAboveThresholdConfig(BaseMetricConfig):
 
     name: Literal["days_above_threshold"] = "days_above_threshold"
     threshold: float
-    days_per_year: float = 365
+    days_per_year: float = 365.2425
 
 
 class DaysAboveThresholdMapConfig(BaseMetricConfig):
@@ -18,4 +18,4 @@ class DaysAboveThresholdMapConfig(BaseMetricConfig):
 
     name: Literal["days_above_threshold_map"] = "days_above_threshold_map"
     threshold: float
-    days_per_year: float = 365
+    days_per_year: float = 365.2425

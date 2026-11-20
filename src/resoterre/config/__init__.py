@@ -4,7 +4,7 @@ Configuration models for resoterre.
 All configuration classes are frozen pydantic models.
 """
 
-from resoterre.config.base import BaseConfig
+from resoterre.config.base import BaseConfig, BasePlotConfig
 from resoterre.config.crcm_emulator import (
     CRCMEmulatorAnalysisConfig,
     CRCMEmulatorConfig,
@@ -38,8 +38,8 @@ from resoterre.config.downscaling import (
     RDPSToHRDPSTrainingConfig,
     UNetReconstructionRunnerConfig,
 )
+from resoterre.config.metrics import BaseMetricConfig
 from resoterre.config.ml import (
-    BaseMetricConfig,
     DataLoaderConfig,
     DenseUNetConfig,
     LossPlotConfig,
@@ -55,6 +55,7 @@ from resoterre.config.ml import (
 __all__ = [
     "BaseConfig",
     "BaseMetricConfig",
+    "BasePlotConfig",
     "CRCMEmulatorAnalysisConfig",
     "CRCMEmulatorConfig",
     "CRCMEmulatorDataConfig",

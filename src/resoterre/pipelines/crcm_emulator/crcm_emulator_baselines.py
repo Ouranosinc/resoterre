@@ -9,8 +9,7 @@ import numpy as np
 import xarray
 from scipy.ndimage import zoom
 
-from resoterre.config import CRCMEmulatorConfig
-from resoterre.config.ml import BaseMetricConfig
+from resoterre.config import BaseMetricConfig, CRCMEmulatorConfig
 from resoterre.data_management.cftime_utils import decode_times_as_cftime
 from resoterre.datasets.cmip6.cmip6_utils import gcm_calendars
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset

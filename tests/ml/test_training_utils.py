@@ -7,7 +7,8 @@ import pytest
 import torch
 import torch.optim as optim
 
-from resoterre.config.ml import BasePlotConfig, BiasMapConfig
+from resoterre.config import BasePlotConfig
+from resoterre.config.metrics import BiasMapConfig
 from resoterre.data_generators.mock_torch_dataset import mock_torch_dataloader
 from resoterre.logging_utils import start_root_logger
 from resoterre.ml import training_utils

@@ -10,9 +10,8 @@ import yaml
 from pydantic import Field, ValidationError
 
 from resoterre import config_utils
-from resoterre.config import BaseConfig, CRCMEmulatorConfig, OptimizerConfig, RDPSToHRDPSConfig
-from resoterre.config.ml import (
-    BasePlotConfig,
+from resoterre.config import BaseConfig, BasePlotConfig, CRCMEmulatorConfig, OptimizerConfig, RDPSToHRDPSConfig
+from resoterre.config.metrics import (
     BiasMapConfig,
     CCCConfig,
     MeanBiasConfig,

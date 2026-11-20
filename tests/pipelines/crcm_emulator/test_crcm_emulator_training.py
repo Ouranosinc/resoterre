@@ -13,6 +13,7 @@ import xarray
 from torch.utils import data as td
 
 from resoterre.config import (
+    BaseMetricConfig,
     CRCMEmulatorConfig,
     CRCMEmulatorDataConfig,
     CRCMEmulatorLossConfig,
@@ -23,8 +24,8 @@ from resoterre.config import (
     CRCMEmulatorTrainingConfig,
     OptimizerConfig,
 )
-from resoterre.config.climate import DaysAboveThresholdConfig
-from resoterre.config.ml import BaseMetricConfig, MSELossConfig, MeanBiasConfig, RMSEConfig, TemporalQuantileBiasConfig
+from resoterre.config.metrics import MSELossConfig, MeanBiasConfig, RMSEConfig, TemporalQuantileBiasConfig
+from resoterre.config.metrics_climate import DaysAboveThresholdConfig
 from resoterre.data_generators.crcm_emulator_mock_dataset import CRCMEmulatorMockDataset
 from resoterre.data_management.timeseries import MultiTimeseries
 from resoterre.logging_utils import start_root_logger

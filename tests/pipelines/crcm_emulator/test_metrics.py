@@ -6,15 +6,15 @@ import torch
 from fastdigest import TDigest
 from scipy.stats import wasserstein_distance
 
-from resoterre.config.climate import DaysAboveThresholdConfig, DaysAboveThresholdMapConfig
-from resoterre.config.ml import (
+from resoterre.config import BasePlotConfig
+from resoterre.config.metrics import (
     BaseMetricConfig,
-    BasePlotConfig,
     CCCConfig,
     MeanBiasConfig,
     RMSEConfig,
     TemporalQuantileBiasConfig,
 )
+from resoterre.config.metrics_climate import DaysAboveThresholdConfig, DaysAboveThresholdMapConfig
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
 from resoterre.ml.data_loader_utils import inverse_normalize
 from resoterre.pipelines.crcm_emulator import metrics

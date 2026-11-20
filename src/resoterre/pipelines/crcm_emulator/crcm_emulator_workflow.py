@@ -7,7 +7,7 @@ import numpy as np
 import xarray
 
 from resoterre.config import BaseMetricConfig, CRCMEmulatorConfig
-from resoterre.config.ml import LossConfig, MSELossConfig, SSIMLossConfig
+from resoterre.config.metrics import LossConfig, MSELossConfig, SSIMLossConfig
 from resoterre.config_utils import config_from_yaml
 from resoterre.data_management.cftime_utils import (
     check_netcdf_calendar,

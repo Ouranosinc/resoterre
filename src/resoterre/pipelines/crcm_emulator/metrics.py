@@ -31,7 +31,7 @@ import numpy as np
 import torch
 from fastdigest import TDigest
 
-from resoterre.config.ml import BaseMetricConfig
+from resoterre.config import BaseMetricConfig
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
 
 

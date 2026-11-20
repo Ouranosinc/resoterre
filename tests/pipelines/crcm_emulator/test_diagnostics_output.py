@@ -2,7 +2,8 @@ import numpy as np
 import torch
 import xarray
 
-from resoterre.config.ml import BasePlotConfig, BiasMapConfig
+from resoterre.config import BasePlotConfig
+from resoterre.config.metrics import BiasMapConfig
 from resoterre.pipelines.crcm_emulator.diagnostics_output import (
     diagnostic_title,
     save_diagnostics,

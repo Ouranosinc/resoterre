@@ -13,7 +13,7 @@ import xarray
 from torch.utils import data as td
 from tqdm import tqdm
 
-from resoterre.config.ml import BaseMetricConfig
+from resoterre.config import BaseMetricConfig
 from resoterre.data_management.cftime_utils import decode_times_as_cftime
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
 from resoterre.pipelines.crcm_emulator.metrics import (

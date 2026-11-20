@@ -15,8 +15,7 @@ from torch.utils import data as td
 from torchmetrics.image import MultiScaleStructuralSimilarityIndexMeasure
 from tqdm import tqdm
 
-from resoterre.config import CRCMEmulatorConfig
-from resoterre.config.ml import BaseMetricConfig
+from resoterre.config import BaseMetricConfig, CRCMEmulatorConfig
 from resoterre.data_management.timeseries import MultiTimeseries
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
 from resoterre.logging_utils import CustomLogging

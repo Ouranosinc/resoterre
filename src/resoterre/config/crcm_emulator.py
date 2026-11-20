@@ -7,7 +7,8 @@ from typing import Any
 from pydantic import Field, model_validator
 
 from resoterre.config.base import BaseConfig
-from resoterre.config.ml import BaseMetricConfig, OptimizerConfig, RMSEConfig
+from resoterre.config.metrics import BaseMetricConfig, RMSEConfig
+from resoterre.config.ml import OptimizerConfig
 
 
 class ExperimentLoggerConfig(BaseConfig):
