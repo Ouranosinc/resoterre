@@ -135,8 +135,17 @@ def test_crcm_emulator_nested_config_from_yaml():
     assert config.optimizer.lr == 0.001
     assert config.data.prefetch_factor == 4
     assert config.training.figure_every_n_steps == 10
-    assert config.training.validation_metrics == ["rmse", "ccc", "wasserstein_distance", "bias_map", "mean_bias"]
-    assert config.inference.evaluation_metrics == ["rmse", "ccc", "wasserstein_distance", "bias_map", "mean_bias"]
+    expected_metrics = [
+        "rmse",
+        "ccc",
+        "wasserstein_distance",
+        "bias_map",
+        "mean_bias",
+        "days_above_threshold",
+        "days_above_threshold_map",
+    ]
+    assert config.training.validation_metrics == expected_metrics
+    assert config.inference.evaluation_metrics == expected_metrics
     assert config.training.device == "cuda"
     assert config.analysis.windows[1] == (datetime(2015, 1, 1), datetime(2100, 12, 31), "ssp245")
     assert config.analysis.surface_variables["tas"] == "ta"

@@ -9,20 +9,28 @@ from resoterre.data_management.variables import VariableHandler, VariableHandler
 KELVIN_TO_CELSIUS_OFFSET = 273.15
 SECONDS_PER_DAY = 86400.0
 
-# Target normalizations that only change the units: mode -> (required units, scale, shift), with y = scale * x + shift.
-# A precipitation flux in kg m-2 s-1 is numerically a depth rate in mm s-1.
+crcm_variables = VariableHandlerCollection()
+
+_crcm_stats = {
+    row["variable"]: row
+    for row in read_normalization_stats("normalization_stats_climate_vars_1951-1984_2015-2069.csv")
+    if row["model"] == "crcm"
+}
+
+# Valid range of the CRCM variables: observed min and max over the historical and ssp245 periods.
+_valid_range = {name: (float(row["min"]), float(row["max"])) for name, row in _crcm_stats.items()}
+
+# Affine target normalizations that do not scale to [-1, 1]: mode -> (required units, scale, shift), with
+# y = scale * x + shift. A precipitation flux in kg m-2 s-1 is numerically a depth rate in mm s-1.
+# z_score uses the mean and standard deviation over the historical and ssp245 periods (tas only).
 _unit_only_normalizations = {
     "celsius": ("K", 1.0, -KELVIN_TO_CELSIUS_OFFSET),
     "mm_per_day": ("kg m-2 s-1", SECONDS_PER_DAY, 0.0),
-}
-
-crcm_variables = VariableHandlerCollection()
-
-# Valid range of the CRCM variables: observed min and max over the historical and ssp245 periods.
-_valid_range = {
-    row["variable"]: (float(row["min"]), float(row["max"]))
-    for row in read_normalization_stats("normalization_stats_climate_vars_1951-1984_2015-2069.csv")
-    if row["model"] == "crcm"
+    "z_score": (
+        "K",
+        1.0 / float(_crcm_stats["tas"]["std"]),
+        -float(_crcm_stats["tas"]["mean"]) / float(_crcm_stats["tas"]["std"]),
+    ),
 }
 
 crcm_variables["tas"] = VariableHandler(
@@ -117,7 +125,7 @@ def is_unit_only_normalization(mode: str | None) -> bool:
     Returns
     -------
     bool
-        True for ``"celsius"`` and ``"mm_per_day"``.
+        True for ``"celsius"``, ``"mm_per_day"`` and ``"z_score"``.
     """
     return mode in _unit_only_normalizations
 
@@ -169,7 +177,8 @@ def check_target_normalization(target_normalization: Mapping[str, str]) -> None:
     Parameters
     ----------
     target_normalization : Mapping[str, str]
-        Normalization of each CRCM variable, ``"min_max"``, ``"celsius"`` (tas only) or ``"mm_per_day"`` (pr only).
+        Normalization of each CRCM variable, ``"min_max"``, ``"celsius"`` (tas only), ``"mm_per_day"`` (pr only) or
+        ``"z_score"`` (tas only).
 
     Raises
     ------
@@ -183,6 +192,8 @@ def check_target_normalization(target_normalization: Mapping[str, str]) -> None:
         if mode != "min_max" and mode not in _unit_only_normalizations:
             raise ValueError(f"Unknown target normalization '{mode}' for variable {variable_name}.")
         if mode in _unit_only_normalizations:
+            if mode == "z_score" and variable_name != "tas":
+                raise ValueError("The 'z_score' target normalization is only available for tas.")
             required_units = _unit_only_normalizations[mode][0]
             if crcm_variables[variable_name].units != required_units:
                 raise ValueError(

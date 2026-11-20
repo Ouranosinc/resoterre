@@ -261,14 +261,14 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         Raises
         ------
         ValueError
-            If the SSIM loss is used with a unit-only target normalization (``"celsius"`` or ``"mm_per_day"``), since
-            SSIM assumes targets in [-1, 1].
+            If the SSIM loss is used with an affine target normalization (``"celsius"``, ``"mm_per_day"`` or
+            ``"z_score"``), since SSIM assumes targets in [-1, 1].
         """
         if self.config.loss.ssim_weight and any(
             is_unit_only_normalization(mode) for mode in self.config.data.target_normalization.values()
         ):
             raise ValueError(
-                "loss.ssim_weight > 0 requires targets in [-1, 1], not a 'celsius' or 'mm_per_day' target "
+                "loss.ssim_weight > 0 requires targets in [-1, 1], not a 'celsius', 'mm_per_day' or 'z_score' target "
                 "normalization."
             )
 

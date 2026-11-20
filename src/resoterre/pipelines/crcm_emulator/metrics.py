@@ -52,7 +52,7 @@ def denormalize_crcm(
         Names of the CRCM variables, in channel order.
     target_normalization : Mapping[str, str], optional
         Normalization of each CRCM variable (``"min_max"`` if not listed). Variables with a unit-only normalization
-        (``"celsius"`` or ``"mm_per_day"``) are converted back to the units of the CRCM files.
+        (``"celsius"``, ``"mm_per_day"`` or ``"z_score"``) are converted back to the units of the CRCM files.
 
     Returns
     -------

@@ -56,7 +56,8 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
     experiment_name : str
         Name of the experiment.
     target_normalization : Mapping[str, str], optional
-        Normalization of each CRCM variable as a target, ``"min_max"``, ``"celsius"`` or ``"mm_per_day"``. Variables
+        Normalization of each CRCM variable as a target, ``"min_max"``, ``"celsius"``, ``"mm_per_day"`` or
+        ``"z_score"``. Variables
         that are not listed use ``"min_max"``. Only applied if ``normalize`` is True.
     """
 
