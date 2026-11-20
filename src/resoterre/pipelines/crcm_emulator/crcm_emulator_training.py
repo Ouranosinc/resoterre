@@ -17,6 +17,7 @@ from tqdm import tqdm
 
 from resoterre.config import CRCMEmulatorConfig
 from resoterre.data_management.timeseries import MultiTimeseries
+from resoterre.datasets.crcm.crcm_variables import is_unit_only_normalization
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import EMISSION_NAMES, CRCMEmulatorDataset
 from resoterre.logging_utils import CustomLogging
 from resoterre.ml.network_manager import NeuralNetworksManager
@@ -100,6 +101,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             self.validation_data_loader = next(iter(self.validation_data_loaders.values()))
         if self.config.data.coarsen_factor is None:
             raise ValueError("Coarsen factor must be specified in the configuration.")
+        self.check_target_normalization()
         self.date_encoding = CyclicalDateEncoding().to(self.config.training.device)
         self.validation_figure_data: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
         # per metric: (weighted sum, total weight), kept as tensors on the device until consolidation()
@@ -146,6 +148,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             crcm_variables=self.config.data.crcm_variables,
             time_periods=time_periods,
             max_open_datasets=self.config.data.max_open_datasets,
+            target_normalization=self.config.data.target_normalization,
         )
 
     def build_data_loader(self, dataset: CRCMEmulatorDataset, shuffle: bool) -> td.DataLoader[Any]:
@@ -250,6 +253,24 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
                 eta_min=training_config.lr_min,
             )
         self.patience = training_config.early_stopping_patience
+
+    def check_target_normalization(self) -> None:
+        """
+        Check that the target normalization is compatible with the loss.
+
+        Raises
+        ------
+        ValueError
+            If the SSIM loss is used with an affine target normalization (``"celsius"``, ``"mm_per_day"`` or
+            ``"z_score"``), since SSIM assumes targets in [-1, 1].
+        """
+        if self.config.loss.ssim_weight and any(
+            is_unit_only_normalization(mode) for mode in self.config.data.target_normalization.values()
+        ):
+            raise ValueError(
+                "loss.ssim_weight > 0 requires targets in [-1, 1], not a 'celsius', 'mm_per_day' or 'z_score' target "
+                "normalization."
+            )
 
     def training_loss_computation(
         self, target_data: torch.Tensor, output: torch.Tensor
@@ -359,8 +380,8 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         _, metrics = self.training_loss_computation(target_data, output)
         if metric_functions:
             variable_names = self.config.data.crcm_variables
-            target_physical = denormalize_crcm(target_data, variable_names)
-            output_physical = denormalize_crcm(output, variable_names)
+            target_physical = denormalize_crcm(target_data, variable_names, self.config.data.target_normalization)
+            output_physical = denormalize_crcm(output, variable_names, self.config.data.target_normalization)
             for name, metric_function in metric_functions.items():
                 # ToDo: there will most likely be variable specific metrics. Suggestion: have a
                 #       metric_function.per_variable boolean flag and handle accordingly in the update.
@@ -431,7 +452,9 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
                                 strict=True,
                             )
                         ),
-                        denormalize_crcm(output, self.config.data.crcm_variables).cpu().numpy(),
+                        denormalize_crcm(output, self.config.data.crcm_variables, self.config.data.target_normalization)
+                        .cpu()
+                        .numpy(),
                     )
         results = consolidation(self.running_validation_metrics, metric_functions=metric_functions)
         self.running_validation_metrics = {}

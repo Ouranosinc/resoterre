@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -148,6 +148,12 @@ class CRCMEmulatorDataConfig(BaseConfig):
         List of GCM variables to use for training the emulator.
     crcm_variables : list[str]
         List of CRCM variables to use for training the emulator.
+    target_normalization : dict[str, Literal["min_max", "celsius", "mm_per_day", "z_score"]]
+        How each CRCM variable is scaled as a training target. Variables that are not listed use ``"min_max"``, a
+        linear scaling to [-1, 1] over the range of the variable. ``"celsius"`` only converts kelvin to degrees
+        Celsius (tas) and ``"mm_per_day"`` only converts kg m-2 s-1 to mm/day (pr), both without scaling. ``"z_score"``
+        (tas only) subtracts the mean and divides by the standard deviation. These three are not compatible with
+        ``ssim_weight`` > 0.
     training_periods : dict[str, list[datetime]]
         Named training periods, keyed by a user-chosen label. Each period has the form [start_datetime, end_datetime].
     validation_periods : dict[str, list[datetime]]
@@ -168,6 +174,9 @@ class CRCMEmulatorDataConfig(BaseConfig):
     coarsen_factor: int | None = 4
     gcm_variables: list[str] = Field(default_factory=list)
     crcm_variables: list[str] = Field(default_factory=list)
+    target_normalization: dict[str, Literal["min_max", "celsius", "mm_per_day", "z_score"]] = Field(
+        default_factory=dict
+    )
     training_periods: dict[str, list[datetime]] = Field(default_factory=dict)
     validation_periods: dict[str, list[datetime]] = Field(default_factory=dict)
     test_periods: dict[str, list[datetime]] = Field(default_factory=dict)

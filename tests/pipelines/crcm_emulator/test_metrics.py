@@ -1,9 +1,15 @@
+import numpy as np
 import pytest
 import torch
 from scipy.stats import wasserstein_distance
 
 from resoterre.config.crcm_emulator import CRCMEmulatorMetricConfig
-from resoterre.datasets.crcm.crcm_variables import crcm_variables
+from resoterre.datasets.crcm.crcm_variables import (
+    check_target_normalization,
+    crcm_variables,
+    from_target_units,
+    to_target_units,
+)
 from resoterre.ml.data_loader_utils import inverse_normalize
 from resoterre.pipelines.crcm_emulator import metrics
 
@@ -298,4 +304,53 @@ def test_denormalize_crcm_matches_inverse_normalize() -> None:
 
 def test_denormalize_crcm_tas_range():
     result = metrics.denormalize_crcm(torch.tensor([[[[-1.0, 0.0, 1.0]]]]), ["tas"])
-    assert result.flatten().tolist() == pytest.approx([243.15, 273.15, 303.15])
+    tas = crcm_variables["tas"]
+    assert tas.normalize_min is not None and tas.normalize_max is not None
+    middle = (tas.normalize_min + tas.normalize_max) / 2
+    assert result.flatten().tolist() == pytest.approx([tas.normalize_min, middle, tas.normalize_max])
+
+
+def test_denormalize_crcm_celsius_only_converts_to_kelvin():
+    data = torch.tensor([[[[0.0, 10.0]], [[-1.0, 1.0]]]], dtype=torch.float64)
+    result = metrics.denormalize_crcm(data, ["tas", "uas"], {"tas": "celsius"})
+    assert result[0, 0].flatten().tolist() == pytest.approx([273.15, 283.15])
+    uas = crcm_variables["uas"]
+    assert result[0, 1].flatten().tolist() == pytest.approx([uas.normalize_min, uas.normalize_max])
+
+
+def test_denormalize_crcm_mm_per_day_converts_back_to_flux():
+    data = torch.tensor([[[[0.0, 86.4]], [[-1.0, 1.0]]]], dtype=torch.float64)
+    result = metrics.denormalize_crcm(data, ["pr", "tas"], {"pr": "mm_per_day"})
+    assert result[0, 0].flatten().tolist() == pytest.approx([0.0, 1e-3])
+
+
+def test_unit_only_conversions_round_trip():
+    flux = np.array([0.0, 5.66e-5, 2.5e-2])
+    assert to_target_units(flux, "mm_per_day") == pytest.approx([0.0, 4.89024, 2160.0])
+    assert from_target_units(to_target_units(flux, "mm_per_day"), "mm_per_day") == pytest.approx(flux)
+    assert to_target_units(np.array([273.15]), "celsius") == pytest.approx([0.0])
+
+
+def test_z_score_standardizes_tas_with_mean_and_std():
+    mean, std = 281.2607299514155, 16.424750621488606
+    kelvin = np.array([mean, mean + std, mean - 2 * std])
+    assert to_target_units(kelvin, "z_score") == pytest.approx([0.0, 1.0, -2.0])
+    assert from_target_units(to_target_units(kelvin, "z_score"), "z_score") == pytest.approx(kelvin)
+    data = torch.tensor([[[[0.0, 1.0]]]], dtype=torch.float64)
+    result = metrics.denormalize_crcm(data, ["tas"], {"tas": "z_score"})
+    assert result.flatten().tolist() == pytest.approx([mean, mean + std])
+
+
+def test_check_target_normalization_validates_variable_and_units():
+    check_target_normalization({"tas": "z_score", "pr": "mm_per_day"})
+    check_target_normalization({"tas": "celsius"})
+    with pytest.raises(ValueError, match="only available for tas"):
+        check_target_normalization({"pr": "z_score"})
+    with pytest.raises(ValueError, match="kg m-2 s-1"):
+        check_target_normalization({"tas": "mm_per_day"})
+    with pytest.raises(ValueError, match="requires K"):
+        check_target_normalization({"pr": "celsius"})
+    with pytest.raises(ValueError, match="unknown CRCM variable"):
+        check_target_normalization({"xyz": "celsius"})
+    with pytest.raises(ValueError, match="Unknown target normalization"):
+        check_target_normalization({"tas": "bad"})

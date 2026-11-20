@@ -79,6 +79,13 @@ data:
     - pr
   crcm_variables:
     - tas
+  # Target normalization per variable: min_max (default), celsius (tas: K to degC shift only),
+  # z_score (tas: mean/std standardization) or mm_per_day (pr: kg m-2 s-1 to mm/day only).
+  # celsius, z_score and mm_per_day are incompatible with loss.ssim_weight > 0.
+  target_normalization:
+    tas: min_max
+    pr: min_max
+
   training_periods:
     historical:
       - "1951-01-01"
@@ -137,6 +144,8 @@ training:
     - wasserstein_distance
     - bias_map
     - mean_bias
+    - days_above_threshold
+    - days_above_threshold_map
   log_interpolation_baseline: false # score the precomputed interpolation baseline and log it to Comet ML
 
 inference:
@@ -146,6 +155,8 @@ inference:
     - wasserstein_distance
     - bias_map
     - mean_bias
+    - days_above_threshold
+    - days_above_threshold_map
 
 metrics:
   days_per_year: 365
@@ -159,6 +170,11 @@ plot:
         reverse_i: true # north at the top
         cmap: coolwarm
         symmetric: true # colour scale centred on zero
+        show_range: true # min and max in the title
+    days_above_threshold_map:
+      figure_type: nd_plot
+      figure_kwargs:
+        reverse_i: true # north at the top
         show_range: true # min and max in the title
 
 debug:

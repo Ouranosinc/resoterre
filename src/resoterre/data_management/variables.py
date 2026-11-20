@@ -1,6 +1,31 @@
 """Module for handling variable metadata and collections."""
 
+import csv
+from importlib.resources import files
+
+
 degree_celsius_units = "°C"
+
+normalization_stats_scenario = "historical+ssp245"
+
+
+def read_normalization_stats(file_name: str) -> list[dict[str, str]]:
+    """
+    Read the rows of a normalization statistics file that cover the combined historical and ssp245 periods.
+
+    Parameters
+    ----------
+    file_name : str
+        Name of the CSV file in the ``data/cnrm_ssp245/data_analysis`` directory.
+
+    Returns
+    -------
+    list[dict[str, str]]
+        Rows of the file for the combined historical and ssp245 scenario.
+    """
+    stats_directory = files("resoterre").joinpath("data", "cnrm_ssp245", "data_analysis")
+    with stats_directory.joinpath(file_name).open("r", encoding="utf-8") as f:
+        return [row for row in csv.DictReader(f) if row["scenario"] == normalization_stats_scenario]
 
 
 class VariableHandler:

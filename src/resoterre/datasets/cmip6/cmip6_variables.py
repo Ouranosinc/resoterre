@@ -1,18 +1,16 @@
 """Specifications for CMIP6 variables."""
 
 import copy
-import csv
-from importlib.resources import files
 from typing import Any
 
-from resoterre.data_management.variables import VariableHandler, VariableHandlerCollection
+from resoterre.data_management.variables import VariableHandler, VariableHandlerCollection, read_normalization_stats
 
 
 gcm_vertical_levels: list[float] = [100000.0, 85000.0, 70000.0, 50000.0, 25000.0, 10000.0, 5000.0, 1000.0]
 
-resources = files("resoterre").joinpath("data", "data_normalization_stats.csv")
-with resources.open("r", encoding="utf-8") as f:
-    csv_data = list(csv.DictReader(line for line in f if not line.startswith("#")))
+csv_data = read_normalization_stats(
+    "normalization_stats_climate_vars_1951-1984_2015-2069.csv"
+) + read_normalization_stats("normalization_stats_forcings_1951-1984_2015-2069.csv")
 
 _nonnegative_variables = ["hus", "pr", "psl", "ta", "tas"]
 for variable_name in ["hus", "ta"]:
@@ -42,9 +40,6 @@ for csv_import_line in csv_data:
     if csv_import_line["model"] != "gcm":
         continue
     variable_name = csv_import_line["variable"]
-    if variable_name in _stats_shortcut:
-        # Only using the first entry, which in the current stats file is the historical period.
-        continue
     variable_min = float(csv_import_line["min"])
     variable_max = float(csv_import_line["max"])
     normalize_min = float(csv_import_line["mean"]) - 3 * float(csv_import_line["std"])
