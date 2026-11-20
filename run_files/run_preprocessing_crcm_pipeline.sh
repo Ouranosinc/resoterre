@@ -7,33 +7,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=24G
 #SBATCH --time=05:00:00
-#
+
 # Converts CRCM and GCM NetCDF files to Zarr format.
-#
-# usage:
-#   mkdir -p logs
-#   sbatch [SLURM_OPTIONS] run_files/run_preprocessing_crcm_pipeline.sh CONFIG OUTPUT_DIR REPO_DIR
-#
-# example:
-#   cd /path/to/resoterre
-#   mkdir -p logs
-#   sbatch --cpus-per-task=8 --mem=24G --time=05:00:00 run_files/run_preprocessing_crcm_pipeline.sh \
-#     /Path/to/configs/crcm_emulator/crcm_emulator_cnrm_ssp245.yaml \
-#     /Path/to/data/preprocessed_{experiment_name} \
-#     /Path/to/resoterre
-#
-# previous runs (cpus / mem / time -> observed):
-#   toy  crcm: 4 / 4G  / 00:15:00 -> ~30s
-#   toy  gcm:  4 / 8G  / 00:20:00 -> ~2.5min
-# ---
-#   mini crcm: 8 / 16G / 01:00:00 -> ~20min, max mem 12.8G, cpu efficiency 83%
-#   mini gcm:  8 / 24G / 01:40:00 -> ~1:05h, max mem 15G, cpu efficiency 67%
-# ---
-#   main crcm: 8 / 24G / 01:30:00 -> ~53min, max mem 15.87G, cpu efficiency 65%
-#   main gcm:  8 / 24G / 04:00:00 -> ~3:15h, max mem 14.6G, cpu efficiency 83%
-#
-# Request the larger memory budget between CRCM and GCM for one experiment,
-# and their combined runtime + buffer.
 
 set -euo pipefail
 
