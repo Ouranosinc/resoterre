@@ -58,7 +58,8 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
     emission_names : list[str], optional
         Names of the greenhouse gas forcings, ``DEFAULT_EMISSION_NAMES`` if not provided.
     target_normalization : Mapping[str, str], optional
-        Normalization of each CRCM variable as a target, ``"min_max"``, ``"celsius"`` or ``"mm_per_day"``. Variables
+        Normalization of each CRCM variable as a target, ``"min_max"``, ``"celsius"``, ``"mm_per_day"`` or
+        ``"z_score"``. Variables
         that are not listed use ``"min_max"``. Only applied if ``normalize`` is True.
     """
 
