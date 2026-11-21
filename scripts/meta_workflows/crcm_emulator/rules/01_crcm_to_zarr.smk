@@ -7,14 +7,13 @@ snakemake -s 01_crcm_to_zarr.smk -j1 --config config_yaml=config.yaml --director
 from pathlib import Path
 
 from resoterre.calendar_utils import iter_year_month
-from resoterre.config_utils import config_from_yaml
 # ToDo: get_chunk_indices is a calendar_utils candidate?
 from resoterre.pipelines.crcm_emulator.cmip6_to_zarr_workflow import get_chunk_indices
-from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import CRCMEmulatorConfig
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
 
 snakefile_dir = Path(str(workflow.snakefile)).parent
 workflow_dir = Path.cwd()
-config_obj = config_from_yaml(CRCMEmulatorConfig, config["config_yaml"])
+config_obj = crcm_emulator_parse_config(config["config_yaml"])
 init_variable = config_obj.preprocessing.crcm.variables[0]
 init_gcm, init_pathway, init_realization = config_obj.preprocessing.simulations[0]
 init_gcm_str = f"{init_gcm}_{init_pathway}_{init_realization}"

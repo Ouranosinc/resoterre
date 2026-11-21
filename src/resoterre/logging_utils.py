@@ -435,7 +435,7 @@ def default_basic_config_args(
     dict[str, Any]
         A dictionary of basicConfig arguments for logging.
     """
-    basic_config_args_with_defaults = {k: v for k, v in basic_config_args.items()}
+    basic_config_args_with_defaults = {**basic_config_args}
     if "format" not in basic_config_args_with_defaults:
         if show_logger_name:
             basic_config_args_with_defaults["format"] = (
