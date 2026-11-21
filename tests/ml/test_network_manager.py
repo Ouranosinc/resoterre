@@ -1,11 +1,12 @@
 import tempfile
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from resoterre.config_utils import register_config
+import pytest
+from pydantic import Field
+
+from resoterre.config import BaseConfig, NeuralNetworksManagerConfig, OptimizerConfig, PurgeModelFilesConfig
 from resoterre.ml import network_manager
-from resoterre.ml.network_manager import NeuralNetworksManagerConfig
 from resoterre.ml.neural_networks_basic import LinearReLU
 from resoterre.ml.neural_networks_unet import UNet
 from resoterre.utils import TemplateStore
@@ -34,35 +35,31 @@ def test_neural_networks_manager_init_empty():
     assert not networks_manager_test.pth_files_history
 
 
-@dataclass(frozen=True, slots=True)
-class UNetConfig:
+class UNetConfig(BaseConfig):
     in_channels: int = 2
     out_channels: int = 2
 
 
-@register_config("Cosine")
-@dataclass(frozen=True, slots=True)
-class CosineConfig:
-    scheduler_name: str = field(default="CosineAnnealingWarmRestarts", metadata={"is_hyperparameter": True})
-    T_0: int = field(default=10, metadata={"is_hyperparameter": True})
-    T_mult: int = field(default=2, metadata={"is_hyperparameter": True})
+class CosineConfig(BaseConfig):
+    scheduler_name: str = Field(default="CosineAnnealingWarmRestarts", json_schema_extra={"is_hyperparameter": True})
+    T_0: int = Field(default=10, json_schema_extra={"is_hyperparameter": True})
+    T_mult: int = Field(default=2, json_schema_extra={"is_hyperparameter": True})
 
 
-@dataclass(frozen=True, slots=True)
-class CustomConfig:
+class CustomConfig(BaseConfig):
     device: str = "cpu"
-    networks: dict[str, Any] = field(default_factory=dict)
+    networks: dict[str, Any] = Field(default_factory=dict)
     networks_manager: NeuralNetworksManagerConfig = NeuralNetworksManagerConfig()
-    optimizers: dict[str, Any] = field(default_factory=dict)
-    lr_schedulers: dict[str, Any] = field(default_factory=dict)
-    UNet_kwargs: dict[str, Any] = field(default_factory=lambda: {"in_channels": 2, "out_channels": 2})
+    optimizers: dict[str, Any] = Field(default_factory=dict)
+    lr_schedulers: dict[str, Any] = Field(default_factory=dict)
+    UNet_kwargs: dict[str, Any] = Field(default_factory=lambda: {"in_channels": 2, "out_channels": 2})
 
 
 def test_neural_networks_manager_init_unet():
     config = CustomConfig(
         networks={"UNet": UNetConfig()},
-        networks_manager=network_manager.NeuralNetworksManagerConfig(),
-        optimizers={"UNet": network_manager.AdamConfig(weight_decay=0.0002)},
+        networks_manager=NeuralNetworksManagerConfig(),
+        optimizers={"UNet": OptimizerConfig(weight_decay=0.0002)},
         lr_schedulers={"UNet": CosineConfig()},
     )
     networks_manager_test = network_manager.NeuralNetworksManager.from_neural_networks_info(
@@ -82,7 +79,7 @@ def test_neural_networks_manager_save():
     with tempfile.TemporaryDirectory() as tmp_dir:
         config = CustomConfig(
             networks={"UNet": UNetConfig()},
-            optimizers={"UNet": network_manager.AdamConfig()},
+            optimizers={"UNet": OptimizerConfig()},
             lr_schedulers={"UNet": CosineConfig()},
         )
 
@@ -95,7 +92,7 @@ def test_neural_networks_manager_save():
 
 def test_neural_networks_manager_load():
     with tempfile.TemporaryDirectory() as tmp_dir:
-        config = CustomConfig(networks={"UNet": UNetConfig()}, optimizers={"UNet": network_manager.AdamConfig()})
+        config = CustomConfig(networks={"UNet": UNetConfig()}, optimizers={"UNet": OptimizerConfig()})
 
         networks_manager_test = network_manager.NeuralNetworksManager.from_neural_networks_info(
             neural_networks_info={"UNet": {"class": UNet}}, runner_config=config
@@ -109,9 +106,23 @@ def test_neural_networks_manager_load():
         assert networks_manager_test.pth_files_history["UNet"] == [str(Path(tmp_dir, "UNet.pth"))]
 
 
+def test_neural_networks_manager_load_without_config_raises():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CustomConfig(networks={"UNet": UNetConfig()}, optimizers={"UNet": OptimizerConfig()})
+        networks_manager_test = network_manager.NeuralNetworksManager.from_neural_networks_info(
+            neural_networks_info={"UNet": {"class": UNet}}, runner_config=config
+        )
+        networks_manager_test.save(path=tmp_dir)
+
+        with pytest.raises(ValueError, match="has no saved 'config'"):
+            network_manager.NeuralNetworksManager.from_path_models(
+                path_models=tmp_dir, neural_networks_classes={"UNet": UNet}
+            )
+
+
 def test_neural_networks_manager_load_supplemental_info():
     with tempfile.TemporaryDirectory() as tmp_dir:
-        config = CustomConfig(networks={"UNet": UNetConfig()}, optimizers={"UNet": network_manager.AdamConfig()})
+        config = CustomConfig(networks={"UNet": UNetConfig()}, optimizers={"UNet": OptimizerConfig()})
 
         networks_manager_test = network_manager.NeuralNetworksManager.from_neural_networks_info(
             neural_networks_info={"UNet": {"class": UNet}}, runner_config=config
@@ -132,8 +143,8 @@ def test_neural_networks_manager_load_multiple_networks():
         config = CustomConfig(
             networks={"UNet_1": UNetConfig(), "UNet_2": UNetConfig()},
             optimizers={
-                "UNet_1": network_manager.AdamConfig(),
-                "UNet_2": network_manager.AdamConfig(weight_decay=0.01),
+                "UNet_1": OptimizerConfig(),
+                "UNet_2": OptimizerConfig(weight_decay=0.01),
             },
         )
 
@@ -154,8 +165,8 @@ def test_neural_networks_manager_load_multiple_networks_with_experiment_name():
         config = CustomConfig(
             networks={"UNet_1": UNetConfig(), "UNet_2": UNetConfig()},
             optimizers={
-                "UNet_1": network_manager.AdamConfig(),
-                "UNet_2": network_manager.AdamConfig(weight_decay=0.01),
+                "UNet_1": OptimizerConfig(),
+                "UNet_2": OptimizerConfig(weight_decay=0.01),
             },
         )
 
@@ -176,10 +187,9 @@ def test_neural_networks_manager_load_multiple_networks_with_experiment_name():
         assert len(networks_manager_test.networks) == 2
 
 
-@dataclass(frozen=True, slots=True)
-class LinearConfig:
+class LinearConfig(BaseConfig):
     input_size: int = 2
-    hidden_sizes: list[int] = field(default_factory=lambda: [4, 8])
+    hidden_sizes: list[int] = Field(default_factory=lambda: [4, 8])
     output_size: int = 2
 
 
@@ -191,12 +201,10 @@ def test_neural_networks_manager_purge():
         templates.add_substitutes(path_models=tmp_dir, experiment_name="test")
         config = CustomConfig(
             networks={"LinearReLU_1": LinearConfig(), "LinearReLU_2": LinearConfig()},
-            networks_manager=network_manager.NeuralNetworksManagerConfig(
-                purge_model_files=network_manager.PurgeModelFilesConfig(more_than=4)
-            ),
+            networks_manager=NeuralNetworksManagerConfig(purge_model_files=PurgeModelFilesConfig(more_than=4)),
             optimizers={
-                "LinearReLU_1": network_manager.AdamConfig(),
-                "LinearReLU_2": network_manager.AdamConfig(weight_decay=0.01),
+                "LinearReLU_1": OptimizerConfig(),
+                "LinearReLU_2": OptimizerConfig(weight_decay=0.01),
             },
         )
 
@@ -221,12 +229,10 @@ def test_neural_networks_manager_keep_best_after_restart():
         templates.add_substitutes(path_models=tmp_dir, experiment_name="test")
         config = CustomConfig(
             networks={"LinearReLU_1": LinearConfig(), "LinearReLU_2": LinearConfig()},
-            networks_manager=network_manager.NeuralNetworksManagerConfig(
-                purge_model_files=network_manager.PurgeModelFilesConfig(more_than=4)
-            ),
+            networks_manager=NeuralNetworksManagerConfig(purge_model_files=PurgeModelFilesConfig(more_than=4)),
             optimizers={
-                "LinearReLU_1": network_manager.AdamConfig(),
-                "LinearReLU_2": network_manager.AdamConfig(weight_decay=0.01),
+                "LinearReLU_1": OptimizerConfig(),
+                "LinearReLU_2": OptimizerConfig(weight_decay=0.01),
             },
         )
         networks_manager_test = network_manager.NeuralNetworksManager.from_neural_networks_info(
@@ -252,3 +258,17 @@ def test_neural_networks_manager_keep_best_after_restart():
         assert len(purged_files) == 12
         assert len(list(Path(tmp_dir).glob("*.pth"))) == 6
         assert len(list(Path(tmp_dir).glob("*EpochNb_3.pth"))) == 2
+
+
+def test_optimizer_setup_adam_and_adamw():
+    model = LinearReLU(input_size=2, hidden_sizes=[4], output_size=2)
+    adam = network_manager.NeuralNetworksManager.optimizer_setup(model.parameters(), OptimizerConfig(lr=0.01))
+    assert adam.__class__.__name__ == "Adam"
+    assert adam.defaults["lr"] == 0.01
+    assert adam.defaults["betas"] == (0.9, 0.999)
+    adamw = network_manager.NeuralNetworksManager.optimizer_setup(
+        model.parameters(), OptimizerConfig(optimizer_name="AdamW", weight_decay=0.01, beta_1=0.8)
+    )
+    assert adamw.__class__.__name__ == "AdamW"
+    assert adamw.defaults["weight_decay"] == 0.01
+    assert adamw.defaults["betas"] == (0.8, 0.999)

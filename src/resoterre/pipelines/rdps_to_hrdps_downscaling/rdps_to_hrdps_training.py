@@ -5,16 +5,16 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from safetensors.torch import save_file
 from torch.utils import data as td
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 
+from resoterre.config import RDPSToHRDPSConfig
 from resoterre.datasets.hrdps.hrdps_processing import create_hrdps_grid_spec
-from resoterre.experiments import rdps_to_hrdps_workflow
 from resoterre.hybrid_data_loaders.rdps_to_hrdps import RDPSToHRDPSZarrDataset
 from resoterre.logging_utils import readable_value
 from resoterre.ml.ml_loops import MinimaTracker
+from resoterre.ml.network_manager import NeuralNetworksManager
 from resoterre.ml.neural_networks_unet import UNet
 from resoterre.plots.ml_sample_plot import ml_sample_figures
 from resoterre.utils import ActionScheduler
@@ -29,81 +29,81 @@ class RDPSToHRDPSTrainingFromConfig:
 
     Parameters
     ----------
-    config : rdps_to_hrdps_workflow.RDPSToHRDPSConfig
+    config : RDPSToHRDPSConfig
         Configuration object containing all necessary parameters for training.
     """
 
-    def __init__(self, config: rdps_to_hrdps_workflow.RDPSToHRDPSConfig) -> None:
-        if config.path_preprocessed_zarr is None:
+    def __init__(self, config: RDPSToHRDPSConfig) -> None:
+        if config.paths.preprocessed_zarr is None:
             raise ValueError("Preprocessed zarr path is not specified in the configuration.")
-        if config.tile_size is None:
+        if config.preprocessing.tile_size is None:
             raise ValueError("Tile size is not specified in the configuration.")
-        if config.coarsen_factor is None:
+        if config.preprocessing.coarsen_factor is None:
             raise ValueError("Coarsen factor is not specified in the configuration.")
         self.config = config
 
         hrdps_grid_spec = create_hrdps_grid_spec(
-            tile_size=config.tile_size,
-            coarsen_factor=config.coarsen_factor,
-            tile_center_lon=config.tiles_center_lon[0],
-            tile_center_lat=config.tiles_center_lat[0],
+            tile_size=config.preprocessing.tile_size,
+            coarsen_factor=config.preprocessing.coarsen_factor,
+            tile_center_lon=config.preprocessing.tiles_center_lon[0],
+            tile_center_lat=config.preprocessing.tiles_center_lat[0],
             switch_to_positive_longitudes=True,
         )
         i_start = hrdps_grid_spec.i_slice.start
         j_start = hrdps_grid_spec.j_slice.start
         path_hrdps_zarr = Path(
-            config.path_preprocessed_zarr,
-            f"hrdps_i_{i_start:04d}_j_{j_start:04d}_size_{config.tile_size:04d}.zarr",
+            config.paths.preprocessed_zarr,
+            f"hrdps_i_{i_start:04d}_j_{j_start:04d}_size_{config.preprocessing.tile_size:04d}.zarr",
         )
         path_rdps_coarse_zarr = Path(
-            config.path_preprocessed_zarr,
-            f"rdps_coarse_i_{i_start:04d}_j_{j_start:04d}_size_{config.tile_size:04d}.zarr",
+            config.paths.preprocessed_zarr,
+            f"rdps_coarse_i_{i_start:04d}_j_{j_start:04d}_size_{config.preprocessing.tile_size:04d}.zarr",
         )
-        rdps_variables = config.rdps_variables_for_training or config.rdps_variables
-        hrdps_variables = config.hrdps_variables_for_training or config.hrdps_variables
+        rdps_variables = config.data.rdps_variables or config.preprocessing.rdps.variables
+        hrdps_variables = config.data.hrdps_variables or config.preprocessing.hrdps.variables
         self.dataset = RDPSToHRDPSZarrDataset(
             path_rdps_coarse_zarr,
             path_hrdps_zarr,
             rdps_variables=rdps_variables,
             hrdps_variables=hrdps_variables,
-            geophysical_variables=config.hrdps_geophysical_variables_for_training,
-            validation_period_start=config.validation_period_start,
-            test_period_start=config.test_period_start,
-            debug_num_samples=config.debug_num_samples,
+            geophysical_variables=config.data.hrdps_geophysical_variables,
+            validation_period_start=config.data.validation_period_start,
+            test_period_start=config.data.test_period_start,
+            debug_num_samples=config.debug.num_samples,
         )
-        if self.config.device == "cuda" and torch.cuda.is_available():
+        if self.config.training.device == "cuda" and torch.cuda.is_available():
             self.data_loader = td.DataLoader(
                 self.dataset,
-                batch_size=config.training_batch_size,
+                batch_size=config.data.batch_size,
                 shuffle=True,
-                num_workers=config.num_workers,
-                persistent_workers=True if config.num_workers > 0 else False,
+                num_workers=config.data.num_workers,
+                persistent_workers=True if config.data.num_workers > 0 else False,
                 multiprocessing_context="spawn",
                 pin_memory=True,
             )
         else:
             self.data_loader = td.DataLoader(
                 self.dataset,
-                batch_size=config.training_batch_size,
+                batch_size=config.data.batch_size,
                 shuffle=True,
-                num_workers=config.num_workers,
-                persistent_workers=True if config.num_workers > 0 else False,
+                num_workers=config.data.num_workers,
+                persistent_workers=True if config.data.num_workers > 0 else False,
                 multiprocessing_context="spawn",
             )
 
         self.unet = UNet(
             in_channels=len(rdps_variables),
             out_channels=len(hrdps_variables),
-            kernel_size=config.kernel_size,
-            initial_nb_of_hidden_channels=config.initial_nb_of_hidden_channels,
-            depth=config.depth,
+            kernel_size=config.model.kernel_size,
+            initial_nb_of_hidden_channels=config.model.initial_nb_of_hidden_channels,
+            depth=config.model.depth,
             resolution_increase_layers=2,
-            num_last_layer_input_channels=len(config.hrdps_geophysical_variables_for_training),
-            reduction_ratio=config.reduction_ratio,
+            num_last_layer_input_channels=len(config.data.hrdps_geophysical_variables),
+            reduction_ratio=config.model.reduction_ratio,
         )
-        self.optimizer = optim.Adam(self.unet.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
+        self.optimizer = NeuralNetworksManager.optimizer_setup(self.unet.parameters(), config.training.optimizer)
         self.losses: list[float] = []
-        self.minima_tracker = MinimaTracker(minimum_metrics_to_track=["(Loss)", "Loss", "ValidationLoss"])
+        self.minima_tracker = MinimaTracker()
         self.minimum_validation_loss_model: Path | None = None
         self.total_iterations = 0
         self.mse_loss = nn.MSELoss()
@@ -123,12 +123,12 @@ class RDPSToHRDPSTrainingFromConfig:
         new_validation_minimum : bool
             Whether the current epoch has achieved a new minimum validation loss.
         """
-        if self.config.path_models is None:
-            if self.config.path_output is None:
+        if self.config.paths.models is None:
+            if self.config.paths.output is None:
                 raise ValueError("Output path is not specified in the configuration.")
-            path_models = Path(self.config.path_output)
+            path_models = Path(self.config.paths.output)
         else:
-            path_models = Path(self.config.path_models)
+            path_models = Path(self.config.paths.models)
         output_path = Path(path_models, f"unet_epoch_{self.config.experiment_name}_{epoch:03d}.pth")
         if new_validation_minimum:
             self.minimum_validation_loss_model = output_path
@@ -156,12 +156,12 @@ class RDPSToHRDPSTrainingFromConfig:
         epoch : int | None
             Epoch number to load. If None, the latest checkpoint will be loaded.
         """
-        if self.config.path_models is None:
-            if self.config.path_output is None:
+        if self.config.paths.models is None:
+            if self.config.paths.output is None:
                 raise ValueError("Output path is not specified in the configuration.")
-            path_models = Path(self.config.path_output)
+            path_models = Path(self.config.paths.output)
         else:
-            path_models = Path(self.config.path_models)
+            path_models = Path(self.config.paths.models)
         if epoch is None:
             pth_files = list(path_models.glob(f"unet_epoch_{self.config.experiment_name}_*.pth"))
             pth_files = sorted(pth_files, key=lambda x: x.stat().st_mtime, reverse=True)
@@ -178,9 +178,7 @@ class RDPSToHRDPSTrainingFromConfig:
         self.unet.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.total_iterations = int(checkpoint.get("total_iterations", 0))
-        self.minima_tracker = checkpoint.get(
-            "minima_tracker", MinimaTracker(minimum_metrics_to_track=["(Loss)", "Loss", "ValidationLoss"])
-        )
+        self.minima_tracker = checkpoint.get("minima_tracker", MinimaTracker())
         self.minimum_validation_loss_model = checkpoint.get("minimum_validation_loss_model", str(input_path))
 
     def to_device(self, device: str) -> None:
@@ -217,18 +215,18 @@ class RDPSToHRDPSTrainingFromConfig:
         """
         loss_components = ["mse", "mae", "mass", "ssim"]
         loss_weights = {
-            loss_name: getattr(self.config, f"{loss_name}_loss_weight", 0.0) for loss_name in loss_components
+            loss_name: getattr(self.config.loss, f"{loss_name}_weight", 0.0) for loss_name in loss_components
         }
         total_weight = sum(loss_weights.values())
         losses = {}
         for loss_name in loss_components:
-            if loss_name == "mse" and self.config.mse_loss_weight > 0:
+            if loss_name == "mse" and self.config.loss.mse_weight > 0:
                 losses[loss_name] = self.mse_loss(output, target_data)
-            elif loss_name == "mae" and self.config.mae_loss_weight > 0:
+            elif loss_name == "mae" and self.config.loss.mae_weight > 0:
                 raise NotImplementedError("MAE loss is not implemented yet.")
-            elif loss_name == "mass" and self.config.mass_loss_weight > 0:
+            elif loss_name == "mass" and self.config.loss.mass_weight > 0:
                 losses[loss_name] = self.mse_loss(output.mean(dim=(2, 3)), target_data.mean(dim=(2, 3)))
-            elif loss_name == "ssim" and self.config.ssim_loss_weight > 0:
+            elif loss_name == "ssim" and self.config.loss.ssim_weight > 0:
                 losses[loss_name] = 1 - self.ssim_loss(output, target_data)
 
         loss = None
@@ -253,13 +251,13 @@ class RDPSToHRDPSTrainingFromConfig:
         epoch : int
             Current epoch number.
         """
-        if self.config.path_output is None:
+        if self.config.paths.output is None:
             raise ValueError("Output path is not specified in the configuration.")
         self.optimizer.zero_grad()
-        input_data = item["input_first_block"].to(self.config.device, non_blocking=True)
-        target_data = item["target"].to(self.config.device, non_blocking=True)
+        input_data = item["input_first_block"].to(self.config.training.device, non_blocking=True)
+        target_data = item["target"].to(self.config.training.device, non_blocking=True)
         if "input_last_layer" in item:
-            input_last_layer = item["input_last_layer"].to(self.config.device, non_blocking=True)
+            input_last_layer = item["input_last_layer"].to(self.config.training.device, non_blocking=True)
         else:
             input_last_layer = None
         output = self.unet(input_data, x_last_layer=input_last_layer)
@@ -278,20 +276,20 @@ class RDPSToHRDPSTrainingFromConfig:
             iteration_str = f"{self.total_iterations:7d} (epoch {epoch:2d})"
             logger.info("Iteration %s, loss: %s (new minimum)", iteration_str, readable_value(self.losses[-1]))
 
-        if self.config.device == "cuda":
+        if self.config.training.device == "cuda":
             output = output.detach().cpu().numpy()
             input_dict = {"input": input_data.detach().cpu().numpy()}
             target_data = target_data.detach().cpu().numpy()
             if input_last_layer is not None:
                 input_dict["input_last_layer"] = input_last_layer.detach().cpu().numpy()
         ml_sample_figures(
-            path_output=Path(self.config.path_output),
+            path_output=Path(self.config.paths.output),
             count=self.total_iterations,
             input_data=input_dict,
             target_data=target_data,
             output_data=output,
-            output_labels=self.config.hrdps_variables_for_training,
-            scheduler=ActionScheduler(every_progression=self.config.debug_training_figures_progression),
+            output_labels=self.config.data.hrdps_variables,
+            scheduler=ActionScheduler(every_progression=self.config.debug.training_figures_progression),
         )
 
     def __call__(self, epoch: int) -> None:
@@ -305,31 +303,31 @@ class RDPSToHRDPSTrainingFromConfig:
         """
         if epoch > 1 and not self.losses:
             self.load_state(epoch=epoch - 1)
-        torch.set_num_threads(self.config.num_threads)
-        self.to_device(self.config.device)
+        torch.set_num_threads(self.config.training.num_threads)
+        self.to_device(self.config.training.device)
         self.unet.train()
         self.mse_loss = nn.MSELoss()
         for item in self.data_loader:
             self.training_step(item, epoch=epoch)
-        if self.config.validation_period_start:
+        if self.config.data.validation_period_start:
             self.unet.train(False)
             self.dataset.active_split_name = "validation"
             validation_data_loader = td.DataLoader(
                 self.dataset,
-                batch_size=self.config.training_batch_size,
+                batch_size=self.config.data.batch_size,
                 shuffle=False,
-                num_workers=self.config.num_workers,
-                persistent_workers=True if self.config.num_workers > 0 else False,
+                num_workers=self.config.data.num_workers,
+                persistent_workers=True if self.config.data.num_workers > 0 else False,
                 multiprocessing_context="spawn",
-                pin_memory=True if self.config.device == "cuda" else False,
+                pin_memory=True if self.config.training.device == "cuda" else False,
             )
             with torch.no_grad():
                 validation_losses = []
                 for item in validation_data_loader:
-                    input_data = item["input_first_block"].to(self.config.device, non_blocking=True)
-                    target_data = item["target"].to(self.config.device, non_blocking=True)
+                    input_data = item["input_first_block"].to(self.config.training.device, non_blocking=True)
+                    target_data = item["target"].to(self.config.training.device, non_blocking=True)
                     if "input_last_layer" in item:
-                        input_last_layer = item["input_last_layer"].to(self.config.device, non_blocking=True)
+                        input_last_layer = item["input_last_layer"].to(self.config.training.device, non_blocking=True)
                     else:
                         input_last_layer = None
                     output = self.unet(input_data, x_last_layer=input_last_layer)

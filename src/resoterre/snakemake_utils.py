@@ -1,5 +1,6 @@
 """Utility functions for Snakemake workflows."""
 
+import argparse
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -301,3 +302,30 @@ def shell_script_args_from_config(config: dict[str, str], keys: list[str]) -> st
     for key in keys:
         args_str += f" --{key} {config[key]}"
     return args_str
+
+
+def parse_bool(value: str) -> bool:
+    """
+    Parse a boolean command-line value.
+
+    Parameters
+    ----------
+    value : str
+        Command-line value to parse as boolean.
+
+    Returns
+    -------
+    bool
+        Parsed boolean value.
+
+    Notes
+    -----
+    This is used for python scripts arguments that are called by snakemake with True/False wildcards,
+    circumventing argparse store_true arguments that do not accept explicit False values.
+    """
+    normalized_value = value.lower()
+    if normalized_value in {"true", "1", "yes"}:
+        return True
+    if normalized_value in {"false", "0", "no"}:
+        return False
+    raise argparse.ArgumentTypeError(f"Expected a boolean value, got: {value}")
