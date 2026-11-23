@@ -24,7 +24,6 @@ classifiers = [
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
@@ -276,7 +275,7 @@ exclude = [
 
 [tool.mypy]
 files = "."
-python_version = "3.11"
+python_version = "3.12"
 show_error_codes = true
 strict = true
 warn_no_return = true
