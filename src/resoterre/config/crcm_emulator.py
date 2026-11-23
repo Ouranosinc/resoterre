@@ -11,6 +11,9 @@ from resoterre.config.metrics import BaseMetricConfig, RMSEConfig
 from resoterre.config.ml import OptimizerConfig
 
 
+DEFAULT_EMISSION_NAMES = ["CO2", "CH4", "N2O", "CFC12", "CFC11_eq"]
+
+
 class ExperimentLoggerConfig(BaseConfig):
     """
     Configuration for the logger.
@@ -149,6 +152,9 @@ class CRCMEmulatorDataConfig(BaseConfig):
         List of GCM variables to use for training the emulator.
     crcm_variables : list[str]
         List of CRCM variables to use for training the emulator.
+    emission_names : list[str]
+        Names of the greenhouse gas forcings given to the emulator as linear inputs, in channel order. They must be
+        in the GCM zarr data and in the normalization statistics.
     training_periods : dict[str, list[datetime]]
         Named training periods, keyed by a user-chosen label. Each period has the form [start_datetime, end_datetime].
     validation_periods : dict[str, list[datetime]]
@@ -169,6 +175,7 @@ class CRCMEmulatorDataConfig(BaseConfig):
     coarsen_factor: int | None = 4
     gcm_variables: list[str] = Field(default_factory=list)
     crcm_variables: list[str] = Field(default_factory=list)
+    emission_names: list[str] = Field(default_factory=lambda: list(DEFAULT_EMISSION_NAMES))
     training_periods: dict[str, list[datetime]] = Field(default_factory=dict)
     validation_periods: dict[str, list[datetime]] = Field(default_factory=dict)
     test_periods: dict[str, list[datetime]] = Field(default_factory=dict)

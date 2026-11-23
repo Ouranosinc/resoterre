@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 from resoterre.config import BaseMetricConfig, CRCMEmulatorConfig
 from resoterre.data_management.timeseries import MultiTimeseries
-from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import EMISSION_NAMES, CRCMEmulatorDataset
+from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
 from resoterre.logging_utils import CustomLogging
 from resoterre.ml.network_manager import NeuralNetworksManager
 from resoterre.ml.neural_networks_basic import CyclicalDateEncoding
@@ -142,6 +142,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             crcm_variables=self.config.data.crcm_variables,
             time_periods=time_periods,
             max_open_datasets=self.config.data.max_open_datasets,
+            emission_names=self.config.data.emission_names,
         )
 
     def build_data_loader(self, dataset: CRCMEmulatorDataset, shuffle: bool) -> td.DataLoader[Any]:
@@ -231,7 +232,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             go_to_1x1=True,
             h_in=self.config.data.tile_size // self.config.data.coarsen_factor,
             w_in=self.config.data.tile_size // self.config.data.coarsen_factor,
-            linear_size=7,
+            linear_size=self.dataset.num_linear_inputs,
             reduction_ratio=self.config.model.reduction_ratio,
             linear_embedding_sizes=self.config.model.linear_embedding_sizes,
         )
@@ -302,7 +303,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         date_encoding = self.date_encoding(
             item["month"].to(self.config.training.device), item["day"].to(self.config.training.device)
         )
-        gases = torch.vstack([item[name] for name in EMISSION_NAMES]).T
+        gases = torch.vstack([item[name] for name in self.config.data.emission_names]).T
         linear_data = torch.cat([date_encoding, gases.to(self.config.training.device)], dim=1)
         output = self.models["UNet"](input_data, x_linear=linear_data.float())
         return input_data, target_data, output

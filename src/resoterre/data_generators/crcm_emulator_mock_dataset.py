@@ -8,8 +8,9 @@ import numpy as np
 import xarray
 from torch.utils import data as td
 
+from resoterre.config.crcm_emulator import DEFAULT_EMISSION_NAMES
 from resoterre.datasets.crcm.crcm_utils import crcm_north_america_grid_coordinates
-from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import NUM_LINEAR_INPUTS
+from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import NUM_DATE_LINEAR_INPUTS
 
 
 logger = logging.getLogger(__name__)
@@ -202,6 +203,8 @@ class CRCMEmulatorMockDataset(td.Dataset):  # type: ignore[misc]
         Size of the output tile.
     coarsen_factor : int
         Factor by which the input data is coarsened.
+    emission_names : list[str], optional
+        Names of the greenhouse gas forcings, ``DEFAULT_EMISSION_NAMES`` if not provided.
     """
 
     def __init__(
@@ -211,11 +214,13 @@ class CRCMEmulatorMockDataset(td.Dataset):  # type: ignore[misc]
         num_output_channels: int = 2,
         tile_size: int = 608,
         coarsen_factor: int = 8,
+        emission_names: list[str] | None = None,
     ) -> None:
         self.num_samples = num_samples
         self.num_input_channels = num_input_channels
         self.num_output_channels = num_output_channels
-        self.num_linear_inputs = NUM_LINEAR_INPUTS
+        self.emission_names = list(DEFAULT_EMISSION_NAMES if emission_names is None else emission_names)
+        self.num_linear_inputs = NUM_DATE_LINEAR_INPUTS + len(self.emission_names)
         self.tile_size = tile_size
         self.coarsen_factor = coarsen_factor
         self.coarse_size = tile_size // coarsen_factor
@@ -245,13 +250,7 @@ class CRCMEmulatorMockDataset(td.Dataset):  # type: ignore[misc]
         dict[str, np.ndarray]
             Dictionary containing the input data, target data, and associated metadata.
         """
-        emission_data = {
-            "CO2": np.array(1.0, dtype=np.float32),
-            "CH4": np.array(1.0, dtype=np.float32),
-            "N2O": np.array(1.0, dtype=np.float32),
-            "CFC12": np.array(1.0, dtype=np.float32),
-            "CFC11_eq": np.array(1.0, dtype=np.float32),
-        }
+        emission_data = {name: np.array(1.0, dtype=np.float32) for name in self.emission_names}
 
         return {
             "input_first_block": np.random.rand(self.num_input_channels, self.coarse_size, self.coarse_size).astype(

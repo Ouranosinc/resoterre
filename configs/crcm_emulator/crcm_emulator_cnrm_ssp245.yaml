@@ -79,6 +79,12 @@ data:
     - pr
   crcm_variables:
     - tas
+  emission_names: # greenhouse gas forcings used as linear inputs
+    - CO2
+    - CH4
+    - N2O
+    - CFC12
+    - CFC11_eq
   training_periods:
     historical:
       - "1951-01-01"
