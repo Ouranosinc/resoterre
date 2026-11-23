@@ -10,7 +10,8 @@ Contributors: Contributors: Francis Charette-Migneault (:user:`fmigneault`), Bla
 
 Changes
 ^^^^^^^
-* Change Python requirement to ``>=3.12.0``.
+* Change Python requirement to ``>=3.12.0``. (:pull:`#212`)
+* Change default Comet ML image format to PNG. (:pull:`#212`)
 * Add temporal quantile metrics (:issue:`195`, :pull:`190`).
 * Refactor metric configurations to handle metric parameters and include plot specifications in the metrics config (:issue:`195`, :pull:`190`).
 * Refactor CRCM emulator metric consolidation to use reducer strategies instead of if/else statements, and add an annualized spatial map and RMSE for days above a temperature threshold (default 30C). Configure ``metric.tas_day_threshold`` (Kelvin) and ``metric.days_per_year`` consistently across validation, inference and baseline evaluation using isolated metric instances. (:issue:`193`, :pull:`198`).
@@ -35,7 +36,7 @@ Changes
 
 Fixes
 ^^^^^
-* Fix Ruff PEP 695 checks by updating configuration generics and the recursive data loader type alias to Python 3.12 syntax.
+* Fix Ruff PEP 695 checks by updating configuration generics and the recursive data loader type alias to Python 3.12 syntax. (:pull:`#212`)
 * Fix transition from historical to ssp periods in GCM and CRCM preprocessing. (:issue:`153`, :pull:`134`).
 * Fix ``vcs:tag`` reference in the notebook and corresponding STAC Item produced from it to refer to the actual Git tags for the repository.
 

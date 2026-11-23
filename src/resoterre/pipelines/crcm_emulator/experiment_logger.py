@@ -174,7 +174,7 @@ class CometMLLogger:
         if self.experiment is None:
             return
         image_data = str(image) if isinstance(image, Path) else image
-        self.experiment.log_image(image_data, name=name, step=step)
+        self.experiment.log_image(image_data, name=name, step=step, image_format="png")
 
     def log_figure(
         self,
@@ -199,7 +199,7 @@ class CometMLLogger:
             figure.savefig(Path(self.config.offline_directory, f"{name.replace('/', '-')}-{step}.png"))
         if self.experiment is None:
             return
-        self.experiment.log_figure(figure_name=name, figure=figure, step=step)
+        self.experiment.log_figure(figure_name=name, figure=figure, step=step, format="png")
 
     def end(self) -> None:
         """End the Comet ML experiment, ensuring all data is flushed and uploaded."""
