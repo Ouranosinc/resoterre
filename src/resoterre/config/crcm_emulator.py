@@ -11,6 +11,9 @@ from resoterre.config.metrics import BaseMetricConfig, RMSEConfig
 from resoterre.config.ml import OptimizerConfig
 
 
+DEFAULT_EMISSION_NAMES = ["CO2", "CH4", "N2O", "CFC12", "CFC11_eq"]
+
+
 class ExperimentLoggerConfig(BaseConfig):
     """
     Configuration for the logger.
@@ -149,6 +152,9 @@ class CRCMEmulatorDataConfig(BaseConfig):
         List of GCM variables to use for training the emulator.
     crcm_variables : list[str]
         List of CRCM variables to use for training the emulator.
+    emission_names : list[str]
+        Names of the greenhouse gas forcings given to the emulator as linear inputs, in channel order. They must be
+        in the GCM zarr data and in the normalization statistics.
     training_periods : dict[str, list[datetime]]
         Named training periods, keyed by a user-chosen label. Each period has the form [start_datetime, end_datetime].
     validation_periods : dict[str, list[datetime]]
@@ -169,6 +175,7 @@ class CRCMEmulatorDataConfig(BaseConfig):
     coarsen_factor: int | None = 4
     gcm_variables: list[str] = Field(default_factory=list)
     crcm_variables: list[str] = Field(default_factory=list)
+    emission_names: list[str] = Field(default_factory=lambda: list(DEFAULT_EMISSION_NAMES))
     training_periods: dict[str, list[datetime]] = Field(default_factory=dict)
     validation_periods: dict[str, list[datetime]] = Field(default_factory=dict)
     test_periods: dict[str, list[datetime]] = Field(default_factory=dict)
@@ -274,12 +281,26 @@ class CRCMEmulatorTrainingConfig(BaseConfig):
         Score the precomputed interpolation baseline (``paths.baselines_out_dirs.interpolation``) at the start of
         training and log it to Comet ML, as a constant line next to the validation metrics. The baseline is only
         scored, never computed: it is skipped with a warning if missing or incomplete.
+    lr_scheduler : bool
+        Decay the learning rate with cosine annealing over ``nb_of_epochs`` (stepped once per epoch), after an optional
+        linear warm-up. If False, the learning rate stays constant.
+    lr_warmup_epochs : int
+        Number of linear warm-up epochs, only used if ``lr_scheduler`` is True. Must be smaller than ``nb_of_epochs``.
+    lr_min : float
+        Minimum learning rate reached by the cosine annealing, only used if ``lr_scheduler`` is True.
+    early_stopping_patience : int, optional
+        Stop training after this many consecutive epochs without improvement of the monitored validation loss.
+        None disables early stopping.
     """
 
     nb_of_epochs: int = 10
     device: str = "cpu"
     seed: int | None = 42
     figure_every_n_steps: int = Field(default=10, ge=0)
+    lr_scheduler: bool = False
+    lr_warmup_epochs: int = Field(default=0, ge=0)
+    lr_min: float = Field(default=0.0, ge=0.0)
+    early_stopping_patience: int | None = Field(default=None, ge=1)
     validation_metrics: list[BaseMetricConfig] = Field(default_factory=lambda: [RMSEConfig()])
     log_interpolation_baseline: bool = False
     # TODO: not used, consider removing

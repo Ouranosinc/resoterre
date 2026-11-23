@@ -128,6 +128,7 @@ def test_crcm_emulator_nested_config_from_yaml():
     assert config.preprocessing.gcm.path == Path("/Path/to/preprocessed/gcm_preprocessing")
     assert config.preprocessing.crcm.variables == ["tas", "pr", "uas", "vas"]
     assert config.data.batch_size == 128
+    assert config.data.emission_names == ["CO2", "CH4", "N2O", "CFC12", "CFC11_eq"]
     assert config.data.tile_size == 576
     assert config.data.coarsen_factor == 8
     assert config.model.depth == 3
