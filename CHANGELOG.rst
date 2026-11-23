@@ -10,7 +10,7 @@ Contributors: Contributors: Francis Charette-Migneault (:user:`fmigneault`), Bla
 
 Changes
 ^^^^^^^
-* Change Python requirement to ``>=3.11.5``.
+* Change Python requirement to ``>=3.12.0``.
 * Add temporal quantile metrics (:issue:`195`, :pull:`190`).
 * Refactor metric configurations to handle metric parameters and include plot specifications in the metrics config (:issue:`195`, :pull:`190`).
 * Refactor CRCM emulator metric consolidation to use reducer strategies instead of if/else statements, and add an annualized spatial map and RMSE for days above a temperature threshold (default 30C). Configure ``metric.tas_day_threshold`` (Kelvin) and ``metric.days_per_year`` consistently across validation, inference and baseline evaluation using isolated metric instances. (:issue:`193`, :pull:`198`).
