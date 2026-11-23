@@ -23,7 +23,7 @@ and keep accumulation state external.
 
 import math
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from functools import cache
 from typing import Any, Protocol
 
@@ -32,14 +32,16 @@ import torch
 from fastdigest import TDigest
 
 from resoterre.config import BaseMetricConfig
-from resoterre.datasets.crcm.crcm_variables import crcm_variables
+from resoterre.datasets.crcm.crcm_variables import crcm_variables, from_target_units, is_unit_only_normalization
 
 
 # Losses are averaged over samples, so batches are weighted by their size (the last one can be partial).
 LOSS_NAMES = ("loss", "mse_loss", "ssim_loss")
 
 
-def denormalize_crcm(data: torch.Tensor, variable_names: list[str]) -> torch.Tensor:
+def denormalize_crcm(
+    data: torch.Tensor, variable_names: list[str], target_normalization: Mapping[str, str] | None = None
+) -> torch.Tensor:
     """
     Convert normalized CRCM data back to physical units, channel by channel.
 
@@ -52,6 +54,9 @@ def denormalize_crcm(data: torch.Tensor, variable_names: list[str]) -> torch.Ten
         Normalized data, of shape (batch, variables, ...).
     variable_names : list[str]
         Names of the CRCM variables, in channel order.
+    target_normalization : Mapping[str, str], optional
+        Normalization of each CRCM variable (``"min_max"`` if not listed). Variables with a unit-only normalization
+        (``"celsius"``, ``"mm_per_day"`` or ``"z_score"``) are converted back to the units of the CRCM files.
 
     Returns
     -------
@@ -66,6 +71,10 @@ def denormalize_crcm(data: torch.Tensor, variable_names: list[str]) -> torch.Ten
     channels = []
     for i, variable_name in enumerate(variable_names):
         variable = crcm_variables[variable_name]
+        mode = None if target_normalization is None else target_normalization.get(variable_name)
+        if mode is not None and is_unit_only_normalization(mode):
+            channels.append(from_target_units(data[:, i], mode))
+            continue
         if variable.normalize_min is None or variable.normalize_max is None:
             raise ValueError(f"Variable {variable_name} has no normalize_min and normalize_max.")
         channel = (data[:, i] + 1.0) / 2.0

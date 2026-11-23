@@ -17,6 +17,7 @@ from tqdm import tqdm
 
 from resoterre.config import BaseMetricConfig, CRCMEmulatorConfig
 from resoterre.data_management.timeseries import MultiTimeseries
+from resoterre.datasets.crcm.crcm_variables import is_unit_only_normalization
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
 from resoterre.logging_utils import CustomLogging
 from resoterre.ml.network_manager import NeuralNetworksManager
@@ -73,6 +74,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             validation_metrics_monitor=["validation_loss"],
             logger_config=self.config.logger,
         )
+        self.train_generator: torch.Generator | None = None
         self.dataset = self.build_dataset(list(self.config.data.training_periods.values()))
         if len(self.dataset) > 0:
             self.train_data_loader = self.build_data_loader(self.dataset, shuffle=True)
@@ -102,6 +104,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             self.validation_data_loader = next(iter(self.validation_data_loaders.values()))
         if self.config.data.coarsen_factor is None:
             raise ValueError("Coarsen factor must be specified in the configuration.")
+        self.check_target_normalization()
         self.date_encoding = CyclicalDateEncoding().to(self.config.training.device)
         self.validation_figure_data: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
         # per metric: (weighted sum, total weight), kept as tensors on the device until consolidation()
@@ -141,6 +144,8 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             crcm_variables=self.config.data.crcm_variables,
             time_periods=time_periods,
             max_open_datasets=self.config.data.max_open_datasets,
+            emission_names=self.config.data.emission_names,
+            target_normalization=self.config.data.target_normalization,
         )
 
     def build_data_loader(self, dataset: CRCMEmulatorDataset, shuffle: bool) -> td.DataLoader[Any]:
@@ -160,10 +165,16 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             The data loader.
         """
         num_workers = self.config.data.num_workers
+        generator = None
+        if shuffle and self.config.training.seed is not None:
+            # dedicated generator for the shuffling order and the worker seeds, reseeded every epoch (see train_loop)
+            self.train_generator = torch.Generator().manual_seed(self.config.training.seed)
+            generator = self.train_generator
         return td.DataLoader(
             dataset,
             batch_size=self.config.data.batch_size,
             shuffle=shuffle,
+            generator=generator,
             num_workers=num_workers,
             prefetch_factor=self.config.data.prefetch_factor if num_workers > 0 else None,
             persistent_workers=num_workers > 0,
@@ -224,13 +235,39 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             go_to_1x1=True,
             h_in=self.config.data.tile_size // self.config.data.coarsen_factor,
             w_in=self.config.data.tile_size // self.config.data.coarsen_factor,
-            linear_size=7,
+            linear_size=self.dataset.num_linear_inputs,
             reduction_ratio=self.config.model.reduction_ratio,
             linear_embedding_sizes=self.config.model.linear_embedding_sizes,
         )
         self.optimizers["UNet"] = NeuralNetworksManager.optimizer_setup(
             self.models["UNet"].parameters(), self.config.optimizer
         )
+        training_config = self.config.training
+        if training_config.lr_scheduler:
+            self.setup_lr_schedulers(
+                total_epochs=training_config.nb_of_epochs,
+                warmup_epochs=training_config.lr_warmup_epochs,
+                eta_min=training_config.lr_min,
+            )
+        self.patience = training_config.early_stopping_patience
+
+    def check_target_normalization(self) -> None:
+        """
+        Check that the target normalization is compatible with the loss.
+
+        Raises
+        ------
+        ValueError
+            If the SSIM loss is used with an affine target normalization (``"celsius"``, ``"mm_per_day"`` or
+            ``"z_score"``), since SSIM assumes targets in [-1, 1].
+        """
+        if self.config.loss.ssim_weight and any(
+            is_unit_only_normalization(mode) for mode in self.config.data.target_normalization.values()
+        ):
+            raise ValueError(
+                "loss.ssim_weight > 0 requires targets in [-1, 1], not a 'celsius', 'mm_per_day' or 'z_score' target "
+                "normalization."
+            )
 
     def training_loss_computation(
         self, target_data: torch.Tensor, output: torch.Tensor
@@ -287,7 +324,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         date_encoding = self.date_encoding(
             item["month"].to(self.config.training.device), item["day"].to(self.config.training.device)
         )
-        gases = torch.vstack([item["CO2"], item["CH4"], item["N2O"], item["CFC12"], item["CFC11_eq"]]).T
+        gases = torch.vstack([item[name] for name in self.config.data.emission_names]).T
         linear_data = torch.cat([date_encoding, gases.to(self.config.training.device)], dim=1)
         output = self.models["UNet"](input_data, x_linear=linear_data.float())
         return input_data, target_data, output
@@ -351,8 +388,8 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         if metric_configs or custom_metrics:
             metric_functions = build_metrics(metric_configs)
             variable_names = self.config.data.crcm_variables
-            target_physical = denormalize_crcm(target_data, variable_names)
-            output_physical = denormalize_crcm(output, variable_names)
+            target_physical = denormalize_crcm(target_data, variable_names, self.config.data.target_normalization)
+            output_physical = denormalize_crcm(output, variable_names, self.config.data.target_normalization)
             for config in metric_configs:
                 batch_metric_values = metric_functions[config.to_key()](target_physical, output_physical)
                 if metric_functions[config.to_key()].allow_per_batch_evaluation:
@@ -433,7 +470,9 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
                                 strict=True,
                             )
                         ),
-                        denormalize_crcm(output, self.config.data.crcm_variables).cpu().numpy(),
+                        denormalize_crcm(output, self.config.data.crcm_variables, self.config.data.target_normalization)
+                        .cpu()
+                        .numpy(),
                     )
         results = consolidation(self.running_validation_metrics, self.metric_config_mapping)
         self.running_validation_metrics = {}
@@ -657,6 +696,26 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         results["config"] = self.config_dict()
         return results
 
+    def train_loop(self, epoch: int) -> None:
+        """
+        Perform a full training loop for one epoch.
+
+        Parameters
+        ----------
+        epoch : int
+            The current epoch number.
+
+        Notes
+        -----
+        With ``training.seed``, the data loader generator is reseeded from the seed and the epoch, so the shuffling
+        order of an epoch does not depend on the other consumers of the global random number generators, and a
+        resumed run shuffles like an uninterrupted one.
+        """
+        seed = self.config.training.seed
+        if seed is not None and self.train_generator is not None:
+            self.train_generator.manual_seed(seed + epoch)
+        super().train_loop(epoch)
+
     def training_loop(self, test: bool = False) -> None:
         """
         Execute the main training loop for the model.
@@ -669,11 +728,14 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         Notes
         -----
         Trains until ``training.nb_of_epochs`` epochs are completed in total, so a trainer whose state was
-        restored with ``load_state`` only trains the remaining epochs.
+        restored with ``load_state`` only trains the remaining epochs, or until early stopping is triggered
+        (``training.early_stopping_patience``).
         """
         self.score_interpolation_baseline()
         for _ in range(self.epoch_counter, self.config.training.nb_of_epochs):
             self(epoch=self.epoch_counter + 1, device=self.config.training.device)
+            if self.early_stopping_triggered:
+                break
         if test:
             self.test()
         self.close()
