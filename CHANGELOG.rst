@@ -10,6 +10,8 @@ Contributors: Contributors: Francis Charette-Migneault (:user:`fmigneault`), Bla
 
 Changes
 ^^^^^^^
+* Change Python requirement to ``>=3.12.0``. (:pull:`#212`)
+* Change default Comet ML image format to PNG. (:pull:`#212`)
 * Read the CRCM emulator input and target normalization values from the most recent normalization statistics CSV files instead of hardcoded values (the old ``data_normalization_stats.csv`` is removed), choose the scenario and files with ``data.normalization_stats_scenario``, ``data.climate_vars_normalization_stats_file`` and ``data.forcings_normalization_stats_file``, and make the target normalization of each CRCM variable configurable with ``data.target_normalization`` (``min_max`` by default, ``celsius`` and ``z_score`` for ``tas``, ``mm_per_day`` for ``pr``; the latter three are incompatible with ``loss.ssim_weight`` > 0). (:issue:`205`, :issue:`206`, :pull:`208`).
 * Add Slurm scripts for preprocessing and data analysis of the CRCM emulator. Document workflow in the repository README. (:issue:`180`, :pull:`203`).
 * Add temporal quantile metrics (:issue:`195`, :pull:`190`).
@@ -37,6 +39,7 @@ Changes
 
 Fixes
 ^^^^^
+* Fix Ruff PEP 695 checks by updating configuration generics and the recursive data loader type alias to Python 3.12 syntax. (:pull:`#212`)
 * Fix transition from historical to ssp periods in GCM and CRCM preprocessing. (:issue:`153`, :pull:`134`).
 * Fix ``vcs:tag`` reference in the notebook and corresponding STAC Item produced from it to refer to the actual Git tags for the repository.
 

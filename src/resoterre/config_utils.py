@@ -1,17 +1,14 @@
 """Utilities for handling configuration classes."""
 
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 
 from pydantic import BaseModel
 
 from resoterre.io_utils import get_yaml_dict
 
 
-T = TypeVar("T", bound=BaseModel)
-
-
-def config_from_yaml(
+def config_from_yaml[T: BaseModel](
     config_cls: type[T], yaml_obj: dict[str, Any] | Path | str, remove_keys: list[str] | None = None
 ) -> T:
     """

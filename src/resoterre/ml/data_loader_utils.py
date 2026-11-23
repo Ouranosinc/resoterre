@@ -5,7 +5,7 @@ import math
 import random
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, TypeAlias, cast
+from typing import Any, cast
 
 import numpy as np
 import torch
@@ -19,7 +19,7 @@ from resoterre.utils import unique_hex_digest
 
 logger = CustomLogging(caller=logging.getLogger(__name__))
 
-Nested: TypeAlias = torch.Tensor | dict[Any, "Nested"] | list["Nested"] | tuple["Nested", ...]
+type Nested = torch.Tensor | dict[Any, "Nested"] | list["Nested"] | tuple["Nested", ...]
 
 
 def index_train_validation_test_split(
