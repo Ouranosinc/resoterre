@@ -540,8 +540,10 @@ def test_crcm_emulator_metrics_use_denormalized_data_but_losses_do_not():
             next(iter(td.DataLoader(dataset, 2))),
             custom_metrics=[{"config": RecordMetricConfig(), "function": RecordMetric()}],
         )
-        assert seen["target"].min() >= 243.15
-        assert seen["target"].max() <= 303.15
+        tas = crcm_variables["tas"]
+        assert tas.normalize_min is not None and tas.normalize_max is not None
+        assert seen["target"].min() >= tas.normalize_min
+        assert seen["target"].max() <= tas.normalize_max
         assert set(runner.running_validation_metrics) >= {"tas/record", "mse_loss"}
 
 
@@ -577,7 +579,6 @@ def test_crcm_emulator_custom_emission_names_set_linear_inputs():
         assert {"CO2", "CH4"} <= batch.keys() and "N2O" not in batch
         _, _, output = runner.forward_batch(batch)
         assert output.shape[0] == 4
-
 
 
 def _celsius_config(
