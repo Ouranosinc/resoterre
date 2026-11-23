@@ -10,6 +10,7 @@ Contributors: Contributors: Francis Charette-Migneault (:user:`fmigneault`), Bla
 
 Changes
 ^^^^^^^
+* Add Slurm scripts for preprocessing and data analysis of the CRCM emulator. Document workflow in the repository README. (:issue:`180`, :pull:`203`).
 * Add temporal quantile metrics (:issue:`195`, :pull:`190`).
 * Refactor metric configurations to handle metric parameters and include plot specifications in the metrics config (:issue:`195`, :pull:`190`).
 * Add learning rate scheduling (``training.lr_scheduler``, ``lr_warmup_epochs``, ``lr_min``: linear warm-up then cosine annealing) and early stopping (``training.early_stopping_patience``) to the CRCM emulator training, and shuffle the training data with a generator reseeded from ``training.seed`` and the epoch, so a resumed run shuffles like an uninterrupted one. The greenhouse gas inputs are now configurable with ``data.emission_names`` instead of hardcoded, and the U-Net linear input size follows from them. (:issue:`201`, :pull:`202`).
