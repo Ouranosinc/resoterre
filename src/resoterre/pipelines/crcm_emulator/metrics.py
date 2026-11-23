@@ -6,28 +6,32 @@ Notes
 Adding new metrics:
 
 1. Define a class inheriting from ``Metric`` and give it a unique ``name``.
-2. Implement ``__call__`` to compute the batch value. Return a tensor with variables on the first axis; trailing
-    dimensions are preserved for map-valued metrics.
+2. Implement ``__call__`` to compute the batch value or aggregator.
+    Default behavior should return a tensor with variables on the first axis.
+    Trailing dimensions can be preserved for map-valued metrics.
 3. Set the ``reducer`` strategy. ``Metric`` defaults to ``SampleMeanReducer``. Reuse an existing reducer or implement
     the ``MetricReducer`` protocol's ``accumulate`` and ``finalize`` methods for custom behavior. Reducers can also
     compose existing behavior, for example annualizing a map before computing a spatial RMSE.
-4. Add the class to ``AVAILABLE_METRICS`` so it can be selected by name.
-5. If the metric has configurable parameters, add them to ``CRCMEmulatorMetricConfig`` and ensure they are used in the
-    metric's computation.
-    Implement ``__init__`` to accept the configuration parameters and store them as instance attributes.
-    Override ``from_config`` as a class method to pass the relevant config values to the constructor.
-6. If the metric produces a diagnostic figure, specify its figure type in ``CRCMEmulatorPlotConfig``. Add new figure
-    types to the dispatcher in ``plots/utils.py``.
+4. Add metric tests in ``test_metrics.py``.
+5. Add the class to ``AVAILABLE_METRICS`` so it can be selected by name.
+6. For integration with configurations, create a ``BaseMetricConfig`` subclass in a config module.
+    If the metric config defines a new figure type, add it to the dispatcher in ``plots/utils.py``.
+
+Instances are shared: keep metric and reducer configuration unchanged after construction,
+and keep accumulation state external.
 """
 
 import math
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Protocol, Self
+from functools import cache
+from typing import Any, Protocol
 
+import numpy as np
 import torch
+from fastdigest import TDigest
 
-from resoterre.config.crcm_emulator import CRCMEmulatorMetricConfig
+from resoterre.config import BaseMetricConfig
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
 
 
@@ -113,14 +117,16 @@ def metrics_to_floats(metrics: dict[str, torch.Tensor]) -> dict[str, float]:
     return dict(zip(metrics.keys(), values, strict=True))
 
 
-def per_variable_metrics(name: str, values: torch.Tensor, variable_names: list[str]) -> dict[str, torch.Tensor]:
+def per_variable_metrics(
+    config: BaseMetricConfig, values: torch.Tensor, variable_names: list[str]
+) -> dict[str, torch.Tensor]:
     """
     Split a metric computed for each variable into one scalar metric per variable.
 
     Parameters
     ----------
-    name : str
-        Name of the metric.
+    config : BaseMetricConfig
+        Metric configuration containing the name of the metric.
     values : torch.Tensor
         Metric values with variables on the first axis. Any remaining dimensions are preserved per variable.
     variable_names : list[str]
@@ -132,15 +138,27 @@ def per_variable_metrics(name: str, values: torch.Tensor, variable_names: list[s
         Per-variable metrics, named ``<variable>/<metric>`` (e.g. ``tas/rmse``), so that Comet groups metrics by
         variable.
     """
-    return {f"{variable_name}/{name}": value for variable_name, value in zip(variable_names, values, strict=True)}
+    return {
+        f"{config.unique_string(variable_name)}": value
+        for variable_name, value in zip(variable_names, values, strict=True)
+        if not config.variables or variable_name in config.variables
+    }
 
 
-# (Accumulated tensor, Accumulated weight) stored for each metric
-ReducerState = tuple[torch.Tensor, float]
+# (Accumulated object, Accumulated weight) stored for each metric
+ReducerState = tuple[Any, float]
 
 
 class MetricReducer(Protocol):
-    """Strategy for accumulating batches and finalizing one metric result."""
+    """
+    Strategy for accumulating batches and finalizing one metric result.
+
+    Notes
+    -----
+    Reducer instances may be shared across metrics and evaluations. Treat their
+    configuration as immutable after construction and keep all accumulation
+    state in the state passed to and returned from accumulate().
+    """
 
     def accumulate(self, state: ReducerState | None, batch_value: torch.Tensor, batch_size: int) -> ReducerState:
         """
@@ -276,15 +294,7 @@ class YearlyMeanReducer(WeightedMeanReducer):
         Number of daily samples per simulation-year.
     """
 
-    def __init__(self, days_per_year: float) -> None:
-        """
-        Initialize the yearly reducer.
-
-        Parameters
-        ----------
-        days_per_year : float
-            Number of daily samples per simulation-year.
-        """
+    def __init__(self, days_per_year: float = 365.2425) -> None:
         self.days_per_year = days_per_year
 
     def batch_weight(self, batch_size: int) -> float:
@@ -459,6 +469,94 @@ class ExtremumReducer:
         return value
 
 
+class TDigestMapReducer:
+    """
+    Update TDigest batches for maps.
+
+    Parameters
+    ----------
+    quantile : float
+        Quantile to compute, e.g., 0.5 for the median.
+    """
+
+    def __init__(self, quantile: float) -> None:
+        self.quantile = quantile
+
+    def accumulate(self, state: ReducerState | None, batch_value: torch.Tensor, batch_size: int) -> ReducerState:
+        """
+        Add a batch value to the running total.
+
+        Parameters
+        ----------
+        state : ReducerState or None
+            Current total and placeholder weight, or ``None`` for the first batch.
+        batch_value : torch.Tensor
+            Metric value computed for this batch.
+        batch_size : int
+            Number of samples in the batch; not used by this reducer.
+
+        Returns
+        -------
+        ReducerState
+            Updated total and placeholder weight.
+        """
+        if state is None:
+            return batch_value, 1.0
+        updated_metric = (
+            np.empty_like(batch_value[0], dtype=object),
+            np.empty_like(batch_value[1], dtype=object),
+        )
+        for index, _ in np.ndenumerate(batch_value[0]):
+            updated_metric[0][index] = state[0][0][index].merge(batch_value[0][index])
+            updated_metric[1][index] = state[0][1][index].merge(batch_value[1][index])
+        return updated_metric, 1.0
+
+    def finalize(self, state: ReducerState) -> torch.Tensor:
+        """
+        Return the accumulated total.
+
+        Parameters
+        ----------
+        state : ReducerState
+            Accumulated total and placeholder weight.
+
+        Returns
+        -------
+        torch.Tensor
+            Quantile bias computed from the accumulated TDigest states.
+        """
+        target_quantile_values = np.empty_like(state[0][0], dtype=float)
+        output_quantile_values = np.empty_like(state[0][1], dtype=float)
+        for index, _ in np.ndenumerate(state[0][0]):
+            target_quantile_values[index] = state[0][0][index].quantile(self.quantile)
+            output_quantile_values[index] = state[0][1][index].quantile(self.quantile)
+        quantile_bias = output_quantile_values - target_quantile_values
+        return torch.from_numpy(quantile_bias)
+
+
+class TDigestReducer(TDigestMapReducer):
+    """Update TDigest batches."""
+
+    def finalize(self, state: ReducerState) -> torch.Tensor:
+        """
+        Return the accumulated total.
+
+        Parameters
+        ----------
+        state : ReducerState
+            Accumulated total and placeholder weight.
+
+        Returns
+        -------
+        torch.Tensor
+            Quantile bias computed from the accumulated TDigest states.
+        """
+        quantile_bias_map = super().finalize(state)
+        # Average over the last two dimensions to get a single bias per variable.
+        quantile_bias = quantile_bias_map.mean(-2).mean(-1)
+        return quantile_bias
+
+
 BATCH_MEAN_REDUCER = BatchMeanReducer()
 SAMPLE_MEAN_REDUCER = SampleMeanReducer()
 LOSS_REDUCERS: dict[str, MetricReducer] = {name: SAMPLE_MEAN_REDUCER for name in LOSS_NAMES}
@@ -472,32 +570,25 @@ class Metric(ABC):
     ----------
     name : str
         Name under which the metric is reported.
+    allow_per_batch_evaluation : bool
+        Whether the metric returns a per-batch Tensor with independent variables as first dimension.
     reducer : MetricReducer
         Strategy used to aggregate batch values and finalize the metric.
+
+    Notes
+    -----
+    Metric instances are cached and shared by name within a process. Treat
+    their configuration, including their reducer, as immutable after construction.
+    Calls must not retain batch data or accumulated results on the instance;
+    keep accumulation state in the explicitly passed reducer state.
     """
 
     name: str
+    allow_per_batch_evaluation: bool = True
     reducer: MetricReducer = SAMPLE_MEAN_REDUCER
 
-    @classmethod
-    def from_config(cls, config: CRCMEmulatorMetricConfig) -> Self:
-        """
-        Construct a metric using its relevant configuration settings.
-
-        Parameters
-        ----------
-        config : CRCMEmulatorMetricConfig
-            Metric settings; ignored by metrics without configurable settings.
-
-        Returns
-        -------
-        Self
-            Constructed metric.
-        """
-        return cls()
-
     @abstractmethod
-    def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+    def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> Any:
         """
         Compute the metric.
 
@@ -510,10 +601,135 @@ class Metric(ABC):
 
         Returns
         -------
-        torch.Tensor
-            Metric values with variables on the first axis; trailing dimensions are metric-specific. Computed on the
-            tensors' device.
+        Any
+            Metric values or tracker objects with variables on the first axis; trailing dimensions are metric-specific.
+            Computed on the tensors' device if they are torch tensors.
         """
+
+
+class MinMetric(Metric):
+    """Min metric."""
+
+    name = "min"
+    reducer = ExtremumReducer(torch.minimum)
+
+    def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the element-wise minimum of target and output tensors.
+
+        Parameters
+        ----------
+        target_data : torch.Tensor
+            The ground truth data.
+        output : torch.Tensor
+            The model output data.
+
+        Returns
+        -------
+        torch.Tensor
+            Element-wise minimum of the target and output tensors.
+        """
+        return torch.minimum(target_data, output)
+
+
+class MaxMetric(Metric):
+    """Max metric."""
+
+    name = "max"
+    reducer = ExtremumReducer(torch.maximum)
+
+    def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the element-wise maximum of target and output tensors.
+
+        Parameters
+        ----------
+        target_data : torch.Tensor
+            The ground truth data.
+        output : torch.Tensor
+            The model output data.
+
+        Returns
+        -------
+        torch.Tensor
+            Element-wise maximum of the target and output tensors.
+        """
+        return torch.maximum(target_data, output)
+
+
+class SumMetric(Metric):
+    """Sum metric."""
+
+    name = "sum"
+    reducer = SumReducer()
+
+    def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the sum of target and output tensors.
+
+        Parameters
+        ----------
+        target_data : torch.Tensor
+            The ground truth data.
+        output : torch.Tensor
+            The model output data.
+
+        Returns
+        -------
+        torch.Tensor
+            Sum of the target and output tensors.
+        """
+        return target_data + output
+
+
+class MSELoss(Metric):
+    """Mean squared error loss metric."""
+
+    name = "mse_loss"
+    reducer = SAMPLE_MEAN_REDUCER
+
+    def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the mean squared error loss.
+
+        Parameters
+        ----------
+        target_data : torch.Tensor
+            The ground truth data.
+        output : torch.Tensor
+            The model output data.
+
+        Returns
+        -------
+        torch.Tensor
+            Mean squared error loss values.
+        """
+        return (target_data - output) ** 2
+
+
+class SSIMLoss(Metric):
+    """Structural similarity index loss metric."""
+
+    name = "ssim_loss"
+    reducer = SAMPLE_MEAN_REDUCER
+
+    def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the SSIM loss.
+
+        Parameters
+        ----------
+        target_data : torch.Tensor
+            The ground truth data.
+        output : torch.Tensor
+            The model output data.
+
+        Returns
+        -------
+        torch.Tensor
+            SSIM loss values.
+        """
+        raise NotImplementedError("SSIMLoss is only implemented in training specific training loss method currently.")
 
 
 class DaysAboveThresholdMap(Metric):
@@ -548,23 +764,6 @@ class DaysAboveThresholdMap(Metric):
         """
         self.threshold = threshold
         self.reducer = self.reducer_class(days_per_year=days_per_year)
-
-    @classmethod
-    def from_config(cls, config: CRCMEmulatorMetricConfig) -> Self:
-        """
-        Construct a threshold metric from its temperature and year settings.
-
-        Parameters
-        ----------
-        config : CRCMEmulatorMetricConfig
-            Threshold and annualization settings.
-
-        Returns
-        -------
-        Self
-            Configured threshold metric.
-        """
-        return cls(threshold=config.tas_day_threshold, days_per_year=config.days_per_year)
 
     def __call__(self, target_data: torch.Tensor, output: torch.Tensor, threshold: float | None = None) -> torch.Tensor:
         """
@@ -720,6 +919,77 @@ class MeanBias(Metric):
         return (per_image_and_variable(output) - per_image_and_variable(target_data)).mean(dim=-1).mean(dim=0)
 
 
+class TemporalQuantileBiasMap(Metric):
+    """
+    Temporal quantile bias map between the target and the output.
+
+    Parameters
+    ----------
+    quantile : float
+        Quantile to compute the temporal bias for.
+
+    Notes
+    -----
+    Tracks TDigest objects to allow computation of temporal quantiles on the consolidated data.
+    """
+
+    name = "temporal_quantile_bias_map"
+    allow_per_batch_evaluation = False
+
+    def __init__(self, quantile: float):
+        self.quantile = quantile
+        self.reducer = TDigestMapReducer(quantile=quantile)
+
+    def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Compute the metric.
+
+        Parameters
+        ----------
+        target_data : torch.Tensor
+            The ground truth data.
+        output : torch.Tensor
+            The model output data.
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray]
+            First element: TDigest of target data.
+            Second element: TDigest of output data.
+        """
+        target_tdigest_array = np.empty(output.shape[1:], dtype=object)
+        output_tdigest_array = np.empty(output.shape[1:], dtype=object)
+        for index, _ in np.ndenumerate(target_tdigest_array):
+            target_tdigest_array[index] = TDigest(max_centroids=1000)
+            target_tdigest_array[index].batch_update(target_data[:, index[0], index[1], index[2]].cpu().numpy())
+        for index, _ in np.ndenumerate(output_tdigest_array):
+            output_tdigest_array[index] = TDigest(max_centroids=1000)
+            output_tdigest_array[index].batch_update(output[:, index[0], index[1], index[2]].cpu().numpy())
+        return target_tdigest_array, output_tdigest_array
+
+
+class TemporalQuantileBias(TemporalQuantileBiasMap):
+    """
+    Temporal quantile bias between the target and the output.
+
+    Parameters
+    ----------
+    quantile : float
+        Quantile to compute the temporal bias for.
+
+    Notes
+    -----
+    Tracks TDigest objects to allow computation of temporal quantiles on the consolidated data.
+    """
+
+    name = "temporal_quantile_bias"
+    allow_per_batch_evaluation = False
+
+    def __init__(self, quantile: float):
+        self.quantile = quantile
+        self.reducer = TDigestReducer(quantile=quantile)
+
+
 class CCC(Metric):
     """
     Lin's concordance correlation coefficient between the target and the output.
@@ -805,7 +1075,11 @@ class WassersteinDistance(Metric):
 
 # Metrics that can be selected by name in ``training.validation_metrics`` and ``inference.evaluation_metrics``.
 AVAILABLE_METRICS: dict[str, type[Metric]] = {
+    "min": MinMetric,
+    "max": MaxMetric,
+    "sum": SumMetric,
     MaxValueAbsoluteError.name: MaxValueAbsoluteError,
+    MSELoss.name: MSELoss,
     RMSE.name: RMSE,
     CCC.name: CCC,
     WassersteinDistance.name: WassersteinDistance,
@@ -813,47 +1087,64 @@ AVAILABLE_METRICS: dict[str, type[Metric]] = {
     MeanBias.name: MeanBias,
     DaysAboveThreshold.name: DaysAboveThreshold,
     DaysAboveThresholdMap.name: DaysAboveThresholdMap,
+    SSIMLoss.name: SSIMLoss,
+    TemporalQuantileBias.name: TemporalQuantileBias,
+    TemporalQuantileBiasMap.name: TemporalQuantileBiasMap,
 }
 
 
-def build_metrics(names: list[str], config: CRCMEmulatorMetricConfig | None = None) -> dict[str, Metric]:
+@cache
+def _build_metric(config: BaseMetricConfig) -> Metric:
+    """
+    Build and return an instance of the metric corresponding to the given name.
+
+    Parameters
+    ----------
+    config : BaseMetricConfig
+        Metric configuration object.
+
+    Returns
+    -------
+    Metric
+        Instantiated metric object.
+    """
+    kwargs = {k: v for k, v in config.model_dump().items() if k not in ["name", "plot", "variables"]}
+    return AVAILABLE_METRICS[config.name](**kwargs)
+
+
+def build_metrics(configs: list[BaseMetricConfig]) -> dict[BaseMetricConfig, Metric]:
     """
     Instantiate metrics from their names.
 
     Parameters
     ----------
-    names : list[str]
-        Names of the metrics, as registered in ``AVAILABLE_METRICS``.
-    config : CRCMEmulatorMetricConfig or None, optional
-        Construction settings. None uses the default metric configuration.
+    configs : list[BaseMetricConfig]
+        List of metric configuration objects to instantiate.
 
     Returns
     -------
-    dict[str, Metric]
-        The metric callables, by name.
+    dict[BaseMetricConfig, Metric]
+        The metric callables with their corresponding configuration objects.
 
     Raises
     ------
     ValueError
         If a name is not an available metric.
     """
-    unknown_metrics = set(names) - set(AVAILABLE_METRICS)
+    unknown_metrics = {config.name for config in configs} - set(AVAILABLE_METRICS)
     if unknown_metrics:
         raise ValueError(f"Unknown metrics {sorted(unknown_metrics)}, available: {sorted(AVAILABLE_METRICS)}.")
-    config = CRCMEmulatorMetricConfig() if config is None else config
-    return {name: AVAILABLE_METRICS[name].from_config(config) for name in names}
+    return {config.to_key(): _build_metric(config.to_key()) for config in configs}
 
 
-def reducer_for_metric(name: str, *, metric_functions: dict[str, Metric]) -> MetricReducer:
+def reducer_for_metric(config: BaseMetricConfig) -> MetricReducer:
     """
-    Get a metric's reducer, ignoring any variable prefix in its key.
+    Get a metric's reducer.
 
     Parameters
     ----------
-    name : str
-        Metric key, optionally prefixed by a variable name (e.g. ``tas/rmse``).
-    metric_functions : dict[str, Metric]
-        Configured metric instances keyed by base name.
+    config : BaseMetricConfig
+        Metric configuration object.
 
     Returns
     -------
@@ -861,35 +1152,30 @@ def reducer_for_metric(name: str, *, metric_functions: dict[str, Metric]) -> Met
         Reducer configured for the metric, the sample-mean reducer for losses,
         or the batch-mean fallback for diagnostics.
     """
-    metric_name = name.rsplit("/", 1)[-1]
-    metrics = metric_functions.get(metric_name)
-    return getattr(
-        metrics,
-        "reducer",
-        LOSS_REDUCERS.get(metric_name, BATCH_MEAN_REDUCER),
-    )
+    if config.name in AVAILABLE_METRICS:
+        return _build_metric(config.to_key()).reducer
+    return LOSS_REDUCERS.get(config.name, BATCH_MEAN_REDUCER)
 
 
 def running_consolidation(
     running_metrics: dict[str, ReducerState],
-    metrics: dict[str, torch.Tensor],
+    metrics: dict[str, Any],
+    configs: dict[str, BaseMetricConfig],
     batch_size: int,
-    *,
-    metric_functions: dict[str, Metric],
 ) -> None:
     """
     Fold the metrics of one batch into the running statistics.
 
     Parameters
     ----------
-    running_metrics : dict[str, tuple[torch.Tensor, float]]
-        Running statistics keyed by metric as (running value, total weight). Updated in place.
-    metrics : dict[str, torch.Tensor]
-        Batch metric tensors, possibly on the GPU.
+    running_metrics : dict[str, ReducerState]
+        Running statistics keyed by metric as ReducerState (running value, total weight). Updated in place.
+    metrics : dict[str, Any]
+        Batch metric tensors, possibly on the GPU if they are torch tensors.
+    configs : dict[str, BaseMetricConfig]
+        Metric configuration objects keyed by metric as string.
     batch_size : int
         Number of samples in the batch.
-    metric_functions : dict[str, Metric]
-        Configured metric instances keyed by base name.
 
     Returns
     -------
@@ -900,34 +1186,43 @@ def running_consolidation(
     -----
     The statistics stay on the device, so there is no GPU synchronization until ``consolidation``.
     """
-    for metric_key, batch_value in metrics.items():
-        reducer = reducer_for_metric(metric_key, metric_functions=metric_functions)
-        running_state = running_metrics.get(metric_key)
-        running_metrics[metric_key] = reducer.accumulate(running_state, batch_value, batch_size)
+    for key, batch_metric_object in metrics.items():
+        if key in configs:
+            reducer = reducer_for_metric(configs[key])
+        else:
+            reducer = BATCH_MEAN_REDUCER
+        running_metrics[key] = reducer.accumulate(running_metrics.get(key, None), batch_metric_object, batch_size)
 
 
 def consolidation(
-    running_metrics: dict[str, ReducerState], *, metric_functions: dict[str, Metric]
-) -> dict[str, float | torch.Tensor]:
+    running_metrics: dict[str, ReducerState],
+    configs: dict[str, BaseMetricConfig],
+) -> dict[str, float | torch.Tensor | np.ndarray]:
     """
     Consolidate the running statistics into one value per metric, whatever its reduction.
 
     Parameters
     ----------
     running_metrics : dict[str, ReducerState]
-        Running statistics keyed by metric (<variable>/<metric>), with values (running value, total weight).
-    metric_functions : dict[str, Metric]
-        Configured metric instances used when accumulating the running statistics.
+        Running statistics keyed by metric as string, with values (running value, total weight).
+    configs : dict[str, BaseMetricConfig]
+        Metric configuration objects keyed by metric as string.
 
     Returns
     -------
-    dict[str, float | torch.Tensor]
+    dict[str, float | torch.Tensor | np.ndarray]
         Final value for each metric. Non-scalar tensors (maps) remain tensors.
     """
-    results: dict[str, float | torch.Tensor] = {}
-    for name, state in running_metrics.items():
-        value = reducer_for_metric(name, metric_functions=metric_functions).finalize(state).cpu()
-        # Convert the value to a Python scalar if it is a single-element tensor.
-        results[name] = value.item() if value.numel() == 1 else value
+    results: dict[str, float | torch.Tensor | np.ndarray] = {}
+    for key, state in running_metrics.items():
+        if key in configs:
+            reducer = reducer_for_metric(configs[key])
+        else:
+            reducer = BATCH_MEAN_REDUCER
+        value = reducer.finalize(state)
+        if isinstance(value, torch.Tensor):
+            value = value.cpu()
+        # Convert the value to a Python scalar if it is a single-element.
+        results[key] = value.item() if math.prod(value.shape) == 1 else value
 
     return results

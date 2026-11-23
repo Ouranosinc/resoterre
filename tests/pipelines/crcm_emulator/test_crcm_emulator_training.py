@@ -3,6 +3,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Literal
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -12,6 +13,7 @@ import xarray
 from torch.utils import data as td
 
 from resoterre.config import (
+    BaseMetricConfig,
     CRCMEmulatorConfig,
     CRCMEmulatorDataConfig,
     CRCMEmulatorLossConfig,
@@ -22,13 +24,14 @@ from resoterre.config import (
     CRCMEmulatorTrainingConfig,
     OptimizerConfig,
 )
-from resoterre.config.crcm_emulator import CRCMEmulatorMetricConfig
+from resoterre.config.metrics import MSELossConfig, MeanBiasConfig, RMSEConfig, TemporalQuantileBiasConfig
+from resoterre.config.metrics_climate import DaysAboveThresholdConfig
 from resoterre.data_generators.crcm_emulator_mock_dataset import CRCMEmulatorMockDataset
 from resoterre.data_management.timeseries import MultiTimeseries
 from resoterre.logging_utils import start_root_logger
 from resoterre.pipelines.crcm_emulator import crcm_emulator_training
 from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import PredictionZarrWriter
-from resoterre.pipelines.crcm_emulator.metrics import build_metrics, denormalize_crcm
+from resoterre.pipelines.crcm_emulator.metrics import denormalize_crcm
 
 
 def test_crcm_emulator_training():
@@ -86,6 +89,69 @@ def test_crcm_emulator_training():
         assert results["BestVal loss_val"] == results["LastVal loss_val"]  # a single epoch is the best epoch
         assert "LastVal mse_loss_val" in results
         assert not list(Path(config.paths.output).glob("training_visualization_*.png"))
+
+
+def test_crcm_emulator_training_with_non_tensor_batch_metrics():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(
+                tile_size=128,
+                coarsen_factor=4,
+                batch_size=4,
+                crcm_variables=["tas", "pr"],
+                training_periods={"historical": ("2000-01-01", "2010-12-31")},
+            ),
+            model=CRCMEmulatorModelConfig(kernel_size=3, initial_num_of_hidden_channels=8, depth=2),
+            optimizer=OptimizerConfig(lr=1e-3, weight_decay=1e-5),
+            loss=CRCMEmulatorLossConfig(mse_weight=1.0, ssim_weight=0.0),
+            training=CRCMEmulatorTrainingConfig(
+                nb_of_epochs=2,
+                device="cpu",
+                validation_metrics=[TemporalQuantileBiasConfig(variables=["tas"], quantile=0.95)],
+            ),
+        )
+        _ = start_root_logger(basic_config_args={"filename": Path(tmp_dir, "training.log")})
+        runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+
+        # Bypassing data loader from zarr files
+        if config.data.coarsen_factor is None:
+            raise ValueError("coarsen_factor must be specified in the configuration.")
+        runner.dataset = CRCMEmulatorMockDataset(
+            num_samples=64,
+            num_input_channels=2,
+            num_output_channels=2,
+            tile_size=config.data.tile_size,
+            coarsen_factor=config.data.coarsen_factor,
+        )
+        runner.train_data_loader = td.DataLoader(runner.dataset, runner.config.data.batch_size, shuffle=True)
+        validation_dataset = CRCMEmulatorMockDataset(
+            num_samples=16,
+            num_input_channels=2,
+            num_output_channels=2,
+            tile_size=config.data.tile_size,
+            coarsen_factor=config.data.coarsen_factor,
+        )
+        runner.validation_data_loaders = {
+            "historical": td.DataLoader(validation_dataset, runner.config.data.batch_size, shuffle=False)
+        }
+        runner.validation_data_loader = runner.validation_data_loaders["historical"]
+        runner.init_unet()
+
+        runner(epoch=1, device=runner.config.training.device)
+        if config.paths.output is None:
+            raise ValueError("path_output must be specified in the configuration.")
+        assert Path(config.paths.output, "training.log").is_file()
+        assert Path(config.paths.output, "test_epoch_001_latest.pth").is_file()
+        assert Path(config.paths.output, "test_epoch_001_best.pth").is_file()
+        results = json.loads(Path(config.paths.output, "test_training_results.json").read_text())
+        assert "BestVal tas/temporal_quantile_bias_quantile_0p95_historical" in results
+        assert "BestVal pr/temporal_quantile_bias_quantile_0p95_historical" not in results
 
 
 def test_crcm_emulator_training_resume():
@@ -183,34 +249,6 @@ def test_crcm_emulator_training_figure_frequency_is_configurable():
             assert [call.kwargs["step"] for call in log_figure.call_args_list] == expected_steps
 
 
-def test_crcm_emulator_validation_metrics_are_configurable():
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        config = CRCMEmulatorConfig(
-            experiment_name="test",
-            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
-            preprocessing=CRCMEmulatorPreprocessingConfig(
-                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
-                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
-            ),
-            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
-            model=CRCMEmulatorModelConfig(
-                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
-            ),
-        )
-        for names in (["max_value_absolute_error"], []):
-            training_config = CRCMEmulatorTrainingConfig(validation_metrics=names)
-            runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(
-                config=config.model_copy(update={"training": training_config})
-            )
-            assert list(runner.validation_metric_functions) == names
-        with pytest.raises(ValueError, match="Unknown metrics"):
-            crcm_emulator_training.CRCMEmulatorTrainingFromConfig(
-                config=config.model_copy(
-                    update={"training": CRCMEmulatorTrainingConfig(validation_metrics=["not_a_metric"])}
-                )
-            )
-
-
 def test_crcm_emulator_test_evaluation_reports_test_metrics():
     # same flow as scripts/crcm_emulator/04_inference.py: load a checkpoint, evaluate, consolidate
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -246,16 +284,19 @@ def test_crcm_emulator_test_evaluation_reports_test_metrics():
 
         # a batch of 4 and a partial batch of 1
         test_data_loader = td.DataLoader(CRCMEmulatorMockDataset(num_samples=5, **mock_kwargs), 4, shuffle=False)
-        for test_metrics, expected in (
+        for metric_configs, expected in (
             (
-                ["max_value_absolute_error"],
-                {"loss", "mse_loss", "tas/max_value_absolute_error", "pr/max_value_absolute_error"},
+                [MeanBiasConfig(variables=["tas", "pr"])],
+                {"loss", "mse_loss", "tas/mean_bias", "pr/mean_bias"},
             ),
             ([], {"loss", "mse_loss"}),
         ):
             runner = make_runner(config.training)
+            runner.config = runner.config.model_copy(
+                update={"inference": runner.config.inference.model_copy(update={"evaluation_metrics": metric_configs})}
+            )
             runner.load_state(Path(tmp_dir), tag="latest")
-            results = runner.evaluate(test_data_loader, build_metrics(test_metrics))
+            results = runner.evaluate(test_data_loader)
             # float and int are used to identify scalar metrics
             assert all(isinstance(v, (int, float)) for v in results.values())
             assert set(results) == expected
@@ -422,17 +463,18 @@ def test_crcm_emulator_figure_channel_names_exclude_mask():
 
 
 def test_crcm_emulator_consolidation_weights_losses_by_batch_size():
+
     runner = SimpleNamespace(
         running_validation_metrics={},
         validation_metrics=MultiTimeseries(),
         validation_diagnostics={},
-        validation_metric_functions={},
+        metric_config_mapping={"mse_loss": MSELossConfig()},
     )
     consolidator = crcm_emulator_training.CRCMEmulatorTrainingFromConfig
     # 128 samples with zero error, then a partial batch of 1 sample with a squared error of 100
     for batch_size, value in ((128, 0.0), (1, 100.0)):
         metrics = {"mse_loss": torch.tensor(value), "some_other_metric": torch.tensor(value)}
-        consolidator.running_consolidation(runner, metrics, batch_size, metric_functions={})  # type: ignore[arg-type]
+        consolidator.running_consolidation(runner, metrics, {"mse_loss": MSELossConfig()}, batch_size)  # type: ignore[arg-type]
     consolidator.consolidation(runner)  # type: ignore[arg-type]
     assert runner.running_validation_metrics == {}
     assert runner.validation_metrics["mse_loss"].values == [pytest.approx(100 / 129)]
@@ -463,11 +505,20 @@ def test_crcm_emulator_metrics_use_denormalized_data_but_losses_do_not():
         runner.init_unet()
         seen: dict[str, torch.Tensor] = {}
 
-        def record(target: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
-            seen["target"] = target
-            return target.amax(dim=(0, 2, 3))
+        class RecordMetric:
+            allow_per_batch_evaluation = True
 
-        runner.evaluation_step(next(iter(td.DataLoader(dataset, 2))), {"record": record})
+            def __call__(self, target: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+                seen["target"] = target
+                return target.amax(dim=(0, 2, 3))
+
+        class RecordMetricConfig(BaseMetricConfig):
+            name: Literal["record"] = "record"
+
+        runner.evaluation_step(
+            next(iter(td.DataLoader(dataset, 2))),
+            custom_metrics=[{"config": RecordMetricConfig(), "function": RecordMetric()}],
+        )
         assert seen["target"].min() >= 243.15
         assert seen["target"].max() <= 303.15
         assert set(runner.running_validation_metrics) >= {"tas/record", "mse_loss"}
@@ -497,19 +548,15 @@ def _baseline_runner(
 
 def test_evaluate_uses_active_metric_configuration(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     runner = _baseline_runner(str(tmp_path), False, {})
-    runner.validation_metric_functions = build_metrics(
-        ["days_above_threshold"], CRCMEmulatorMetricConfig(tas_day_threshold=310.0, days_per_year=8.0)
-    )
-    active_metrics = build_metrics(
-        ["days_above_threshold"], CRCMEmulatorMetricConfig(tas_day_threshold=290.0, days_per_year=4.0)
-    )
     target = torch.zeros(2, 2, 1, 2)
     output = torch.ones_like(target)
     output[:, 1] = -1.0
     monkeypatch.setattr(runner, "forward_batch", MagicMock(return_value=(target, target, output)))
-    results = runner.evaluate([{}], active_metrics)
-    assert results["tas/days_above_threshold"] == pytest.approx(4.0)
-    assert results["pr/days_above_threshold"] == pytest.approx(0.0)
+    results = runner.evaluate(
+        [{}], evaluation_metrics=[DaysAboveThresholdConfig(variables=["tas", "pr"], threshold=290.0, days_per_year=4.0)]
+    )
+    assert results["tas/days_above_threshold_threshold_290_days_per_year_4"] == pytest.approx(4.0)
+    assert results["pr/days_above_threshold_threshold_290_days_per_year_4"] == pytest.approx(0.0)
 
 
 def test_crcm_emulator_interpolation_baseline_logged_as_constant_line(monkeypatch):
@@ -590,7 +637,7 @@ def test_crcm_emulator_interpolation_baseline_read_from_json(monkeypatch, saved_
         runner.config = runner.config.model_copy(
             update={
                 "data": runner.config.data.model_copy(update={"validation_periods": period}),
-                "training": runner.config.training.model_copy(update={"validation_metrics": ["rmse"]}),
+                "training": runner.config.training.model_copy(update={"validation_metrics": [RMSEConfig()]}),
             }
         )
         runner.score_interpolation_baseline()
@@ -649,7 +696,7 @@ def test_crcm_emulator_evaluate_saves_predictions():
             tile_size=128,
             chunk_size=2,
         )
-        runner.evaluate(data_loader, {}, prediction_writer=writer)
+        runner.evaluate(data_loader, prediction_writer=writer)
 
         # days 2, 3 and 4 of the month are saved, the others are left empty
         saved = xarray.open_zarr(Path(tmp_dir, "test_CNRM-ESM2-1_historical_r1i1p1f2.zarr"))

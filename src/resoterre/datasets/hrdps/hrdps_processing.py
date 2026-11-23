@@ -121,7 +121,7 @@ def initialize_hrdps_from_origin(
                 dtype=np.float32,
                 chunks=(8, i_slice.stop - i_slice.start, j_slice.stop - j_slice.start),
             ),
-            attributes={key: value for key, value in hrdps_netcdf_attrs[local_variable_name].items()},
+            attributes={**hrdps_netcdf_attrs[local_variable_name]},
         )
     geophysical_encodings = {}
     if path_hrdps_geophysical is not None:
@@ -218,13 +218,13 @@ def save_hrdps_from_origin(
         "rlat",
         data=ds["rlat"].values[i_slice],
         dtype=np.float32,
-        attributes={key: value for key, value in ds["rlat"].attrs.items()},
+        attributes={**ds["rlat"].attrs},
     )
     cf_coordinates.add(
         "rlon",
         data=ds["rlon"].values[j_slice],
         dtype=np.float32,
-        attributes={key: value for key, value in ds["rlon"].attrs.items()},
+        attributes={**ds["rlon"].attrs},
     )
     for key in ["lat", "lon"]:
         cf_coordinates.add(
@@ -232,13 +232,13 @@ def save_hrdps_from_origin(
             dims=("rlat", "rlon"),
             data=ds[key].values[i_slice, j_slice],
             dtype=np.float32,
-            attributes={key: value for key, value in ds[key].attrs.items()},
+            attributes={**ds[key].attrs},
         )
     cf_coordinates.add(
         "rotated_pole",
         dims=(),
         data=np.array(0, dtype=np.int8),
-        attributes={key: value for key, value in ds["rotated_pole"].attrs.items()},
+        attributes={**ds["rotated_pole"].attrs},
     )
     if expected_variables:
         cf_coordinates.add(
@@ -266,7 +266,7 @@ def save_hrdps_from_origin(
         "time",
         data=ds["time"].values[t_slice],
         dtype=np.float64,
-        attributes={key: value for key, value in ds["time"].attrs.items()},
+        attributes={**ds["time"].attrs},
     )
 
     cf_variables = CFVariables()
@@ -277,7 +277,7 @@ def save_hrdps_from_origin(
         variable_name,
         dims=("time", "rlat", "rlon"),
         data=hrdps_data[:, i_slice, j_slice],
-        attributes={key: value for key, value in ds[variable_name].attrs.items()},
+        attributes={**ds[variable_name].attrs},
     )
 
     zarr_ds = xarray.open_zarr(path_output)
@@ -362,13 +362,13 @@ def save_hrdps_zarr_format(
         "rlat",
         data=ds["rlat"].values,
         dtype=np.float32,
-        attributes={key: value for key, value in ds["rlat"].attrs.items()},
+        attributes={**ds["rlat"].attrs},
     )
     cf_coordinates.add(
         "rlon",
         data=ds["rlon"].values,
         dtype=np.float32,
-        attributes={key: value for key, value in ds["rlon"].attrs.items()},
+        attributes={**ds["rlon"].attrs},
     )
     for key in ["lat", "lon"]:
         cf_coordinates.add(
@@ -376,13 +376,13 @@ def save_hrdps_zarr_format(
             dims=("rlat", "rlon"),
             data=ds[key].values,
             dtype=np.float32,
-            attributes={key: value for key, value in ds[key].attrs.items()},
+            attributes={**ds[key].attrs},
         )
     cf_coordinates.add(
         "rotated_pole",
         dims=(),
         data=np.array(0, dtype=np.int8),
-        attributes={key: value for key, value in ds["rotated_pole"].attrs.items()},
+        attributes={**ds["rotated_pole"].attrs},
     )
     cf_coordinates.add(
         "variable_names",
@@ -401,7 +401,7 @@ def save_hrdps_zarr_format(
             "time",
             data=np.array(list_of_datetimes, dtype="datetime64[ns]"),
             dtype=np.float64,
-            attributes={key: value for key, value in ds["time"].attrs.items()},
+            attributes={**ds["time"].attrs},
         )
         cf_coordinates.add(
             "is_empty",
@@ -420,7 +420,7 @@ def save_hrdps_zarr_format(
                     dtype=np.float32,
                     chunks=(8, ds["rlat"].size, ds["rlon"].size),
                 ),
-                attributes={key: value for key, value in hrdps_netcdf_attrs[local_variable_name].items()},
+                attributes={**hrdps_netcdf_attrs[local_variable_name]},
             )
         geophysical_encodings = {}
         for geophysical_variable_name in ["orog", "sftlf"]:
@@ -454,7 +454,7 @@ def save_hrdps_zarr_format(
         "time",
         data=datetimes,
         dtype=np.float64,
-        attributes={key: value for key, value in ds["time"].attrs.items()},
+        attributes={**ds["time"].attrs},
     )
 
     cf_variables = CFVariables()
@@ -462,7 +462,7 @@ def save_hrdps_zarr_format(
         variable_name,
         dims=("time", "rlat", "rlon"),
         data=data,
-        attributes={key: value for key, value in hrdps_netcdf_attrs[variable_name].items()},
+        attributes={**hrdps_netcdf_attrs[variable_name]},
     )
 
     zarr_ds = xarray.open_zarr(path_output)

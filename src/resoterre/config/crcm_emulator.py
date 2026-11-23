@@ -4,9 +4,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from resoterre.config.base import BaseConfig
+from resoterre.config.metrics import BaseMetricConfig, RMSEConfig
 from resoterre.config.ml import OptimizerConfig
 
 
@@ -293,8 +294,7 @@ class CRCMEmulatorTrainingConfig(BaseConfig):
     lr_warmup_epochs: int = Field(default=0, ge=0)
     lr_min: float = Field(default=0.0, ge=0.0)
     early_stopping_patience: int | None = Field(default=None, ge=1)
-    # TODO: metrics to be different per variable so a dict instead of a list
-    validation_metrics: list[str] = Field(default_factory=lambda: ["max_value_absolute_error"])
+    validation_metrics: list[BaseMetricConfig] = Field(default_factory=lambda: [RMSEConfig()])
     log_interpolation_baseline: bool = False
     # TODO: not used, consider removing
     num_threads: int = 2
@@ -320,44 +320,7 @@ class CRCMEmulatorInferenceConfig(BaseConfig):
     variables: list[str] = Field(default_factory=list)
     periods: list[list[datetime]] | None = None
     device: str | None = None
-    evaluation_metrics: list[str] = Field(default_factory=lambda: ["max_value_absolute_error"])
-
-
-class CRCMEmulatorMetricConfig(BaseConfig):
-    """
-    Metric configuration for the CRCM emulator.
-
-    Attributes
-    ----------
-    tas_day_threshold : float
-        Temperature threshold for the days above threshold metric (default 303.15 K).
-    days_per_year : float
-        Number of days per year used for annualized metrics (default 365).
-    """
-
-    tas_day_threshold: float = 303.15
-    days_per_year: float = 365
-
-
-class CRCMEmulatorPlotConfig(BaseConfig):
-    """
-    Plotting settings of the CRCM emulator.
-
-    Attributes
-    ----------
-    metric_mapping : dict[str, dict[str, Any]]
-        Mapping of metrics to their plotting configurations.
-    variable_mapping : dict[str, dict[str, Any]]
-        Mapping of variables to their plotting configurations.
-    """
-
-    metric_mapping: dict[str, dict[str, Any]] = Field(
-        default_factory=lambda: {
-            "bias_map": {"figure_type": "nd_plot", "figure_kwargs": {"reverse_i": True}},
-            "days_above_threshold_map": {"figure_type": "nd_plot", "figure_kwargs": {"reverse_i": True}},
-        }
-    )
-    variable_mapping: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    evaluation_metrics: list[BaseMetricConfig] = Field(default_factory=lambda: [RMSEConfig()])
 
 
 class CRCMEmulatorDebugConfig(BaseConfig):
@@ -417,6 +380,26 @@ class CRCMEmulatorConfig(BaseConfig):
         (no-op) logger configuration is used.
     """
 
+    @model_validator(mode="before")  # type: ignore[untyped-decorator]
+    @classmethod
+    def _drop_definitions(cls, data: Any) -> Any:
+        """
+        Remove the "_definitions" key from the input data if it exists.
+
+        Parameters
+        ----------
+        data : Any
+            Input data to be validated.
+
+        Returns
+        -------
+        Any
+            The input data with the "_definitions" key removed if it was present.
+        """
+        if isinstance(data, dict):
+            data.pop("_definitions", None)
+        return data
+
     experiment_name: str | None = None
     executing_institution: str = "unspecified"
     paths: CRCMEmulatorPathsConfig = Field(default_factory=CRCMEmulatorPathsConfig)
@@ -428,8 +411,6 @@ class CRCMEmulatorConfig(BaseConfig):
     training: CRCMEmulatorTrainingConfig = Field(default_factory=CRCMEmulatorTrainingConfig)
     # TODO: not used, consider removing
     inference: CRCMEmulatorInferenceConfig = Field(default_factory=CRCMEmulatorInferenceConfig)
-    metrics: CRCMEmulatorMetricConfig = Field(default_factory=CRCMEmulatorMetricConfig)
-    plot: CRCMEmulatorPlotConfig = Field(default_factory=CRCMEmulatorPlotConfig)
     debug: CRCMEmulatorDebugConfig = Field(default_factory=CRCMEmulatorDebugConfig)
     analysis: CRCMEmulatorAnalysisConfig = Field(default_factory=CRCMEmulatorAnalysisConfig)
     logger: ExperimentLoggerConfig | None = None

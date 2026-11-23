@@ -180,7 +180,7 @@ def rdps_to_hrdps_split(
     for split in ["train", "validation", "test"]:
         batch_dict[split] = []
         for j in range(0, len(split_dict[split]), save_batch_size):
-            batch_dict[split].append([dt for dt in split_dict[split][j : j + save_batch_size]])
+            batch_dict[split].append([*split_dict[split][j : j + save_batch_size]])
     return batch_dict
 
 

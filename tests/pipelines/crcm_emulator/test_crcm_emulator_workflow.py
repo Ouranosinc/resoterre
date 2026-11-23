@@ -8,12 +8,48 @@ import xarray
 from resoterre.config import (
     CRCMEmulatorConfig,
     CRCMEmulatorDataConfig,
+    CRCMEmulatorInferenceConfig,
     CRCMEmulatorPathsConfig,
     CRCMEmulatorPreprocessingConfig,
     CRCMEmulatorSourcePreprocessingConfig,
+    CRCMEmulatorTrainingConfig,
+)
+from resoterre.config.metrics import (
+    BiasMapConfig,
+    RMSEConfig,
+    TemporalQuantileBiasConfig,
 )
 from resoterre.data_generators.crcm_emulator_mock_dataset import mock_crcm_data
 from resoterre.pipelines.crcm_emulator import crcm_emulator_workflow
+
+
+def test_crcm_emulator_metrics_mapping():
+    config = CRCMEmulatorConfig(
+        data=CRCMEmulatorDataConfig(
+            crcm_variables=["tas", "pr"],
+            training_periods={"historical": ("1951-01-01", "2014-12-31"), "future": ("2015-01-01", "2100-12-31")},
+        ),
+        training=CRCMEmulatorTrainingConfig(
+            validation_metrics=[
+                RMSEConfig(),
+                BiasMapConfig(),
+                TemporalQuantileBiasConfig(variables=["tas"], quantile=0.75),
+                TemporalQuantileBiasConfig(variables=["pr"], quantile=0.99),
+            ]
+        ),
+        inference=CRCMEmulatorInferenceConfig(
+            evaluation_metrics=[
+                BiasMapConfig(),
+                TemporalQuantileBiasConfig(variables=["tas"], quantile=0.25),
+            ]
+        ),
+    )
+    mapping = crcm_emulator_workflow.crcm_emulator_metrics_mapping(config)
+    assert len(mapping) == 47
+    assert isinstance(mapping["rmse"], RMSEConfig)
+    assert isinstance(mapping["tas/bias_map"], BiasMapConfig)
+    assert isinstance(mapping["pr/temporal_quantile_bias_quantile_0p99_historical"], TemporalQuantileBiasConfig)
+    assert "tas/temporal_quantile_bias_quantile_0p99_historical" not in mapping
 
 
 def test_crcm_to_zarr_from_config_init():
