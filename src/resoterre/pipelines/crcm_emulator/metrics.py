@@ -45,6 +45,8 @@ def denormalize_crcm(
     """
     Convert normalized CRCM data back to physical units, channel by channel.
 
+    This is the torch counterpart of ``resoterre.ml.data_loader_utils.inverse_normalize`` (range (-1, 1)), so that it
+    works on any device.
 
     Parameters
     ----------

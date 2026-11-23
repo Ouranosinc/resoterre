@@ -16,11 +16,13 @@ from resoterre.data_management.cftime_utils import (
     get_intersection_slices,
 )
 from resoterre.datasets.cmip6.cmip6_utils import get_gcm_calendar
+from resoterre.datasets.cmip6.cmip6_variables import configure_cmip6_variables
 from resoterre.datasets.crcm.crcm_utils import (
     crcm_north_america_grid_coordinates,
     validate_crcm_data,
     version_realization_mapping,
 )
+from resoterre.datasets.crcm.crcm_variables import configure_crcm_variables
 from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import (
     crcm_emulator_output_format,
     write_crcm_time_slice_of_data,
@@ -49,12 +51,21 @@ def crcm_emulator_parse_config(config: CRCMEmulatorConfig | Path | str) -> CRCME
     -----
     If ``logger.experiment_name`` is not explicitly set, it is populated from the
     top-level ``experiment_name`` so that the Comet ML experiment name matches the
-    experiment's own name by default.
+    experiment's own name by default. The normalization statistics of the CRCM and CMIP6 variables are rebuilt
+    from ``data.normalization_stats_scenario`` and the normalization statistics files of ``data``.
     """
     if isinstance(config, CRCMEmulatorConfig):
         parsed_config = config
     else:
         parsed_config = config_from_yaml(CRCMEmulatorConfig, config)
+    configure_crcm_variables(
+        parsed_config.data.normalization_stats_scenario, parsed_config.data.climate_vars_normalization_stats_file
+    )
+    configure_cmip6_variables(
+        parsed_config.data.normalization_stats_scenario,
+        parsed_config.data.climate_vars_normalization_stats_file,
+        parsed_config.data.forcings_normalization_stats_file,
+    )
     if parsed_config.logger is not None and parsed_config.logger.experiment_name is None:
         parsed_config = parsed_config.model_copy(
             update={

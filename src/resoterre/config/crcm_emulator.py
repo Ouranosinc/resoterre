@@ -12,6 +12,9 @@ from resoterre.config.ml import OptimizerConfig
 
 
 DEFAULT_EMISSION_NAMES = ["CO2", "CH4", "N2O", "CFC12", "CFC11_eq"]
+DEFAULT_NORMALIZATION_STATS_SCENARIO = "historical+ssp245"
+DEFAULT_CLIMATE_VARS_NORMALIZATION_STATS_FILE = "normalization_stats_climate_vars_1951-1984_2015-2069.csv"
+DEFAULT_FORCINGS_NORMALIZATION_STATS_FILE = "normalization_stats_forcings_1951-1984_2015-2069.csv"
 
 
 class ExperimentLoggerConfig(BaseConfig):
@@ -155,6 +158,15 @@ class CRCMEmulatorDataConfig(BaseConfig):
     emission_names : list[str]
         Names of the greenhouse gas forcings given to the emulator as linear inputs, in channel order. They must be
         in the GCM zarr data and in the normalization statistics.
+    normalization_stats_scenario : str
+        Scenario label of the normalization statistics rows to use. Labels joined by ``+`` (e.g.
+        ``"historical+ssp245"``) pool several scenarios.
+    climate_vars_normalization_stats_file : str
+        Name of the climate variables normalization statistics CSV file, in the ``data/cnrm_ssp245/data_analysis``
+        directory of the package.
+    forcings_normalization_stats_file : str
+        Name of the forcings normalization statistics CSV file, in the ``data/cnrm_ssp245/data_analysis`` directory
+        of the package.
     target_normalization : dict[str, Literal["min_max", "celsius", "mm_per_day", "z_score"]]
         How each CRCM variable is scaled as a training target. Variables that are not listed use ``"min_max"``, a
         linear scaling to [-1, 1] over the range of the variable. ``"celsius"`` only converts kelvin to degrees
@@ -182,6 +194,9 @@ class CRCMEmulatorDataConfig(BaseConfig):
     gcm_variables: list[str] = Field(default_factory=list)
     crcm_variables: list[str] = Field(default_factory=list)
     emission_names: list[str] = Field(default_factory=lambda: list(DEFAULT_EMISSION_NAMES))
+    normalization_stats_scenario: str = DEFAULT_NORMALIZATION_STATS_SCENARIO
+    climate_vars_normalization_stats_file: str = DEFAULT_CLIMATE_VARS_NORMALIZATION_STATS_FILE
+    forcings_normalization_stats_file: str = DEFAULT_FORCINGS_NORMALIZATION_STATS_FILE
     target_normalization: dict[str, Literal["min_max", "celsius", "mm_per_day", "z_score"]] = Field(
         default_factory=dict
     )

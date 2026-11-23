@@ -3,6 +3,10 @@
 from collections.abc import Mapping
 from typing import Any
 
+from resoterre.config.crcm_emulator import (
+    DEFAULT_CLIMATE_VARS_NORMALIZATION_STATS_FILE,
+    DEFAULT_NORMALIZATION_STATS_SCENARIO,
+)
 from resoterre.data_management.variables import VariableHandler, VariableHandlerCollection, read_normalization_stats
 
 
@@ -11,106 +15,73 @@ SECONDS_PER_DAY = 86400.0
 
 crcm_variables = VariableHandlerCollection()
 
-_crcm_stats = {
-    row["variable"]: row
-    for row in read_normalization_stats("normalization_stats_climate_vars_1951-1984_2015-2069.csv")
-    if row["model"] == "crcm"
-}
-
-# Valid range of the CRCM variables: observed min and max over the historical and ssp245 periods.
-_valid_range = {name: (float(row["min"]), float(row["max"])) for name, row in _crcm_stats.items()}
-
 # Affine target normalizations that do not scale to [-1, 1]: mode -> (required units, scale, shift), with
 # y = scale * x + shift. A precipitation flux in kg m-2 s-1 is numerically a depth rate in mm s-1.
-# z_score uses the mean and standard deviation over the historical and ssp245 periods (tas only).
-_unit_only_normalizations = {
+# z_score uses the mean and standard deviation of the normalization statistics (tas only), set by
+# ``configure_crcm_variables``.
+_unit_only_normalizations: dict[str, tuple[str, float, float]] = {
     "celsius": ("K", 1.0, -KELVIN_TO_CELSIUS_OFFSET),
     "mm_per_day": ("kg m-2 s-1", SECONDS_PER_DAY, 0.0),
-    "z_score": (
-        "K",
-        1.0 / float(_crcm_stats["tas"]["std"]),
-        -float(_crcm_stats["tas"]["mean"]) / float(_crcm_stats["tas"]["std"]),
-    ),
 }
 
-crcm_variables["tas"] = VariableHandler(
-    "tas",
-    "K",
-    netcdf_key="tas",
-    target_cf_units="K",
-    min_value=_valid_range["tas"][0],
-    max_value=_valid_range["tas"][1],
-    mean_min=263.15,
-    mean_max=293.15,
-    clip_min=None,
-    clip_max=None,
-    nan_min=None,
-    nan_max=None,
-    cumulative=False,
-    log_normalize=False,
-    normalize_min=_valid_range["tas"][0],
-    normalize_max=_valid_range["tas"][1],
-)
 
-crcm_variables["pr"] = VariableHandler(
-    "pr",
-    "kg m-2 s-1",
-    netcdf_key="pr",
-    target_cf_units="kg m-2 s-1",
-    min_value=_valid_range["pr"][0],
-    max_value=_valid_range["pr"][1],
-    mean_min=0.00001,
-    mean_max=0.001,
-    clip_min=None,
-    clip_max=None,
-    nan_min=None,
-    nan_max=None,
-    cumulative=False,
-    log_normalize=True,
-    normalize_min=_valid_range["pr"][0],
-    # TODO: use the 99th percentile instead of absolute max
-    normalize_max=_valid_range["pr"][1],
-    # 0.1 mm/day
-    normalize_log_offset=1e-6,
-)
+def configure_crcm_variables(scenario: str, climate_vars_stats_file: str) -> None:
+    """
+    (Re)build the CRCM variables from the normalization statistics of a scenario.
 
-crcm_variables["uas"] = VariableHandler(
-    "uas",
-    "m s-1",
-    netcdf_key="uas",
-    target_cf_units="m s-1",
-    min_value=_valid_range["uas"][0],
-    max_value=_valid_range["uas"][1],
-    mean_min=-10.0,
-    mean_max=10.0,
-    clip_min=None,
-    clip_max=None,
-    nan_min=None,
-    nan_max=None,
-    cumulative=False,
-    log_normalize=False,
-    normalize_min=_valid_range["uas"][0],
-    normalize_max=_valid_range["uas"][1],
-)
+    The ``crcm_variables`` collection is updated in place, so modules that already imported it see the new values.
 
-crcm_variables["vas"] = VariableHandler(
-    "vas",
-    "m s-1",
-    netcdf_key="vas",
-    target_cf_units="m s-1",
-    min_value=_valid_range["vas"][0],
-    max_value=_valid_range["vas"][1],
-    mean_min=-10.0,
-    mean_max=10.0,
-    clip_min=None,
-    clip_max=None,
-    nan_min=None,
-    nan_max=None,
-    cumulative=False,
-    log_normalize=False,
-    normalize_min=_valid_range["vas"][0],
-    normalize_max=_valid_range["vas"][1],
-)
+    Parameters
+    ----------
+    scenario : str
+        Scenario label of the normalization statistics rows to use.
+    climate_vars_stats_file : str
+        Name of the climate variables normalization statistics CSV file in the ``data/cnrm_ssp245/data_analysis``
+        directory.
+    """
+    stats = {
+        row["variable"]: row
+        for row in read_normalization_stats(climate_vars_stats_file, scenario)
+        if row["model"] == "crcm"
+    }
+    # Valid range of the CRCM variables: observed min and max of the normalization statistics.
+    valid_range = {name: (float(row["min"]), float(row["max"])) for name, row in stats.items()}
+    _unit_only_normalizations["z_score"] = (
+        "K",
+        1.0 / float(stats["tas"]["std"]),
+        -float(stats["tas"]["mean"]) / float(stats["tas"]["std"]),
+    )
+    variable_specs: dict[str, dict[str, Any]] = {
+        "tas": {"units": "K", "mean_min": 263.15, "mean_max": 293.15},
+        "pr": {
+            "units": "kg m-2 s-1",
+            "mean_min": 0.00001,
+            "mean_max": 0.001,
+            "log_normalize": True,
+            # 0.1 mm/day
+            "normalize_log_offset": 1e-6,
+        },
+        "uas": {"units": "m s-1", "mean_min": -10.0, "mean_max": 10.0},
+        "vas": {"units": "m s-1", "mean_min": -10.0, "mean_max": 10.0},
+    }
+    crcm_variables.clear()
+    for name, spec in variable_specs.items():
+        units = spec.pop("units")
+        # TODO: use the 99th percentile instead of absolute max for pr
+        crcm_variables[name] = VariableHandler(
+            name,
+            units,
+            netcdf_key=name,
+            target_cf_units=units,
+            min_value=valid_range[name][0],
+            max_value=valid_range[name][1],
+            normalize_min=valid_range[name][0],
+            normalize_max=valid_range[name][1],
+            **spec,
+        )
+
+
+configure_crcm_variables(DEFAULT_NORMALIZATION_STATS_SCENARIO, DEFAULT_CLIMATE_VARS_NORMALIZATION_STATS_FILE)
 
 
 def is_unit_only_normalization(mode: str | None) -> bool:

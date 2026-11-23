@@ -3,14 +3,15 @@
 import copy
 from typing import Any
 
+from resoterre.config.crcm_emulator import (
+    DEFAULT_CLIMATE_VARS_NORMALIZATION_STATS_FILE,
+    DEFAULT_FORCINGS_NORMALIZATION_STATS_FILE,
+    DEFAULT_NORMALIZATION_STATS_SCENARIO,
+)
 from resoterre.data_management.variables import VariableHandler, VariableHandlerCollection, read_normalization_stats
 
 
 gcm_vertical_levels: list[float] = [100000.0, 85000.0, 70000.0, 50000.0, 25000.0, 10000.0, 5000.0, 1000.0]
-
-csv_data = read_normalization_stats(
-    "normalization_stats_climate_vars_1951-1984_2015-2069.csv"
-) + read_normalization_stats("normalization_stats_forcings_1951-1984_2015-2069.csv")
 
 _nonnegative_variables = ["hus", "pr", "psl", "ta", "tas"]
 for variable_name in ["hus", "ta"]:
@@ -18,45 +19,74 @@ for variable_name in ["hus", "ta"]:
         f"{variable_name}{int(vertical_level / 100)}" for vertical_level in gcm_vertical_levels
     )
 
-# Ranges for North America domain
-_stats_shortcut: dict[str, dict[str, float]] = {}
 
-for csv_import_line in csv_data:
-    if csv_import_line["model"] == "forcing":
-        # Forcing (greenhouse gas) inputs trend over time, so the normalization range spans the full min/max rather
-        # than mean +/- 3 std.
+def _read_stats_shortcut(
+    scenario: str, climate_vars_stats_file: str, forcings_stats_file: str
+) -> dict[str, dict[str, float]]:
+    """
+    Read the ranges of the GCM variables and forcings from the normalization statistics.
+
+    Parameters
+    ----------
+    scenario : str
+        Scenario label of the normalization statistics rows to use.
+    climate_vars_stats_file : str
+        Name of the climate variables normalization statistics CSV file.
+    forcings_stats_file : str
+        Name of the forcings normalization statistics CSV file.
+
+    Returns
+    -------
+    dict[str, dict[str, float]]
+        Ranges (min, max, mean_min, mean_max, normalize_min, normalize_max) of each variable.
+
+    Raises
+    ------
+    ValueError
+        If a nonnegative variable has a negative max value.
+    """
+    csv_data = read_normalization_stats(climate_vars_stats_file, scenario) + read_normalization_stats(
+        forcings_stats_file, scenario
+    )
+    stats_shortcut: dict[str, dict[str, float]] = {}
+    for csv_import_line in csv_data:
+        if csv_import_line["model"] == "forcing":
+            # Forcing (greenhouse gas) inputs trend over time, so the normalization range spans the full min/max
+            # rather than mean +/- 3 std.
+            variable_name = csv_import_line["variable"]
+            variable_min = float(csv_import_line["min"])
+            variable_max = float(csv_import_line["max"])
+            stats_shortcut[variable_name] = {
+                "min": variable_min,
+                "max": variable_max,
+                "mean_min": variable_min,
+                "mean_max": variable_max,
+                "normalize_min": variable_min,
+                "normalize_max": variable_max,
+            }
+            continue
+        if csv_import_line["model"] != "gcm":
+            continue
         variable_name = csv_import_line["variable"]
         variable_min = float(csv_import_line["min"])
         variable_max = float(csv_import_line["max"])
-        _stats_shortcut[variable_name] = {
+        normalize_min = float(csv_import_line["mean"]) - 3 * float(csv_import_line["std"])
+        normalize_max = float(csv_import_line["mean"]) + 3 * float(csv_import_line["std"])
+        if variable_name in _nonnegative_variables:
+            if variable_max < 0.0:
+                raise ValueError(f"Variable {variable_name} is nonnegative but has a max value < 0.")
+            variable_min = max(variable_min, 0.0)
+            normalize_min = max(normalize_min, 0.0)
+        stats_shortcut[variable_name] = {
             "min": variable_min,
             "max": variable_max,
             "mean_min": variable_min,
             "mean_max": variable_max,
-            "normalize_min": variable_min,
-            "normalize_max": variable_max,
+            "normalize_min": normalize_min,
+            "normalize_max": normalize_max,
         }
-        continue
-    if csv_import_line["model"] != "gcm":
-        continue
-    variable_name = csv_import_line["variable"]
-    variable_min = float(csv_import_line["min"])
-    variable_max = float(csv_import_line["max"])
-    normalize_min = float(csv_import_line["mean"]) - 3 * float(csv_import_line["std"])
-    normalize_max = float(csv_import_line["mean"]) + 3 * float(csv_import_line["std"])
-    if variable_name in _nonnegative_variables:
-        if variable_max < 0.0:
-            raise ValueError(f"Variable {variable_name} is nonnegative but has a max value < 0.")
-        variable_min = max(variable_min, 0.0)
-        normalize_min = max(normalize_min, 0.0)
-    _stats_shortcut[variable_name] = {
-        "min": variable_min,
-        "max": variable_max,
-        "mean_min": variable_min,
-        "mean_max": variable_max,
-        "normalize_min": normalize_min,
-        "normalize_max": normalize_max,
-    }
+    return stats_shortcut
+
 
 cmip6_variables = VariableHandlerCollection()
 
@@ -142,27 +172,52 @@ variable_args: dict[str, dict[str, Any]] = {
     "CFC11_eq": {"name": "CFC11_eq", "units": "ppb", "netcdf_key": "CFC11_eq", "target_cf_units": "ppb"},
 }
 
-for key, kwargs in variable_args.items():
-    if "min_value" not in kwargs:
-        kwargs["min_value"] = _stats_shortcut[key]["min"] if key in _stats_shortcut else None
-    if "max_value" not in kwargs:
-        kwargs["max_value"] = _stats_shortcut[key]["max"] if key in _stats_shortcut else None
-    if "mean_min" not in kwargs:
-        kwargs["mean_min"] = _stats_shortcut[key]["mean_min"] if key in _stats_shortcut else None
-    if "mean_max" not in kwargs:
-        kwargs["mean_max"] = _stats_shortcut[key]["mean_max"] if key in _stats_shortcut else None
-    if "normalize_min" not in kwargs:
-        kwargs["normalize_min"] = _stats_shortcut[key]["normalize_min"] if key in _stats_shortcut else None
-    if "normalize_max" not in kwargs:
-        kwargs["normalize_max"] = _stats_shortcut[key]["normalize_max"] if key in _stats_shortcut else None
-    cmip6_variables[key] = VariableHandler(**kwargs)
 
-for variable_in_netcdf in ["hus", "ta", "ua", "va", "zg"]:
-    for level in [850, 700, 500, 250, 100, 50, 10]:
-        variable_name = f"{variable_in_netcdf}{level}"
-        cmip6_variables[variable_name] = copy.copy(cmip6_variables[f"{variable_in_netcdf}1000"])
-        cmip6_variables[variable_name].name = variable_name
-        cmip6_variables[variable_name].vertical_level = level
-        if variable_name in _stats_shortcut:
-            for key, value in _stats_shortcut[variable_name].items():
-                setattr(cmip6_variables[variable_name], key, value)
+def configure_cmip6_variables(scenario: str, climate_vars_stats_file: str, forcings_stats_file: str) -> None:
+    """
+    (Re)build the CMIP6 variables from the normalization statistics of a scenario.
+
+    The ``cmip6_variables`` collection is updated in place, so modules that already imported it see the new values.
+
+    Parameters
+    ----------
+    scenario : str
+        Scenario label of the normalization statistics rows to use.
+    climate_vars_stats_file : str
+        Name of the climate variables normalization statistics CSV file in the ``data/cnrm_ssp245/data_analysis``
+        directory.
+    forcings_stats_file : str
+        Name of the forcings normalization statistics CSV file in the ``data/cnrm_ssp245/data_analysis`` directory.
+    """
+    stats_shortcut = _read_stats_shortcut(scenario, climate_vars_stats_file, forcings_stats_file)
+    cmip6_variables.clear()
+    for key, variable_kwargs in variable_args.items():
+        kwargs = dict(variable_kwargs)
+        for argument, stat in [
+            ("min_value", "min"),
+            ("max_value", "max"),
+            ("mean_min", "mean_min"),
+            ("mean_max", "mean_max"),
+            ("normalize_min", "normalize_min"),
+            ("normalize_max", "normalize_max"),
+        ]:
+            if argument not in kwargs:
+                kwargs[argument] = stats_shortcut[key][stat] if key in stats_shortcut else None
+        cmip6_variables[key] = VariableHandler(**kwargs)
+
+    for variable_in_netcdf in ["hus", "ta", "ua", "va", "zg"]:
+        for level in [850, 700, 500, 250, 100, 50, 10]:
+            variable_name = f"{variable_in_netcdf}{level}"
+            cmip6_variables[variable_name] = copy.copy(cmip6_variables[f"{variable_in_netcdf}1000"])
+            cmip6_variables[variable_name].name = variable_name
+            cmip6_variables[variable_name].vertical_level = level
+            if variable_name in stats_shortcut:
+                for key, value in stats_shortcut[variable_name].items():
+                    setattr(cmip6_variables[variable_name], key, value)
+
+
+configure_cmip6_variables(
+    DEFAULT_NORMALIZATION_STATS_SCENARIO,
+    DEFAULT_CLIMATE_VARS_NORMALIZATION_STATS_FILE,
+    DEFAULT_FORCINGS_NORMALIZATION_STATS_FILE,
+)

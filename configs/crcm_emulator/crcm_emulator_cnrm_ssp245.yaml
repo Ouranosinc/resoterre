@@ -85,6 +85,10 @@ data:
     - N2O
     - CFC12
     - CFC11_eq
+  # Normalization statistics of the CRCM and GCM variables: under data/cnrm_ssp245/data_analysis directory of the package.
+  normalization_stats_scenario: historical+ssp245
+  climate_vars_normalization_stats_file: normalization_stats_climate_vars_1951-1984_2015-2069.csv
+  forcings_normalization_stats_file: normalization_stats_forcings_1951-1984_2015-2069.csv
   # Target normalization per variable: min_max (default), celsius (tas: K to degC shift only),
   # z_score (tas: mean/std standardization) or mm_per_day (pr: kg m-2 s-1 to mm/day only).
   # celsius, z_score and mm_per_day are incompatible with loss.ssim_weight > 0.
