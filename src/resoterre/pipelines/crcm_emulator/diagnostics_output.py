@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import xarray
 
+from resoterre.config import BaseMetricConfig
 from resoterre.datasets.crcm.crcm_variables import crcm_variables
 from resoterre.plots.utils import figure_dispatcher
 
@@ -67,34 +68,11 @@ def diagnostic_title(name: str) -> str:
     return f"{name} [{units}]" if units else name
 
 
-def metric_figure_spec(name: str, metric_mapping: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
-    """
-    Find the figure specification of a result from the metric mapping of the plot configuration.
-
-    Parameters
-    ----------
-    name : str
-        Name of the result, as ``<variable>/<metric>_<key>``.
-    metric_mapping : dict[str, dict[str, Any]]
-        Figure specification by metric name (``CRCMEmulatorPlotConfig.metric_mapping``).
-
-    Returns
-    -------
-    dict[str, Any] | None
-        The specification of the metric of the result, or None if the metric is not in the mapping.
-    """
-    metric_and_key = name.split("/", maxsplit=1)[-1]
-    for metric_name, spec in metric_mapping.items():
-        if metric_and_key == metric_name or metric_and_key.startswith(f"{metric_name}_"):
-            return spec
-    return None
-
-
 def save_diagnostics(
     results: dict[str, Any],
     output_directory: Path,
     prefix: str,
-    metric_mapping: dict[str, dict[str, Any]],
+    metric_mapping: dict[str, BaseMetricConfig],
 ) -> list[Path]:
     """
     Save the two-dimensional results (e.g. bias maps) as a NetCDF file and, when configured, as figures.
@@ -107,9 +85,8 @@ def save_diagnostics(
         Directory of the output files.
     prefix : str
         Prefix of the output files.
-    metric_mapping : dict[str, dict[str, Any]]
-        Figure specification by metric name (``CRCMEmulatorPlotConfig.metric_mapping``). Results of a metric that is not
-        in the mapping are saved in the NetCDF file only.
+    metric_mapping : dict[str, BaseMetricConfig]
+        Metric config by metric name. Results of a metric that is not in the mapping are saved in the NetCDF file only.
 
     Returns
     -------
@@ -140,14 +117,16 @@ def save_diagnostics(
     dataset.to_netcdf(path_netcdf, engine="h5netcdf")
     paths.append(path_netcdf)
     for name, data in maps.items():
-        spec = metric_figure_spec(name, metric_mapping)
-        if spec is None:
+        if metric_mapping.get(name) is None:
+            continue
+        metric_config = metric_mapping[name]
+        if metric_config.plot is None or metric_config.plot.figure_type is None:
             continue
         figure = figure_dispatcher(
-            figure_type=spec["figure_type"],
+            figure_type=metric_config.plot.figure_type,
             data=data,
             title=diagnostic_title(name),
-            figure_kwargs=spec.get("figure_kwargs", {}),
+            figure_kwargs=metric_config.plot.figure_kwargs,
         )
         path_figure = Path(output_directory, f"{prefix}_{file_safe_name(name)}.png")
         figure.savefig(path_figure)

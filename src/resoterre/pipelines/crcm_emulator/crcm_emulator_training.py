@@ -15,7 +15,7 @@ from torch.utils import data as td
 from torchmetrics.image import MultiScaleStructuralSimilarityIndexMeasure
 from tqdm import tqdm
 
-from resoterre.config import CRCMEmulatorConfig
+from resoterre.config import BaseMetricConfig, CRCMEmulatorConfig
 from resoterre.data_management.timeseries import MultiTimeseries
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
 from resoterre.logging_utils import CustomLogging
@@ -24,11 +24,14 @@ from resoterre.ml.neural_networks_basic import CyclicalDateEncoding
 from resoterre.ml.neural_networks_unet import UNet
 from resoterre.ml.training_utils import NNTraining, with_split
 from resoterre.pipelines.crcm_emulator.crcm_emulator_baselines import InterpolationBaseline, single_valued_results
-from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import (
+    crcm_emulator_metrics_mapping,
+    crcm_emulator_parse_config,
+)
 from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import PredictionZarrWriter
 from resoterre.pipelines.crcm_emulator.experiment_logger import config_to_experiment_parameters
 from resoterre.pipelines.crcm_emulator.metrics import (
-    Metric,
+    AVAILABLE_METRICS,
     build_metrics,
     consolidation,
     denormalize_crcm,
@@ -70,6 +73,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             validation_metrics_monitor=["validation_loss"],
             logger_config=self.config.logger,
         )
+        self.train_generator: torch.Generator | None = None
         self.dataset = self.build_dataset(list(self.config.data.training_periods.values()))
         if len(self.dataset) > 0:
             self.train_data_loader = self.build_data_loader(self.dataset, shuffle=True)
@@ -103,7 +107,6 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         self.validation_figure_data: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
         # per metric: (weighted sum, total weight), kept as tensors on the device until consolidation()
         self.running_validation_metrics: dict[str, tuple[torch.Tensor, float]] = {}
-        self.validation_metric_functions = build_metrics(self.config.training.validation_metrics, self.config.metrics)
         # Interpolation baseline metrics, computed once, re-logged at each validation (see score_interpolation_baseline)
         self.interpolation_baseline_metrics: dict[str, float] = {}
         self.init_unet()
@@ -111,13 +114,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             "MSELoss": nn.MSELoss(),
             "SSIMLoss": MultiScaleStructuralSimilarityIndexMeasure(data_range=(-1.0, 1.0)),
         }
-        # ToDo: this may have to be expanded for variable-specific figure mappings
-        for variable_name in config.data.crcm_variables:
-            for metric_name in config.training.validation_metrics:
-                if metric_name in self.config.plot.metric_mapping:
-                    for key in self.config.data.validation_periods:
-                        diagnostic_key = f"{variable_name}/{metric_name}_{key}"
-                        self.diagnostic_figure_mapping[diagnostic_key] = self.config.plot.metric_mapping[metric_name]
+        self.metric_config_mapping = crcm_emulator_metrics_mapping(self.config)
 
     def build_dataset(self, time_periods: list[list[datetime]]) -> CRCMEmulatorDataset:
         """
@@ -145,6 +142,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             crcm_variables=self.config.data.crcm_variables,
             time_periods=time_periods,
             max_open_datasets=self.config.data.max_open_datasets,
+            emission_names=self.config.data.emission_names,
         )
 
     def build_data_loader(self, dataset: CRCMEmulatorDataset, shuffle: bool) -> td.DataLoader[Any]:
@@ -164,10 +162,16 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             The data loader.
         """
         num_workers = self.config.data.num_workers
+        generator = None
+        if shuffle and self.config.training.seed is not None:
+            # dedicated generator for the shuffling order and the worker seeds, reseeded every epoch (see train_loop)
+            self.train_generator = torch.Generator().manual_seed(self.config.training.seed)
+            generator = self.train_generator
         return td.DataLoader(
             dataset,
             batch_size=self.config.data.batch_size,
             shuffle=shuffle,
+            generator=generator,
             num_workers=num_workers,
             prefetch_factor=self.config.data.prefetch_factor if num_workers > 0 else None,
             persistent_workers=num_workers > 0,
@@ -228,13 +232,21 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             go_to_1x1=True,
             h_in=self.config.data.tile_size // self.config.data.coarsen_factor,
             w_in=self.config.data.tile_size // self.config.data.coarsen_factor,
-            linear_size=7,
+            linear_size=self.dataset.num_linear_inputs,
             reduction_ratio=self.config.model.reduction_ratio,
             linear_embedding_sizes=self.config.model.linear_embedding_sizes,
         )
         self.optimizers["UNet"] = NeuralNetworksManager.optimizer_setup(
             self.models["UNet"].parameters(), self.config.optimizer
         )
+        training_config = self.config.training
+        if training_config.lr_scheduler:
+            self.setup_lr_schedulers(
+                total_epochs=training_config.nb_of_epochs,
+                warmup_epochs=training_config.lr_warmup_epochs,
+                eta_min=training_config.lr_min,
+            )
+        self.patience = training_config.early_stopping_patience
 
     def training_loss_computation(
         self, target_data: torch.Tensor, output: torch.Tensor
@@ -291,9 +303,9 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         date_encoding = self.date_encoding(
             item["month"].to(self.config.training.device), item["day"].to(self.config.training.device)
         )
-        gases = torch.vstack([item["CO2"], item["CH4"], item["N2O"], item["CFC12"], item["CFC11_eq"]]).T
+        gases = torch.vstack([item[name] for name in self.config.data.emission_names]).T
         linear_data = torch.cat([date_encoding, gases.to(self.config.training.device)], dim=1)
-        output = self.models["UNet"](input_data, x_linear=linear_data)
+        output = self.models["UNet"](input_data, x_linear=linear_data.float())
         return input_data, target_data, output
 
     def training_step(self, item: dict[str, torch.Tensor], epoch: int) -> None:
@@ -319,7 +331,10 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         self.metrics.add_concurrent_values(None, metrics_to_floats(metrics))
 
     def evaluation_step(
-        self, item: dict[str, torch.Tensor], metric_functions: dict[str, Any]
+        self,
+        item: dict[str, torch.Tensor],
+        metric_configs: list[BaseMetricConfig] | None = None,
+        custom_metrics: list[dict[str, Any]] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Compute the losses and the given metrics on a batch and fold them into the running statistics.
@@ -331,28 +346,44 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         ----------
         item : dict[str, torch.Tensor]
             A batch of data.
-        metric_functions : dict[str, Any]
-            Extra metrics to compute, by name, as callables of the target and the output that return one value per
-            variable (see ``build_metrics``).
+        metric_configs : list[BaseMetricConfig], optional
+            List of metric configuration objects to compute for this batch.
+        custom_metrics : list[dict[str, Any]], optional
+            List of custom metric functions to compute for this batch.
 
         Returns
         -------
         tuple[torch.Tensor, torch.Tensor, torch.Tensor]
             The input, target and output tensors of the batch.
         """
+        metric_configs = metric_configs or []
+        custom_metrics = custom_metrics or []
+        # Ensure that metric config mapping includes non-config metrics
+        self.metric_config_mapping = crcm_emulator_metrics_mapping(
+            self.config, metric_configs + [x["config"] for x in custom_metrics]
+        )
         input_data, target_data, output = self.forward_batch(item)
         _, metrics = self.training_loss_computation(target_data, output)
-        if metric_functions:
+        if metric_configs or custom_metrics:
+            metric_functions = build_metrics(metric_configs)
             variable_names = self.config.data.crcm_variables
             target_physical = denormalize_crcm(target_data, variable_names)
             output_physical = denormalize_crcm(output, variable_names)
-            for name, metric_function in metric_functions.items():
-                # ToDo: there will most likely be variable specific metrics. Suggestion: have a
-                #       metric_function.per_variable boolean flag and handle accordingly in the update.
-                metrics.update(
-                    per_variable_metrics(name, metric_function(target_physical, output_physical), variable_names)
-                )
-        self.running_consolidation(metrics, batch_size=input_data.shape[0], metric_functions=metric_functions)
+            for config in metric_configs:
+                batch_metric_values = metric_functions[config.to_key()](target_physical, output_physical)
+                if metric_functions[config.to_key()].allow_per_batch_evaluation:
+                    metrics.update(per_variable_metrics(config, batch_metric_values, variable_names))
+                else:
+                    metrics[config.unique_string()] = batch_metric_values
+            for custom_metric in custom_metrics:
+                custom_config = custom_metric["config"]
+                custom_fn = custom_metric["function"]
+                batch_metric_values = custom_fn(target_physical, output_physical)
+                if custom_fn.allow_per_batch_evaluation:
+                    metrics.update(per_variable_metrics(custom_config, batch_metric_values, variable_names))
+                else:
+                    metrics[custom_config.unique_string()] = batch_metric_values
+        self.running_consolidation(metrics, self.metric_config_mapping, batch_size=input_data.shape[0])
         return input_data, target_data, output
 
     def validation_step(self, item: dict[str, torch.Tensor]) -> None:
@@ -365,7 +396,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             A batch of validation data.
         """
         first_batch = not self.running_validation_metrics
-        input_data, target_data, output = self.evaluation_step(item, self.validation_metric_functions)
+        input_data, target_data, output = self.evaluation_step(item, self.config.training.validation_metrics)
         if self.experiment_logger.experiment is not None and first_batch:
             # first item of the first validation batch, the same sample every epoch
             self.validation_figure_data = (
@@ -377,9 +408,9 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
     def evaluate(
         self,
         data_loader: td.DataLoader[Any],
-        metric_functions: dict[str, Any],
         desc: str = "Evaluation",
         prediction_writer: PredictionZarrWriter | None = None,
+        evaluation_metrics: list[BaseMetricConfig] | None = None,
     ) -> dict[str, float]:
         """
         Evaluate the model on a dataset, e.g. the test data.
@@ -388,23 +419,25 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         ----------
         data_loader : td.DataLoader
             Data loader of the dataset to evaluate on.
-        metric_functions : dict[str, Any]
-            Extra metrics to compute, by name, in addition to the losses (see ``build_metrics``).
         desc : str
             Description of the progress bar.
         prediction_writer : PredictionZarrWriter | None
             If given, the predictions (in physical units) are saved with it.
+        evaluation_metrics : list[BaseMetricConfig] | None
+            List of evaluation metrics to use. If None, the default metrics from the configuration are used.
 
         Returns
         -------
         dict[str, float]
             One consolidated value per metric over the whole dataset.
         """
+        if evaluation_metrics is None:
+            evaluation_metrics = self.config.inference.evaluation_metrics
         self.set_eval_mode()
         self.running_validation_metrics = {}
         with torch.no_grad():
             for item in tqdm(data_loader, desc=desc):
-                _, _, output = self.evaluation_step(item, metric_functions)
+                _, _, output = self.evaluation_step(item, evaluation_metrics)
                 if prediction_writer is not None:
                     prediction_writer.write(
                         list(item["simulation"]),
@@ -418,14 +451,13 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
                         ),
                         denormalize_crcm(output, self.config.data.crcm_variables).cpu().numpy(),
                     )
-        results = consolidation(self.running_validation_metrics, metric_functions=metric_functions)
+        results = consolidation(self.running_validation_metrics, self.metric_config_mapping)
         self.running_validation_metrics = {}
         return results
 
     def evaluate_by_key(
         self,
         data_loaders: dict[str, td.DataLoader[Any]],
-        metric_functions: dict[str, Any],
         desc: str = "Evaluation",
         prediction_writer: PredictionZarrWriter | None = None,
     ) -> dict[str, float]:
@@ -436,8 +468,6 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         ----------
         data_loaders : dict[str, td.DataLoader]
             Data loaders by key.
-        metric_functions : dict[str, Any]
-            Extra metrics to compute, by name, in addition to the losses (see ``build_metrics``).
         desc : str
             Description of the progress bar.
         prediction_writer : PredictionZarrWriter | None
@@ -450,18 +480,15 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         """
         results: dict[str, float] = {}
         for key, data_loader in data_loaders.items():
-            key_results = self.evaluate(
-                data_loader, metric_functions, desc=f"{desc} {key}", prediction_writer=prediction_writer
-            )
+            key_results = self.evaluate(data_loader, desc=f"{desc} {key}", prediction_writer=prediction_writer)
             results.update({f"{name}_{key}": value for name, value in key_results.items()})
         return results
 
     def running_consolidation(
         self,
         metrics: dict[str, torch.Tensor],
+        configs: dict[str, BaseMetricConfig],
         batch_size: int,
-        *,
-        metric_functions: dict[str, Metric],
     ) -> None:
         """
         Fold the metrics of one validation batch into the running statistics.
@@ -470,16 +497,16 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         ----------
         metrics : dict[str, torch.Tensor]
             Scalar metric tensors of the batch, possibly on the GPU.
+        configs : dict[str, BaseMetricConfig]
+            Metric configurations by unique string.
         batch_size : int
             Number of samples in the batch.
-        metric_functions : dict[str, Metric]
-            Active configured metric instances.
 
         Notes
         -----
         Called after every validation step, while the batch is still in memory.
         """
-        running_consolidation(self.running_validation_metrics, metrics, batch_size, metric_functions=metric_functions)
+        running_consolidation(self.running_validation_metrics, metrics, configs, batch_size)
 
     def consolidation(self, key: str = "") -> None:
         """
@@ -496,7 +523,30 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         """
         if not self.running_validation_metrics:
             return
-        consolidated = consolidation(self.running_validation_metrics, metric_functions=self.validation_metric_functions)
+        consolidated = consolidation(self.running_validation_metrics, self.metric_config_mapping)
+        metric_keys_to_remove = []
+        metrics_to_add = {}
+        for metric_key, value in consolidated.items():
+            if metric_key not in self.metric_config_mapping:
+                continue
+            metric_config = self.metric_config_mapping[metric_key]
+            if metric_config.name not in AVAILABLE_METRICS:
+                continue
+            metric_fn = build_metrics([metric_config])[metric_config.to_key()]
+            if not metric_fn.allow_per_batch_evaluation:
+                # values still contain all variables.
+                per_variable_metrics_dict = per_variable_metrics(metric_config, value, self.config.data.crcm_variables)
+                # ToDo: this is a repetition of the logic in consolidation, consider refactoring to avoid duplication.
+                for var_key, var_value in per_variable_metrics_dict.items():
+                    if isinstance(var_value, torch.Tensor):
+                        per_variable_metrics_dict[var_key] = var_value.cpu()
+                    if math.prod(per_variable_metrics_dict[var_key].shape) == 1:
+                        per_variable_metrics_dict[var_key] = per_variable_metrics_dict[var_key].item()
+                metrics_to_add.update(per_variable_metrics_dict)
+                metric_keys_to_remove.append(metric_key)
+        consolidated.update(metrics_to_add)
+        for metric_key in metric_keys_to_remove:
+            consolidated.pop(metric_key)
         self.running_validation_metrics = {}
         suffix = f"_{key}" if key else ""
         single_values_metrics = {
@@ -623,6 +673,26 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         results["config"] = self.config_dict()
         return results
 
+    def train_loop(self, epoch: int) -> None:
+        """
+        Perform a full training loop for one epoch.
+
+        Parameters
+        ----------
+        epoch : int
+            The current epoch number.
+
+        Notes
+        -----
+        With ``training.seed``, the data loader generator is reseeded from the seed and the epoch, so the shuffling
+        order of an epoch does not depend on the other consumers of the global random number generators, and a
+        resumed run shuffles like an uninterrupted one.
+        """
+        seed = self.config.training.seed
+        if seed is not None and self.train_generator is not None:
+            self.train_generator.manual_seed(seed + epoch)
+        super().train_loop(epoch)
+
     def training_loop(self, test: bool = False) -> None:
         """
         Execute the main training loop for the model.
@@ -635,11 +705,14 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         Notes
         -----
         Trains until ``training.nb_of_epochs`` epochs are completed in total, so a trainer whose state was
-        restored with ``load_state`` only trains the remaining epochs.
+        restored with ``load_state`` only trains the remaining epochs, or until early stopping is triggered
+        (``training.early_stopping_patience``).
         """
         self.score_interpolation_baseline()
         for _ in range(self.epoch_counter, self.config.training.nb_of_epochs):
             self(epoch=self.epoch_counter + 1, device=self.config.training.device)
+            if self.early_stopping_triggered:
+                break
         if test:
             self.test()
         self.close()
@@ -672,9 +745,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             self.to_device(self.config.inference.device or self.config.training.device)
         except FileNotFoundError:
             logger.warning("No best checkpoint found, testing the current model.")
-        results = self.evaluate_by_key(
-            test_data_loaders, build_metrics(self.config.inference.evaluation_metrics, self.config.metrics), desc="Test"
-        )
+        results = self.evaluate_by_key(test_data_loaders, desc="Test")
         self.experiment_logger.log_metrics(
             {**with_split(results, "test"), "test_checkpoint_epoch": self.epoch_counter}, step=step, epoch=epoch
         )
@@ -704,18 +775,18 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             logger.warning("Interpolation baseline not scored: no paths.baselines_out_dirs.interpolation in config")
             return
         baseline = InterpolationBaseline(self.config)
-        split, metric_names = "validation", self.config.training.validation_metrics
-        results = baseline.load_results(metric_names, split)
+        split, metric_configs = "validation", self.config.training.validation_metrics
+        results = baseline.load_results(metric_configs, split)
         if results is not None:
             logger.info("Interpolation baseline %s scores read from %s", split, baseline.results_json_path(split))
         else:
-            results = self._score_interpolation_baseline_split(baseline, metric_names, split)
+            results = self._score_interpolation_baseline_split(baseline, metric_configs, split)
         if results:
             self.interpolation_baseline_metrics.update(with_split(results, f"interpolation_baseline_{split}"))
         self.log_interpolation_baseline_metrics(epoch=self.epoch_counter)
 
     def _score_interpolation_baseline_split(
-        self, baseline: InterpolationBaseline, metric_names: list[str], split: str
+        self, baseline: InterpolationBaseline, metric_configs: list[BaseMetricConfig], split: str
     ) -> dict[str, float]:
         """
         Score the precomputed interpolation baseline on a data split, and save the scores for the next training.
@@ -724,8 +795,8 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         ----------
         baseline : InterpolationBaseline
             The interpolation baseline.
-        metric_names : list[str]
-            Names of the metrics.
+        metric_configs : list[BaseMetricConfig]
+            List of metric configurations to use for scoring.
         split : str
             Either "test" or "validation".
 
@@ -744,7 +815,7 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
             return {}
         logger.warning("No saved interpolation baseline %s scores, scoring the baseline", split)
         try:
-            results = baseline.evaluate(metric_names, split=split)
+            results = baseline.evaluate(metric_configs, split=split)
         except (KeyError, RuntimeError, ValueError) as error:
             logger.warning("Interpolation baseline not scored on the %s data: %s", split, error)
             return {}

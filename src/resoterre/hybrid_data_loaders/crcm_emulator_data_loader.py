@@ -8,6 +8,7 @@ import numpy as np
 import xarray
 from torch.utils import data as td
 
+from resoterre.config.crcm_emulator import DEFAULT_EMISSION_NAMES
 from resoterre.data_management.cftime_utils import decode_times_as_cftime, get_intersection_slices
 from resoterre.datasets.cmip6.cmip6_utils import gcm_variable_levels
 from resoterre.datasets.cmip6.cmip6_variables import cmip6_variables
@@ -16,6 +17,9 @@ from resoterre.ml.data_loader_utils import normalize
 
 
 logger = logging.getLogger(__name__)
+
+# Cyclical date encoding (sin, cos), the greenhouse gases come in addition
+NUM_DATE_LINEAR_INPUTS = 2
 
 
 class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
@@ -45,6 +49,8 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         Maximum number of open xarray datasets to cache.
     experiment_name : str
         Name of the experiment.
+    emission_names : list[str], optional
+        Names of the greenhouse gas forcings, ``DEFAULT_EMISSION_NAMES`` if not provided.
     """
 
     def __init__(
@@ -59,6 +65,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         normalize: bool = True,
         max_open_datasets: int = 2,
         experiment_name: str = "",
+        emission_names: list[str] | None = None,
     ) -> None:
         self.experiment_name = experiment_name
         self.path_gcm_preprocessing = path_gcm_preprocessing
@@ -81,6 +88,8 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
                 break
         self.num_input_channels = len(gcm_variables) + self.mask_dimensions
         self.num_output_channels = len(crcm_variables)
+        self.emission_names = list(DEFAULT_EMISSION_NAMES if emission_names is None else emission_names)
+        self.num_linear_inputs = NUM_DATE_LINEAR_INPUTS + len(self.emission_names)
         for simulation in simulations:
             gcm_str = f"{simulation[0]}_{simulation[1]}_{simulation[2]}"
             self.valid_time_idx[gcm_str] = []
@@ -315,7 +324,7 @@ class CRCMEmulatorDataset(td.Dataset):  # type: ignore[misc]
         else:
             input_first_block = self.input_first_block_as_2d_channels(xarray_dataset_gcm, gcm_idx)
         emission_data = {}
-        for emission_name in ["CO2", "CH4", "N2O", "CFC12", "CFC11_eq"]:
+        for emission_name in self.emission_names:
             emission_value = xarray_dataset_gcm[emission_name][gcm_idx].values
             if self.normalize:
                 emission_value = np.clip(

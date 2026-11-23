@@ -111,9 +111,7 @@ def add_xarray_variable(
     if dims is None:
         dims = (variable_name,)
     if encoding_dict is not None:
-        encoding_dict[variable_name] = {k: v for k, v in kwargs.items()}
+        encoding_dict[variable_name] = {**kwargs}
         variable_dict[variable_name] = xarray.Variable(dims=dims, data=data, attrs=attrs)
     else:
-        variable_dict[variable_name] = xarray.Variable(
-            dims=dims, data=data, attrs=attrs, encoding={k: v for k, v in kwargs.items()}
-        )
+        variable_dict[variable_name] = xarray.Variable(dims=dims, data=data, attrs=attrs, encoding={**kwargs})

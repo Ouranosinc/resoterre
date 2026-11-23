@@ -20,7 +20,10 @@ import argparse
 from pathlib import Path
 
 from resoterre.pipelines.crcm_emulator.crcm_emulator_baselines import InterpolationBaseline, single_valued_results
-from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import (
+    crcm_emulator_metrics_mapping,
+    crcm_emulator_parse_config,
+)
 from resoterre.pipelines.crcm_emulator.diagnostics_output import save_diagnostics
 
 
@@ -36,6 +39,7 @@ def main(config_path: Path, test: bool = False) -> None:
         Also evaluate the baseline on the test periods.
     """
     config = crcm_emulator_parse_config(config_path)
+    metric_mapping = crcm_emulator_metrics_mapping(config)
     baseline = InterpolationBaseline(config)
     metric_names = config.inference.evaluation_metrics
     for split in ("validation", "test") if test else ("validation",):
@@ -48,9 +52,7 @@ def main(config_path: Path, test: bool = False) -> None:
         for name, value in single_valued_results(results).items():
             print(f"{name}: {value}")
         print(f"Saved baseline {split} results to {output_path}")
-        for path in save_diagnostics(
-            results, output_path.parent, f"interpolation_baseline_{split}", config.plot.metric_mapping
-        ):
+        for path in save_diagnostics(results, output_path.parent, f"interpolation_baseline_{split}", metric_mapping):
             print(f"Saved baseline {split} diagnostic to {path}")
 
 
