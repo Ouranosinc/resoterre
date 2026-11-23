@@ -95,7 +95,9 @@ def test_experiment_logger_log_image_from_path():
     with patch("comet_ml.Experiment", return_value=experiment_mock):
         comet_logger = CometMLLogger(ExperimentLoggerConfig())
         comet_logger.log_image(Path("fake_figure.png"), name="sample_figure", step=5)
-        experiment_mock.log_image.assert_called_once_with("fake_figure.png", name="sample_figure", step=5)
+        experiment_mock.log_image.assert_called_once_with(
+            "fake_figure.png", name="sample_figure", step=5, image_format="png"
+        )
 
 
 def test_experiment_logger_log_image_from_array():
@@ -104,7 +106,7 @@ def test_experiment_logger_log_image_from_array():
         comet_logger = CometMLLogger(ExperimentLoggerConfig())
         image_array = object()
         comet_logger.log_image(image_array, name="sample_figure", step=5)
-        experiment_mock.log_image.assert_called_once_with(image_array, name="sample_figure", step=5)
+        experiment_mock.log_image.assert_called_once_with(image_array, name="sample_figure", step=5, image_format="png")
 
 
 def test_experiment_logger_log_figure():
@@ -113,7 +115,7 @@ def test_experiment_logger_log_figure():
         comet_logger = CometMLLogger(ExperimentLoggerConfig())
         figure = object()
         comet_logger.log_figure(figure, name="loss_plot", step=3)
-        experiment_mock.log_figure.assert_called_once_with(figure_name="loss_plot", figure=figure, step=3)
+        experiment_mock.log_figure.assert_called_once_with(figure_name="loss_plot", figure=figure, step=3, format="png")
 
 
 def test_experiment_logger_end():
