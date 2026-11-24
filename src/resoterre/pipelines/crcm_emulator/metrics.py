@@ -568,7 +568,6 @@ class TDigestReducer(TDigestMapReducer):
 
 BATCH_MEAN_REDUCER = BatchMeanReducer()
 SAMPLE_MEAN_REDUCER = SampleMeanReducer()
-LOSS_REDUCERS: dict[str, MetricReducer] = {name: SAMPLE_MEAN_REDUCER for name in LOSS_METRIC_NAMES}
 
 
 class Metric(ABC):
@@ -1106,12 +1105,35 @@ def reducer_for_metric(config: BaseMetricConfig) -> MetricReducer:
     Returns
     -------
     MetricReducer
-        Reducer configured for the metric, the sample-mean reducer for losses,
-        or the batch-mean fallback for diagnostics.
+        Reducer configured for the metric, or the batch-mean fallback for diagnostics.
     """
     if config.name in AVAILABLE_METRICS:
         return _build_metric(config.to_key()).reducer
-    return LOSS_REDUCERS.get(config.name, BATCH_MEAN_REDUCER)
+    return BATCH_MEAN_REDUCER
+
+
+def reducer_for_key(key: str, configs: Mapping[str, BaseMetricConfig]) -> MetricReducer:
+    """
+    Get the reducer of a logged key.
+
+    Parameters
+    ----------
+    key : str
+        Logged key, e.g. ``rmse``, ``tas/rmse`` or ``tas/mse_loss``.
+    configs : Mapping[str, BaseMetricConfig]
+        Metric configuration objects keyed by metric as string.
+
+    Returns
+    -------
+    MetricReducer
+        Reducer of the configured metric, the sample-mean reducer for losses (see ``LOSS_METRIC_NAMES``), or the
+        batch-mean fallback.
+    """
+    if key in configs:
+        return reducer_for_metric(configs[key])
+    if key.rsplit("/", 1)[-1] in LOSS_METRIC_NAMES:
+        return SAMPLE_MEAN_REDUCER
+    return BATCH_MEAN_REDUCER
 
 
 def running_consolidation(
@@ -1144,10 +1166,7 @@ def running_consolidation(
     The statistics stay on the device, so there is no GPU synchronization until ``consolidation``.
     """
     for key, batch_metric_object in metrics.items():
-        if key in configs:
-            reducer = reducer_for_metric(configs[key])
-        else:
-            reducer = BATCH_MEAN_REDUCER
+        reducer = reducer_for_key(key, configs)
         running_metrics[key] = reducer.accumulate(running_metrics.get(key, None), batch_metric_object, batch_size)
 
 
@@ -1172,10 +1191,7 @@ def consolidation(
     """
     results: dict[str, float | torch.Tensor | np.ndarray] = {}
     for key, state in running_metrics.items():
-        if key in configs:
-            reducer = reducer_for_metric(configs[key])
-        else:
-            reducer = BATCH_MEAN_REDUCER
+        reducer = reducer_for_key(key, configs)
         value = reducer.finalize(state)
         if isinstance(value, torch.Tensor):
             value = value.cpu()

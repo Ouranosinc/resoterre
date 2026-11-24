@@ -116,23 +116,6 @@ class BaseMetricConfig(BaseConfig):
         return metric_str
 
 
-class LossConfig(BaseMetricConfig):
-    """
-    Loss metric configuration, used to report a training loss (see ``resoterre.pipelines.crcm_emulator.losses``).
-
-    Attributes
-    ----------
-    variables : tuple[str, ...], optional
-        List of variables to compute the metric for. Default is all variables.
-    plot : PlotConfig, optional
-        Plot configuration for the metric.
-    name : str
-        Name of the logged loss, ``"loss"`` for the total loss or ``"<loss>_loss"`` (e.g. ``"mse_loss"``) for one term.
-    """
-
-    name: str = "loss"
-
-
 class RMSEConfig(BaseMetricConfig):
     """
     Root mean squared error metric configuration.

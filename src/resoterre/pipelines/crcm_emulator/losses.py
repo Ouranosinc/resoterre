@@ -10,6 +10,18 @@ Adding new losses:
     trainer uses.
 2. Add the class to ``AVAILABLE_LOSSES`` under its name.
 3. Its weight is then set by name in ``loss.default`` or ``loss.variables`` of the configuration.
+
+Logging and reduction:
+
+The total loss and each term are logged with the metrics under the names in ``LOSS_METRIC_NAMES`` (``loss`` and
+``<name>_loss``, e.g. ``mse_loss``), plus ``<variable>/<name>_loss`` per variable. These names follow
+``AVAILABLE_LOSSES``, so a new loss is logged without further registration.
+
+Across batches, every logged loss is averaged with the sample-mean reducer (``SAMPLE_MEAN_REDUCER`` in
+``resoterre.pipelines.crcm_emulator.metrics``), which weights each batch by its number of samples so that a partial
+last batch counts less. ``reducer_for_key`` in that module selects it for any key whose last part (after
+``<variable>/``) is in ``LOSS_METRIC_NAMES``. There is currently no per-loss choice of reducer: to change it for all
+losses, edit ``reducer_for_key``.
 """
 
 import torch

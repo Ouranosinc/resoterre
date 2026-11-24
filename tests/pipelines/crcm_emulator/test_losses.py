@@ -1,8 +1,10 @@
 import pytest
 import torch
 
+from resoterre.pipelines.crcm_emulator import metrics
 from resoterre.pipelines.crcm_emulator.losses import (
     AVAILABLE_LOSSES,
+    LOSS_METRIC_NAMES,
     MAELoss,
     MSELoss,
     SSIMLoss,
@@ -32,3 +34,10 @@ def test_ssim_loss_is_zero_for_identical_data_and_per_variable_has_one_value_per
     assert loss(data, data).item() == pytest.approx(0.0, abs=1e-4)
     per_variable = loss.per_variable(data, torch.rand(2, 2, 192, 192) * 2 - 1)
     assert per_variable.shape == (2,)
+
+
+def test_loss_metric_names_follow_available_losses_and_use_the_sample_mean_reducer():
+    assert set(LOSS_METRIC_NAMES) == {"loss"} | {f"{name}_loss" for name in AVAILABLE_LOSSES}
+    for name in LOSS_METRIC_NAMES:
+        assert isinstance(metrics.reducer_for_key(name, {}), metrics.SampleMeanReducer)
+        assert isinstance(metrics.reducer_for_key(f"tas/{name}", {}), metrics.SampleMeanReducer)
