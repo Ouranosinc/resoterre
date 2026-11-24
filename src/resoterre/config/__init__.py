@@ -6,18 +6,20 @@ All configuration classes are frozen pydantic models.
 
 from resoterre.config.base import BaseConfig, BasePlotConfig
 from resoterre.config.crcm_emulator import (
-    CRCMEmulatorAnalysisConfig,
     CRCMEmulatorConfig,
-    CRCMEmulatorDataConfig,
     CRCMEmulatorDebugConfig,
     CRCMEmulatorInferenceConfig,
     CRCMEmulatorLossConfig,
     CRCMEmulatorModelConfig,
     CRCMEmulatorPathsConfig,
-    CRCMEmulatorPreprocessingConfig,
-    CRCMEmulatorSourcePreprocessingConfig,
     CRCMEmulatorTrainingConfig,
     ExperimentLoggerConfig,
+)
+from resoterre.config.data import (
+    CRCMEmulatorAnalysisConfig,
+    CRCMEmulatorDataConfig,
+    CRCMEmulatorPreprocessingConfig,
+    CRCMEmulatorSourcePreprocessingConfig,
 )
 from resoterre.config.downscaling import (
     HRDPSPreprocessingConfig,

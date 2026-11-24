@@ -9,7 +9,7 @@ import numpy as np
 import xarray
 from torch.utils import data as td
 
-from resoterre.config.crcm_emulator import DEFAULT_EMISSION_NAMES
+from resoterre.config.data import DEFAULT_EMISSION_NAMES
 from resoterre.data_management.cftime_utils import decode_times_as_cftime, get_intersection_slices
 from resoterre.datasets.cmip6.cmip6_utils import gcm_variable_levels
 from resoterre.datasets.cmip6.cmip6_variables import cmip6_variables

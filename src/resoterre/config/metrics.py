@@ -116,57 +116,6 @@ class BaseMetricConfig(BaseConfig):
         return metric_str
 
 
-class LossConfig(BaseMetricConfig):
-    """
-    Loss metric configuration.
-
-    Attributes
-    ----------
-    variables : tuple[str, ...], optional
-        List of variables to compute the metric for. Default is all variables.
-    plot : PlotConfig, optional
-        Plot configuration for the metric.
-    name : Literal["loss"]
-        Name of the loss metric.
-    """
-
-    name: Literal["loss"] = "loss"
-
-
-class MSELossConfig(BaseMetricConfig):
-    """
-    Mean squared error loss metric configuration.
-
-    Attributes
-    ----------
-    variables : tuple[str, ...], optional
-        List of variables to compute the metric for. Default is all variables.
-    plot : PlotConfig, optional
-        Plot configuration for the metric.
-    name : Literal["mse_loss"]
-        Name of the mean squared error loss metric.
-    """
-
-    name: Literal["mse_loss"] = "mse_loss"
-
-
-class SSIMLossConfig(BaseMetricConfig):
-    """
-    Structural similarity index loss metric configuration.
-
-    Attributes
-    ----------
-    variables : tuple[str, ...], optional
-        List of variables to compute the metric for. Default is all variables.
-    plot : PlotConfig, optional
-        Plot configuration for the metric.
-    name : Literal["ssim_loss"]
-        Name of the structural similarity index loss metric.
-    """
-
-    name: Literal["ssim_loss"] = "ssim_loss"
-
-
 class RMSEConfig(BaseMetricConfig):
     """
     Root mean squared error metric configuration.

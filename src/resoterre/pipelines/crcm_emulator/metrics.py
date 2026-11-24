@@ -33,10 +33,10 @@ from fastdigest import TDigest
 
 from resoterre.config import BaseMetricConfig
 from resoterre.datasets.crcm.crcm_variables import crcm_variables, from_target_units, is_unit_only_normalization
+from resoterre.pipelines.crcm_emulator.losses import LOSS_METRIC_NAMES
 
 
 # Losses are averaged over samples, so batches are weighted by their size (the last one can be partial).
-LOSS_NAMES = ("loss", "mse_loss", "ssim_loss")
 
 
 def denormalize_crcm(
@@ -568,7 +568,6 @@ class TDigestReducer(TDigestMapReducer):
 
 BATCH_MEAN_REDUCER = BatchMeanReducer()
 SAMPLE_MEAN_REDUCER = SampleMeanReducer()
-LOSS_REDUCERS: dict[str, MetricReducer] = {name: SAMPLE_MEAN_REDUCER for name in LOSS_NAMES}
 
 
 class Metric(ABC):
@@ -689,56 +688,6 @@ class SumMetric(Metric):
             Sum of the target and output tensors.
         """
         return target_data + output
-
-
-class MSELoss(Metric):
-    """Mean squared error loss metric."""
-
-    name = "mse_loss"
-    reducer = SAMPLE_MEAN_REDUCER
-
-    def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
-        """
-        Compute the mean squared error loss.
-
-        Parameters
-        ----------
-        target_data : torch.Tensor
-            The ground truth data.
-        output : torch.Tensor
-            The model output data.
-
-        Returns
-        -------
-        torch.Tensor
-            Mean squared error loss values.
-        """
-        return (target_data - output) ** 2
-
-
-class SSIMLoss(Metric):
-    """Structural similarity index loss metric."""
-
-    name = "ssim_loss"
-    reducer = SAMPLE_MEAN_REDUCER
-
-    def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
-        """
-        Compute the SSIM loss.
-
-        Parameters
-        ----------
-        target_data : torch.Tensor
-            The ground truth data.
-        output : torch.Tensor
-            The model output data.
-
-        Returns
-        -------
-        torch.Tensor
-            SSIM loss values.
-        """
-        raise NotImplementedError("SSIMLoss is only implemented in training specific training loss method currently.")
 
 
 class DaysAboveThresholdMap(Metric):
@@ -1088,7 +1037,6 @@ AVAILABLE_METRICS: dict[str, type[Metric]] = {
     "max": MaxMetric,
     "sum": SumMetric,
     MaxValueAbsoluteError.name: MaxValueAbsoluteError,
-    MSELoss.name: MSELoss,
     RMSE.name: RMSE,
     CCC.name: CCC,
     WassersteinDistance.name: WassersteinDistance,
@@ -1096,7 +1044,6 @@ AVAILABLE_METRICS: dict[str, type[Metric]] = {
     MeanBias.name: MeanBias,
     DaysAboveThreshold.name: DaysAboveThreshold,
     DaysAboveThresholdMap.name: DaysAboveThresholdMap,
-    SSIMLoss.name: SSIMLoss,
     TemporalQuantileBias.name: TemporalQuantileBias,
     TemporalQuantileBiasMap.name: TemporalQuantileBiasMap,
 }
@@ -1158,12 +1105,35 @@ def reducer_for_metric(config: BaseMetricConfig) -> MetricReducer:
     Returns
     -------
     MetricReducer
-        Reducer configured for the metric, the sample-mean reducer for losses,
-        or the batch-mean fallback for diagnostics.
+        Reducer configured for the metric, or the batch-mean fallback for diagnostics.
     """
     if config.name in AVAILABLE_METRICS:
         return _build_metric(config.to_key()).reducer
-    return LOSS_REDUCERS.get(config.name, BATCH_MEAN_REDUCER)
+    return BATCH_MEAN_REDUCER
+
+
+def reducer_for_key(key: str, configs: Mapping[str, BaseMetricConfig]) -> MetricReducer:
+    """
+    Get the reducer of a logged key.
+
+    Parameters
+    ----------
+    key : str
+        Logged key, e.g. ``rmse``, ``tas/rmse`` or ``tas/mse_loss``.
+    configs : Mapping[str, BaseMetricConfig]
+        Metric configuration objects keyed by metric as string.
+
+    Returns
+    -------
+    MetricReducer
+        Reducer of the configured metric, the sample-mean reducer for losses (see ``LOSS_METRIC_NAMES``), or the
+        batch-mean fallback.
+    """
+    if key in configs:
+        return reducer_for_metric(configs[key])
+    if key.rsplit("/", 1)[-1] in LOSS_METRIC_NAMES:
+        return SAMPLE_MEAN_REDUCER
+    return BATCH_MEAN_REDUCER
 
 
 def running_consolidation(
@@ -1196,10 +1166,7 @@ def running_consolidation(
     The statistics stay on the device, so there is no GPU synchronization until ``consolidation``.
     """
     for key, batch_metric_object in metrics.items():
-        if key in configs:
-            reducer = reducer_for_metric(configs[key])
-        else:
-            reducer = BATCH_MEAN_REDUCER
+        reducer = reducer_for_key(key, configs)
         running_metrics[key] = reducer.accumulate(running_metrics.get(key, None), batch_metric_object, batch_size)
 
 
@@ -1224,10 +1191,7 @@ def consolidation(
     """
     results: dict[str, float | torch.Tensor | np.ndarray] = {}
     for key, state in running_metrics.items():
-        if key in configs:
-            reducer = reducer_for_metric(configs[key])
-        else:
-            reducer = BATCH_MEAN_REDUCER
+        reducer = reducer_for_key(key, configs)
         value = reducer.finalize(state)
         if isinstance(value, torch.Tensor):
             value = value.cpu()

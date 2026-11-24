@@ -7,7 +7,6 @@ import numpy as np
 import xarray
 
 from resoterre.config import BaseMetricConfig, CRCMEmulatorConfig
-from resoterre.config.metrics import LossConfig, MSELossConfig, SSIMLossConfig
 from resoterre.config_utils import config_from_yaml
 from resoterre.data_management.cftime_utils import (
     check_netcdf_calendar,
@@ -99,10 +98,7 @@ def crcm_emulator_metrics_mapping(
     period_names.update(config.data.training_periods.keys())
     period_names.update(config.data.validation_periods.keys())
     period_names.update(config.data.test_periods.keys())
-    default_configs = [LossConfig(), MSELossConfig(), SSIMLossConfig()]
-    configs_list = (
-        default_configs + config.training.validation_metrics + config.inference.evaluation_metrics + custom_metrics
-    )
+    configs_list = config.training.validation_metrics + config.inference.evaluation_metrics + custom_metrics
     for variable_name in config.data.crcm_variables:
         for metric_config in configs_list:
             if metric_config.variables is not None and variable_name not in metric_config.variables:

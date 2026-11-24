@@ -183,9 +183,6 @@ def test_metric_configuration_is_isolated(metric_config: type[BaseMetricConfig])
 
 
 def test_configured_metrics_preserve_loss_and_unknown_fallbacks() -> None:
-    class LossMetricConfig(BaseMetricConfig):
-        name: Literal["loss"] = "loss"
-
     class UnknownMetricConfig(BaseMetricConfig):
         name: Literal["unknown_metric"] = "unknown_metric"
 
@@ -193,7 +190,8 @@ def test_configured_metrics_preserve_loss_and_unknown_fallbacks() -> None:
     config_2 = CCCConfig()
     metric_functions = metrics.build_metrics([config_1, config_2])
     assert isinstance(metric_functions[config_2], metrics.CCC)
-    assert isinstance(metrics.reducer_for_metric(LossMetricConfig()), metrics.SampleMeanReducer)
+    for key in ("loss", "mse_loss", "mae_loss", "tas/ssim_loss"):
+        assert isinstance(metrics.reducer_for_key(key, {}), metrics.SampleMeanReducer)
     assert isinstance(metrics.reducer_for_metric(UnknownMetricConfig()), metrics.BatchMeanReducer)
 
 
@@ -217,15 +215,11 @@ def test_metrics_are_reported_per_variable():
 
 
 def test_reducer_lookup_handles_metric_prefixes_and_fallbacks() -> None:
-    class MSELossConfig(BaseMetricConfig):
-        name: Literal["mse_loss"] = "mse_loss"
-
     class UnknownMetricConfig(BaseMetricConfig):
         name: Literal["unknown_metric"] = "unknown_metric"
 
     expected_reducers = [
         (RMSEConfig(variables=["tas"]), metrics.SampleMeanReducer),
-        (MSELossConfig(), metrics.SampleMeanReducer),
         (UnknownMetricConfig(), metrics.BatchMeanReducer),
         (CCCConfig(), metrics.SampleMeanReducer),
         (DaysAboveThresholdMapConfig(variables=["tas"], threshold=303.15), metrics.YearlyMeanReducer),
