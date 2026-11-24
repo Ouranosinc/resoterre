@@ -8,7 +8,7 @@ import numpy as np
 import xarray
 from torch.utils import data as td
 
-from resoterre.config.crcm_emulator import DEFAULT_EMISSION_NAMES
+from resoterre.config.data import DEFAULT_EMISSION_NAMES
 from resoterre.datasets.crcm.crcm_utils import crcm_north_america_grid_coordinates
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import NUM_DATE_LINEAR_INPUTS
 

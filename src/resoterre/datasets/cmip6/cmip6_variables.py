@@ -3,7 +3,7 @@
 import copy
 from typing import Any
 
-from resoterre.config.crcm_emulator import (
+from resoterre.config.data import (
     DEFAULT_CLIMATE_VARS_NORMALIZATION_STATS_FILE,
     DEFAULT_FORCINGS_NORMALIZATION_STATS_FILE,
     DEFAULT_NORMALIZATION_STATS_SCENARIO,
