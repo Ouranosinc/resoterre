@@ -118,7 +118,7 @@ class BaseMetricConfig(BaseConfig):
 
 class LossConfig(BaseMetricConfig):
     """
-    Loss metric configuration.
+    Loss metric configuration, used to report a training loss (see ``resoterre.pipelines.crcm_emulator.losses``).
 
     Attributes
     ----------
@@ -126,45 +126,11 @@ class LossConfig(BaseMetricConfig):
         List of variables to compute the metric for. Default is all variables.
     plot : PlotConfig, optional
         Plot configuration for the metric.
-    name : Literal["loss"]
-        Name of the loss metric.
+    name : str
+        Name of the logged loss, ``"loss"`` for the total loss or ``"<loss>_loss"`` (e.g. ``"mse_loss"``) for one term.
     """
 
-    name: Literal["loss"] = "loss"
-
-
-class MSELossConfig(BaseMetricConfig):
-    """
-    Mean squared error loss metric configuration.
-
-    Attributes
-    ----------
-    variables : tuple[str, ...], optional
-        List of variables to compute the metric for. Default is all variables.
-    plot : PlotConfig, optional
-        Plot configuration for the metric.
-    name : Literal["mse_loss"]
-        Name of the mean squared error loss metric.
-    """
-
-    name: Literal["mse_loss"] = "mse_loss"
-
-
-class SSIMLossConfig(BaseMetricConfig):
-    """
-    Structural similarity index loss metric configuration.
-
-    Attributes
-    ----------
-    variables : tuple[str, ...], optional
-        List of variables to compute the metric for. Default is all variables.
-    plot : PlotConfig, optional
-        Plot configuration for the metric.
-    name : Literal["ssim_loss"]
-        Name of the structural similarity index loss metric.
-    """
-
-    name: Literal["ssim_loss"] = "ssim_loss"
+    name: str = "loss"
 
 
 class RMSEConfig(BaseMetricConfig):

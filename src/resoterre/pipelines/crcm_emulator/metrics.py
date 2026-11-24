@@ -33,10 +33,10 @@ from fastdigest import TDigest
 
 from resoterre.config import BaseMetricConfig
 from resoterre.datasets.crcm.crcm_variables import crcm_variables, from_target_units, is_unit_only_normalization
+from resoterre.pipelines.crcm_emulator.losses import LOSS_METRIC_NAMES
 
 
 # Losses are averaged over samples, so batches are weighted by their size (the last one can be partial).
-LOSS_NAMES = ("loss", "mse_loss", "ssim_loss")
 
 
 def denormalize_crcm(
@@ -568,7 +568,7 @@ class TDigestReducer(TDigestMapReducer):
 
 BATCH_MEAN_REDUCER = BatchMeanReducer()
 SAMPLE_MEAN_REDUCER = SampleMeanReducer()
-LOSS_REDUCERS: dict[str, MetricReducer] = {name: SAMPLE_MEAN_REDUCER for name in LOSS_NAMES}
+LOSS_REDUCERS: dict[str, MetricReducer] = {name: SAMPLE_MEAN_REDUCER for name in LOSS_METRIC_NAMES}
 
 
 class Metric(ABC):
@@ -689,56 +689,6 @@ class SumMetric(Metric):
             Sum of the target and output tensors.
         """
         return target_data + output
-
-
-class MSELoss(Metric):
-    """Mean squared error loss metric."""
-
-    name = "mse_loss"
-    reducer = SAMPLE_MEAN_REDUCER
-
-    def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
-        """
-        Compute the mean squared error loss.
-
-        Parameters
-        ----------
-        target_data : torch.Tensor
-            The ground truth data.
-        output : torch.Tensor
-            The model output data.
-
-        Returns
-        -------
-        torch.Tensor
-            Mean squared error loss values.
-        """
-        return (target_data - output) ** 2
-
-
-class SSIMLoss(Metric):
-    """Structural similarity index loss metric."""
-
-    name = "ssim_loss"
-    reducer = SAMPLE_MEAN_REDUCER
-
-    def __call__(self, target_data: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
-        """
-        Compute the SSIM loss.
-
-        Parameters
-        ----------
-        target_data : torch.Tensor
-            The ground truth data.
-        output : torch.Tensor
-            The model output data.
-
-        Returns
-        -------
-        torch.Tensor
-            SSIM loss values.
-        """
-        raise NotImplementedError("SSIMLoss is only implemented in training specific training loss method currently.")
 
 
 class DaysAboveThresholdMap(Metric):
@@ -1088,7 +1038,6 @@ AVAILABLE_METRICS: dict[str, type[Metric]] = {
     "max": MaxMetric,
     "sum": SumMetric,
     MaxValueAbsoluteError.name: MaxValueAbsoluteError,
-    MSELoss.name: MSELoss,
     RMSE.name: RMSE,
     CCC.name: CCC,
     WassersteinDistance.name: WassersteinDistance,
@@ -1096,7 +1045,6 @@ AVAILABLE_METRICS: dict[str, type[Metric]] = {
     MeanBias.name: MeanBias,
     DaysAboveThreshold.name: DaysAboveThreshold,
     DaysAboveThresholdMap.name: DaysAboveThresholdMap,
-    SSIMLoss.name: SSIMLoss,
     TemporalQuantileBias.name: TemporalQuantileBias,
     TemporalQuantileBiasMap.name: TemporalQuantileBiasMap,
 }

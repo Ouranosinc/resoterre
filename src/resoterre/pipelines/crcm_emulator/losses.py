@@ -177,3 +177,6 @@ AVAILABLE_LOSSES: dict[str, type[Loss]] = {
     "mae": MAELoss,
     "ssim": SSIMLoss,
 }
+
+# Names under which the total loss and each loss term are logged with the metrics (e.g. ``mse_loss``).
+LOSS_METRIC_NAMES: tuple[str, ...] = ("loss", *(f"{name}_loss" for name in AVAILABLE_LOSSES))

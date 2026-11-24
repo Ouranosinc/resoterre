@@ -24,7 +24,7 @@ from resoterre.config import (
     CRCMEmulatorTrainingConfig,
     OptimizerConfig,
 )
-from resoterre.config.metrics import MSELossConfig, MeanBiasConfig, RMSEConfig, TemporalQuantileBiasConfig
+from resoterre.config.metrics import LossConfig, MeanBiasConfig, RMSEConfig, TemporalQuantileBiasConfig
 from resoterre.config.metrics_climate import DaysAboveThresholdConfig
 from resoterre.data_generators.crcm_emulator_mock_dataset import CRCMEmulatorMockDataset
 from resoterre.data_management.timeseries import MultiTimeseries
@@ -572,13 +572,13 @@ def test_crcm_emulator_consolidation_weights_losses_by_batch_size():
         running_validation_metrics={},
         validation_metrics=MultiTimeseries(),
         validation_diagnostics={},
-        metric_config_mapping={"mse_loss": MSELossConfig()},
+        metric_config_mapping={"mse_loss": LossConfig(name="mse_loss")},
     )
     consolidator = crcm_emulator_training.CRCMEmulatorTrainingFromConfig
     # 128 samples with zero error, then a partial batch of 1 sample with a squared error of 100
     for batch_size, value in ((128, 0.0), (1, 100.0)):
         metrics = {"mse_loss": torch.tensor(value), "some_other_metric": torch.tensor(value)}
-        consolidator.running_consolidation(runner, metrics, {"mse_loss": MSELossConfig()}, batch_size)  # type: ignore[arg-type]
+        consolidator.running_consolidation(runner, metrics, {"mse_loss": LossConfig(name="mse_loss")}, batch_size)  # type: ignore[arg-type]
     consolidator.consolidation(runner)  # type: ignore[arg-type]
     assert runner.running_validation_metrics == {}
     assert runner.validation_metrics["mse_loss"].values == [pytest.approx(100 / 129)]

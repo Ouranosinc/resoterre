@@ -10,6 +10,7 @@ from resoterre.config import BasePlotConfig
 from resoterre.config.metrics import (
     BaseMetricConfig,
     CCCConfig,
+    LossConfig,
     MeanBiasConfig,
     RMSEConfig,
     TemporalQuantileBiasConfig,
@@ -217,15 +218,13 @@ def test_metrics_are_reported_per_variable():
 
 
 def test_reducer_lookup_handles_metric_prefixes_and_fallbacks() -> None:
-    class MSELossConfig(BaseMetricConfig):
-        name: Literal["mse_loss"] = "mse_loss"
-
     class UnknownMetricConfig(BaseMetricConfig):
         name: Literal["unknown_metric"] = "unknown_metric"
 
     expected_reducers = [
         (RMSEConfig(variables=["tas"]), metrics.SampleMeanReducer),
-        (MSELossConfig(), metrics.SampleMeanReducer),
+        (LossConfig(name="mse_loss"), metrics.SampleMeanReducer),
+        (LossConfig(name="mae_loss"), metrics.SampleMeanReducer),
         (UnknownMetricConfig(), metrics.BatchMeanReducer),
         (CCCConfig(), metrics.SampleMeanReducer),
         (DaysAboveThresholdMapConfig(variables=["tas"], threshold=303.15), metrics.YearlyMeanReducer),

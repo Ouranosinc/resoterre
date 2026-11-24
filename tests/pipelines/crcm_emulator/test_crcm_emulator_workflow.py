@@ -45,7 +45,7 @@ def test_crcm_emulator_metrics_mapping():
         ),
     )
     mapping = crcm_emulator_workflow.crcm_emulator_metrics_mapping(config)
-    assert len(mapping) == 47
+    assert len(mapping) == 54
     assert isinstance(mapping["rmse"], RMSEConfig)
     assert isinstance(mapping["tas/bias_map"], BiasMapConfig)
     assert isinstance(mapping["pr/temporal_quantile_bias_quantile_0p99_historical"], TemporalQuantileBiasConfig)
