@@ -42,11 +42,13 @@ Set these paths to the project’s data and the destinations where this experime
 | `paths.gcm_data` | Raw CMIP6 daily NetCDF files, e.g. `project/data/raw_data/GCMs`. |
 | `paths.emission_data` | Greenhouse-gas forcing files used while preparing GCM data, e.g. `project/data/raw_data/GHGs`. |
 | `paths.crcm_data` | Raw CRCM daily NetCDF files, e.g. `project/data/raw_data/MRCC5-CMIP6`. |
-| `preprocessing.gcm.path` | Where preprocessed GCM Zarr stores are saved, e.g. `project/data/preprocessed_data/gcm_preprocessing`. |
-| `preprocessing.crcm.path` | Where preprocessed CRCM Zarr stores are saved, `project/data/preprocessed_data/crcm_preprocessing`.|
+| `preprocessing.gcm.path` | Where preprocessed GCM Zarr stores are saved, e.g. `project/data/preprocessed_data/model-<model_name>_scenario-<future_scenario_name>_realization-<realization_id>/gcm_preprocessing`. |
+| `preprocessing.crcm.path` | Where preprocessed CRCM Zarr stores are saved, `project/data/preprocessed_data/model-<model_name>_scenario-<future_scenario_name>_realization-<realization_id>/crcm_preprocessing`.|
 | `paths.regridding_weights` | Where reusable GCM-to-CRCM grid weights are saved. Optional; defaults to `preprocessing.gcm.path/csr_matrix`. e.g. `project/data/regridding_weights`. |
 | `paths.output` | Experiment results directory for model checkpoints, evaluation results, and analysis. On the Mila cluster, recommended to use your scratch directory. e.g. `scratch/outputs/<experiment_name>` |
-| `paths.baselines_out_dirs.interpolation` | Optional output directory for interpolation-baseline predictions and scores. e.g. `scratch/outputs/interpolation_baseline/<experiment_name>`|
+| `paths.baselines_out_dirs.interpolation` | Optional output directory for interpolation-baseline predictions and scores. e.g. `scratch/outputs/interpolation_baseline/model-<model_name>_scenario-<future_scenario_name>_realization-<realization_id>/`|
+
+Example for `model-<model_name>_scenario-<future_scenario_name>_realization-<realization_id>`:  `model-cnrm-esm2-1_scenario-ssp245_realization-r1i1p1f2`
 
 `preprocessing.simulations` selects which model/scenario/member combinations to process. Each entry is
 `[GCM, scenario, ensemble member]`; for example:
@@ -115,7 +117,7 @@ The product chunk_size * chunks_per_task must not exceed the number of daily dat
 
 The script runs `01_crcm_to_zarr.smk` first, then `02_gcm_to_zarr.smk`. The generated CRCM and GCM Zarr datasets are written to
 `preprocessing.crcm.path` and `preprocessing.gcm.path`, respectively. The `OUTPUT_DIR` argument below is a separate workflow
-directory for Snakemake manifests and per-task logs; it does not replace either Zarr output path in the YAML, but you can use the same parent directory ex. `absolute/path/to/workflows/preprocessed_experiment_name`
+directory for Snakemake manifests and per-task logs; it does not replace either Zarr output path in the YAML, but you can use the same parent directory ex. `absolute/path/to/workflows/model-<model_name>_scenario-<future_scenario_name>_realization-<realization_id>`
 
 From the repository root, create the log directory and submit the wrapper with **three positional arguments in
 this order**: 1) CONFIG: the config YAML you modified, 2) OUTPUT_DIR: a workflow directory (where to save the snakemake logs), 3) REPO_DIR: the `resoterre` repository directory. Use absolute paths so the config and output
@@ -128,7 +130,7 @@ mkdir -p logs
 sbatch --cpus-per-task=8 --mem=24G --time=05:00:00 \
   run_files/run_preprocessing_crcm_pipeline.sh \
   /absolute/path/to/configs/crcm_emulator/my_experiment.yaml \
-  /absolute/path/to/project/data/preprocessed_data/experiment-name \
+  /absolute/path/to/project/data/preprocessed_data/model-<model_name>_scenario-<future_scenario_name>_realization-<realization_id> \
   /absolute/path/to/resoterre
 ```
 

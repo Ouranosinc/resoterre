@@ -10,6 +10,7 @@ Contributors: Contributors: Francis Charette-Migneault (:user:`fmigneault`), Bla
 
 Changes
 ^^^^^^^
+* Update preprocessing path naming conventions from being keyed by experiment-name to model-scenario. (:pull:`#213`)
 * Change Python requirement to ``>=3.12.0``. (:pull:`#212`)
 * Change default Comet ML image format to PNG. (:pull:`#212`)
 * Move the CRCM emulator losses to ``resoterre.pipelines.crcm_emulator.losses`` (``mse``, ``mae`` and ``ssim``, registered in ``AVAILABLE_LOSSES``), configured by name with per-variable weights in ``loss.default`` and ``loss.variables`` instead of ``loss.mse_weight`` and ``loss.ssim_weight``, and logged per variable (e.g. ``tas/mse_loss``). Losses are reduced with the sample-mean reducer by name, without a dedicated metric config. Moved the data and preprocessing configurations to ``resoterre.config.data``. (:issue:`187`, :pull:`209`).
