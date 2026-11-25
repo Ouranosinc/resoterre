@@ -1,0 +1,909 @@
+import json
+import tempfile
+from datetime import datetime
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, Literal, cast
+from unittest.mock import MagicMock
+
+import numpy as np
+import pytest
+import torch
+import xarray
+from torch.utils import data as td
+
+from resoterre.config import (
+    BaseMetricConfig,
+    CRCMEmulatorConfig,
+    CRCMEmulatorDataConfig,
+    CRCMEmulatorLossConfig,
+    CRCMEmulatorModelConfig,
+    CRCMEmulatorPathsConfig,
+    CRCMEmulatorPreprocessingConfig,
+    CRCMEmulatorSourcePreprocessingConfig,
+    CRCMEmulatorTrainingConfig,
+    OptimizerConfig,
+)
+from resoterre.config.metrics import MeanBiasConfig, RMSEConfig, TemporalQuantileBiasConfig
+from resoterre.config.metrics_climate import DaysAboveThresholdConfig
+from resoterre.data_generators.crcm_emulator_mock_dataset import CRCMEmulatorMockDataset
+from resoterre.data_management.timeseries import MultiTimeseries
+from resoterre.datasets.crcm.crcm_variables import crcm_variables
+from resoterre.logging_utils import start_root_logger
+from resoterre.pipelines.crcm_emulator import crcm_emulator_training
+from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import PredictionZarrWriter
+from resoterre.pipelines.crcm_emulator.metrics import denormalize_crcm
+
+
+def test_crcm_emulator_training():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
+            model=CRCMEmulatorModelConfig(
+                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+            ),
+            optimizer=OptimizerConfig(lr=1e-3, weight_decay=1e-5),
+            loss=CRCMEmulatorLossConfig(),
+        )
+        _ = start_root_logger(basic_config_args={"filename": Path(tmp_dir, "training.log")})
+        runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+
+        # Bypassing data loader from zarr files
+        if config.data.coarsen_factor is None:
+            raise ValueError("coarsen_factor must be specified in the configuration.")
+        runner.dataset = CRCMEmulatorMockDataset(
+            num_samples=64,
+            num_input_channels=2,
+            num_output_channels=2,
+            tile_size=config.data.tile_size,
+            coarsen_factor=config.data.coarsen_factor,
+        )
+        runner.train_data_loader = td.DataLoader(runner.dataset, runner.config.data.batch_size, shuffle=True)
+        validation_dataset = CRCMEmulatorMockDataset(
+            num_samples=16,
+            num_input_channels=2,
+            num_output_channels=2,
+            tile_size=config.data.tile_size,
+            coarsen_factor=config.data.coarsen_factor,
+        )
+        runner.validation_data_loaders = {
+            "val": td.DataLoader(validation_dataset, runner.config.data.batch_size, shuffle=False)
+        }
+        runner.validation_data_loader = runner.validation_data_loaders["val"]
+        runner.init_unet()
+
+        runner(epoch=1, device=runner.config.training.device)
+        if config.paths.output is None:
+            raise ValueError("path_output must be specified in the configuration.")
+        assert Path(config.paths.output, "training.log").is_file()
+        assert Path(config.paths.output, "test_epoch_001_latest.pth").is_file()
+        assert Path(config.paths.output, "test_epoch_001_best.pth").is_file()
+        results = json.loads(Path(config.paths.output, "test_training_results.json").read_text())
+        assert "LastVal loss" in results
+        assert "LastVal loss_val" in results
+        assert results["BestVal loss_val"] == results["LastVal loss_val"]  # a single epoch is the best epoch
+        assert "LastVal mse_loss_val" in results
+        assert not list(Path(config.paths.output).glob("training_visualization_*.png"))
+
+
+def test_crcm_emulator_training_with_non_tensor_batch_metrics():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(
+                tile_size=128,
+                coarsen_factor=4,
+                batch_size=4,
+                crcm_variables=["tas", "pr"],
+                training_periods={"historical": ("2000-01-01", "2010-12-31")},
+            ),
+            model=CRCMEmulatorModelConfig(kernel_size=3, initial_num_of_hidden_channels=8, depth=2),
+            optimizer=OptimizerConfig(lr=1e-3, weight_decay=1e-5),
+            loss=CRCMEmulatorLossConfig(),
+            training=CRCMEmulatorTrainingConfig(
+                nb_of_epochs=2,
+                device="cpu",
+                validation_metrics=[TemporalQuantileBiasConfig(variables=["tas"], quantile=0.95)],
+            ),
+        )
+        _ = start_root_logger(basic_config_args={"filename": Path(tmp_dir, "training.log")})
+        runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+
+        # Bypassing data loader from zarr files
+        if config.data.coarsen_factor is None:
+            raise ValueError("coarsen_factor must be specified in the configuration.")
+        runner.dataset = CRCMEmulatorMockDataset(
+            num_samples=64,
+            num_input_channels=2,
+            num_output_channels=2,
+            tile_size=config.data.tile_size,
+            coarsen_factor=config.data.coarsen_factor,
+        )
+        runner.train_data_loader = td.DataLoader(runner.dataset, runner.config.data.batch_size, shuffle=True)
+        validation_dataset = CRCMEmulatorMockDataset(
+            num_samples=16,
+            num_input_channels=2,
+            num_output_channels=2,
+            tile_size=config.data.tile_size,
+            coarsen_factor=config.data.coarsen_factor,
+        )
+        runner.validation_data_loaders = {
+            "historical": td.DataLoader(validation_dataset, runner.config.data.batch_size, shuffle=False)
+        }
+        runner.validation_data_loader = runner.validation_data_loaders["historical"]
+        runner.init_unet()
+
+        runner(epoch=1, device=runner.config.training.device)
+        if config.paths.output is None:
+            raise ValueError("path_output must be specified in the configuration.")
+        assert Path(config.paths.output, "training.log").is_file()
+        assert Path(config.paths.output, "test_epoch_001_latest.pth").is_file()
+        assert Path(config.paths.output, "test_epoch_001_best.pth").is_file()
+        results = json.loads(Path(config.paths.output, "test_training_results.json").read_text())
+        assert "BestVal tas/temporal_quantile_bias_quantile_0p95_historical" in results
+        assert "BestVal pr/temporal_quantile_bias_quantile_0p95_historical" not in results
+
+
+def test_crcm_emulator_training_resume():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
+            model=CRCMEmulatorModelConfig(
+                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+            ),
+            optimizer=OptimizerConfig(lr=1e-3, weight_decay=1e-5),
+            loss=CRCMEmulatorLossConfig(),
+            training=CRCMEmulatorTrainingConfig(nb_of_epochs=2, device="cpu"),
+        )
+
+        def make_runner() -> crcm_emulator_training.CRCMEmulatorTrainingFromConfig:
+            runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+            mock_kwargs: dict[str, Any] = {
+                "num_input_channels": 2,
+                "num_output_channels": 2,
+                "tile_size": 128,
+                "coarsen_factor": 4,
+            }
+            runner.dataset = CRCMEmulatorMockDataset(num_samples=8, **mock_kwargs)
+            runner.train_data_loader = td.DataLoader(runner.dataset, 4, shuffle=True)
+            validation_dataset = CRCMEmulatorMockDataset(num_samples=4, **mock_kwargs)
+            runner.validation_data_loaders = {"val": td.DataLoader(validation_dataset, 4, shuffle=False)}
+            runner.validation_data_loader = runner.validation_data_loaders["val"]
+            runner.init_unet()
+            return runner
+
+        first_runner = make_runner()
+        first_runner(epoch=1, device="cpu")
+        assert Path(tmp_dir, "test_epoch_001_latest.pth").is_file()
+
+        resumed_runner = make_runner()
+        resumed_runner.load_state(Path(tmp_dir), tag="latest")
+        assert resumed_runner.epoch_counter == 1
+        resumed_runner.training_loop()
+        assert resumed_runner.epoch_counter == 2
+        assert Path(tmp_dir, "test_epoch_002_latest.pth").is_file()
+        assert not Path(tmp_dir, "test_epoch_001_latest.pth").exists()
+
+
+def test_crcm_emulator_training_figures_logged_to_comet_only():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
+            model=CRCMEmulatorModelConfig(
+                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+            ),
+        )
+        runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+        runner.experiment_logger.experiment = MagicMock()
+        data = torch.zeros(1, 2, 8, 8)
+        for iteration in (9, 10, 11, 20):
+            runner.total_iterations = iteration
+            runner.output_training_figures(data, data, data)
+        steps = [call.kwargs["step"] for call in runner.experiment_logger.experiment.log_figure.call_args_list]
+        assert steps == [10, 20]
+        assert not list(Path(tmp_dir).glob("*.png"))
+
+
+def test_crcm_emulator_training_figure_frequency_is_configurable():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
+            model=CRCMEmulatorModelConfig(
+                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+            ),
+        )
+        data = torch.zeros(1, 2, 8, 8)
+        for figure_every_n_steps, expected_steps in ((5, [5, 10]), (0, [])):
+            training_config = CRCMEmulatorTrainingConfig(figure_every_n_steps=figure_every_n_steps)
+            runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(
+                config=config.model_copy(update={"training": training_config})
+            )
+            runner.experiment_logger.experiment = MagicMock()
+            for iteration in range(1, 11):
+                runner.total_iterations = iteration
+                runner.output_training_figures(data, data, data)
+            log_figure = runner.experiment_logger.experiment.log_figure
+            assert [call.kwargs["step"] for call in log_figure.call_args_list] == expected_steps
+
+
+def test_crcm_emulator_test_evaluation_reports_test_metrics():
+    # same flow as scripts/crcm_emulator/04_inference.py: load a checkpoint, evaluate, consolidate
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
+            model=CRCMEmulatorModelConfig(
+                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+            ),
+            loss=CRCMEmulatorLossConfig(),
+            training=CRCMEmulatorTrainingConfig(nb_of_epochs=1, device="cpu"),
+        )
+        mock_kwargs: dict[str, Any] = {
+            "num_input_channels": 2,
+            "num_output_channels": 2,
+            "tile_size": 128,
+            "coarsen_factor": 4,
+        }
+
+        def make_runner(training: CRCMEmulatorTrainingConfig) -> crcm_emulator_training.CRCMEmulatorTrainingFromConfig:
+            runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(
+                config=config.model_copy(update={"training": training})
+            )
+            runner.dataset = CRCMEmulatorMockDataset(num_samples=8, **mock_kwargs)
+            runner.train_data_loader = td.DataLoader(runner.dataset, 4, shuffle=True)
+            validation_dataset = CRCMEmulatorMockDataset(num_samples=4, **mock_kwargs)
+            runner.validation_data_loaders = {"val": td.DataLoader(validation_dataset, 4, shuffle=False)}
+            runner.validation_data_loader = runner.validation_data_loaders["val"]
+            runner.init_unet()
+            return runner
+
+        make_runner(config.training)(epoch=1, device="cpu")
+
+        # a batch of 4 and a partial batch of 1
+        test_data_loader = td.DataLoader(CRCMEmulatorMockDataset(num_samples=5, **mock_kwargs), 4, shuffle=False)
+        for metric_configs, expected in (
+            (
+                [MeanBiasConfig(variables=["tas", "pr"])],
+                {"loss", "mse_loss", "tas/mse_loss", "pr/mse_loss", "tas/mean_bias", "pr/mean_bias"},
+            ),
+            ([], {"loss", "mse_loss", "tas/mse_loss", "pr/mse_loss"}),
+        ):
+            runner = make_runner(config.training)
+            runner.config = runner.config.model_copy(
+                update={"inference": runner.config.inference.model_copy(update={"evaluation_metrics": metric_configs})}
+            )
+            runner.load_state(Path(tmp_dir), tag="latest")
+            results = runner.evaluate(test_data_loader)
+            # float and int are used to identify scalar metrics
+            assert all(isinstance(v, (int, float)) for v in results.values())
+            assert set(results) == expected
+            assert runner.running_validation_metrics == {}
+            assert len(runner.validation_metrics) == 0
+
+
+def test_crcm_emulator_training_lr_scheduler_and_early_stopping(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
+            model=CRCMEmulatorModelConfig(
+                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+            ),
+            optimizer=OptimizerConfig(lr=1e-3),
+            training=CRCMEmulatorTrainingConfig(
+                nb_of_epochs=4, device="cpu", lr_scheduler=True, lr_warmup_epochs=1, early_stopping_patience=1
+            ),
+        )
+        runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+        mock_kwargs: dict[str, Any] = {
+            "num_input_channels": 2,
+            "num_output_channels": 2,
+            "tile_size": 128,
+            "coarsen_factor": 4,
+        }
+        runner.dataset = CRCMEmulatorMockDataset(num_samples=8, **mock_kwargs)
+        runner.train_data_loader = td.DataLoader(runner.dataset, 4, shuffle=True)
+        validation_dataset = CRCMEmulatorMockDataset(num_samples=4, **mock_kwargs)
+        runner.validation_data_loaders = {"val": td.DataLoader(validation_dataset, 4, shuffle=False)}
+        runner.validation_data_loader = runner.validation_data_loaders["val"]
+        runner.init_unet()
+        assert runner.patience == 1
+        assert set(runner.lr_schedulers) == {"UNet"}
+        optimizer = runner.optimizers["UNet"]
+        assert optimizer.param_groups[0]["lr"] == pytest.approx(1e-3 * 1e-3)  # start of the warm-up
+
+        monkeypatch.setattr(runner, "is_validation_improvement", lambda: False)
+        runner.training_loop()
+        assert runner.early_stopping_triggered
+        assert runner.epoch_counter == 1  # stopped long before nb_of_epochs
+        assert optimizer.param_groups[0]["lr"] == pytest.approx(1e-3)  # warm-up completed after one epoch
+
+
+def test_crcm_emulator_training_shuffling_depends_on_seed_and_epoch_only():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas"]),
+            model=CRCMEmulatorModelConfig(
+                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+            ),
+            training=CRCMEmulatorTrainingConfig(seed=7),
+        )
+        runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+        runner.dataset = CRCMEmulatorMockDataset(num_samples=16, tile_size=128, coarsen_factor=4)
+        loader = runner.build_data_loader(runner.dataset, shuffle=True)
+        generator = runner.train_generator
+        assert generator is not None
+        seed = 7
+
+        def epoch_order(epoch: int) -> list[int]:
+            generator.manual_seed(seed + epoch)
+            return list(iter(loader._index_sampler.sampler))
+
+        assert epoch_order(1) == epoch_order(1)
+        assert epoch_order(1) != epoch_order(2)
+
+
+def _two_variable_runner(tmp_dir: str, loss: CRCMEmulatorLossConfig) -> Any:
+    config = CRCMEmulatorConfig(
+        experiment_name="test",
+        paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+        preprocessing=CRCMEmulatorPreprocessingConfig(
+            gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+            crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+        ),
+        data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
+        model=CRCMEmulatorModelConfig(kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None),
+        loss=loss,
+    )
+    return crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+
+
+def test_crcm_emulator_loss_is_the_weighted_sum_over_variables_and_terms():
+    target = torch.zeros(2, 2, 16, 16)
+    output = torch.stack([torch.ones(2, 16, 16), 3 * torch.ones(2, 16, 16)], dim=1)  # squared errors: tas 1, pr 9
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        default = _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig())
+        loss, metrics = default.training_loss_computation(target, output)
+        assert loss.item() == pytest.approx(5.0)
+        assert metrics["tas/mse_loss"].item() == pytest.approx(1.0)
+        assert metrics["pr/mse_loss"].item() == pytest.approx(9.0)
+        assert metrics["mse_loss"].item() == pytest.approx(loss.item())
+
+        # a larger weight makes a variable count more
+        weighted = _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig(variables={"pr": {"mse": 3.0}}))
+        loss, metrics = weighted.training_loss_computation(target, output)
+        assert loss.item() == pytest.approx((1 * 1 + 3 * 9) / 4)
+        assert metrics["pr/mse_loss"].item() == pytest.approx(9.0)
+
+        # a variable whose weights are all 0 is left out
+        excluded = _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig(variables={"tas": {"mse": 0.0}}))
+        loss, metrics = excluded.training_loss_computation(target, output)
+        assert loss.item() == pytest.approx(9.0)
+        assert "tas/mse_loss" not in metrics
+
+        # only the ratios between weights matter
+        scaled = _two_variable_runner(
+            tmp_dir, CRCMEmulatorLossConfig(variables={"tas": {"mse": 2.0}, "pr": {"mse": 0.5}})
+        )
+        assert scaled.training_loss_computation(target, output)[0].item() == pytest.approx((2 * 1 + 0.5 * 9) / 2.5)
+
+
+def test_crcm_emulator_variables_use_a_different_loss_per_variable():
+    output = torch.zeros(2, 2, 16, 16)
+    target = torch.stack([torch.full((2, 16, 16), 2.0), torch.full((2, 16, 16), 3.0)], dim=1)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        runner = _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig(variables={"pr": {"mae": 1.0}}))
+        loss, metrics = runner.training_loss_computation(output, target)
+        assert loss.item() == pytest.approx((4.0 + 3.0) / 2)  # tas uses default (mse), pr uses mae, equal weights
+        assert metrics["tas/mse_loss"].item() == pytest.approx(4.0)
+        assert metrics["pr/mae_loss"].item() == pytest.approx(3.0)
+        assert "pr/mse_loss" not in metrics
+        assert metrics["mse_loss"].item() + metrics["mae_loss"].item() == pytest.approx(loss.item())
+
+
+def test_crcm_emulator_loss_terms_combine_and_are_validated():
+    target = torch.rand(2, 2, 192, 192)
+    output = torch.rand(2, 2, 192, 192)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        mse_only = _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig(default={"mse": 1.0}))
+        both = _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig(default={"mse": 2.0, "ssim": 0.5}))
+        mse_loss = mse_only.training_loss_computation(target, output)[0]
+        loss, metrics = both.training_loss_computation(target, output)
+        # weights per variable: mse 2.0 and ssim 0.5, so the total weight is 2 * (2.0 + 0.5)
+        assert metrics["mse_loss"].item() == pytest.approx(mse_loss.item() * 4.0 / 5.0, rel=1e-5)
+        assert loss.item() == pytest.approx(metrics["mse_loss"].item() + metrics["ssim_loss"].item(), rel=1e-5)
+        assert {"tas/ssim_loss", "pr/ssim_loss"} <= set(metrics)
+
+        with pytest.raises(ValueError, match="not in data.crcm_variables"):
+            _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig(variables={"uas": {"mse": 1.0}}))
+        with pytest.raises(ValueError, match="Unknown losses"):
+            _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig(default={"bad": 1.0}))
+        with pytest.raises(ValueError, match="Unknown losses"):
+            _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig(variables={"pr": {"huber": 1.0}}))
+        with pytest.raises(ValueError, match="positive weight"):
+            _two_variable_runner(tmp_dir, CRCMEmulatorLossConfig(default={"mse": 0.0}))
+    with pytest.raises(ValueError, match="greater than or equal to 0"):
+        CRCMEmulatorLossConfig(default={"mse": -1.0})
+
+
+def test_crcm_emulator_training_seed():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+
+        def initial_weights(seed: int | None) -> list[torch.Tensor]:
+            config = CRCMEmulatorConfig(
+                experiment_name="test",
+                paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+                preprocessing=CRCMEmulatorPreprocessingConfig(
+                    gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                    crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+                ),
+                data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas"]),
+                model=CRCMEmulatorModelConfig(
+                    kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+                ),
+                training=CRCMEmulatorTrainingConfig(seed=seed),
+            )
+            runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+            return [p.detach().clone() for p in runner.models["UNet"].parameters()]
+
+        same = [torch.equal(a, b) for a, b in zip(initial_weights(1), initial_weights(1), strict=True)]
+        assert all(same)
+        assert not all(torch.equal(a, b) for a, b in zip(initial_weights(1), initial_weights(2), strict=True))
+
+
+def test_crcm_emulator_build_test_data_loader_requires_test_periods():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
+            model=CRCMEmulatorModelConfig(
+                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+            ),
+        )
+        runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+        with pytest.raises(ValueError, match="test_periods"):
+            runner.build_test_data_loaders()
+
+
+def test_crcm_emulator_validation_figure_logged_to_comet_only():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
+            model=CRCMEmulatorModelConfig(
+                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+            ),
+            optimizer=OptimizerConfig(lr=1e-3, weight_decay=1e-5),
+            loss=CRCMEmulatorLossConfig(),
+        )
+        runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+        runner.experiment_logger.experiment = MagicMock()
+        mock_kwargs: dict[str, Any] = {
+            "num_input_channels": 2,
+            "num_output_channels": 2,
+            "tile_size": 128,
+            "coarsen_factor": 4,
+        }
+        runner.dataset = CRCMEmulatorMockDataset(num_samples=8, **mock_kwargs)
+        validation_dataset = CRCMEmulatorMockDataset(num_samples=8, **mock_kwargs)
+        runner.validation_data_loaders = {"val": td.DataLoader(validation_dataset, 4, shuffle=False)}
+        runner.validation_data_loader = runner.validation_data_loaders["val"]
+        runner.init_unet()
+        runner.total_iterations = 7
+        runner.to_device("cpu")
+        runner.metrics.add_concurrent_values(0, {"loss": 1.0})
+        with torch.no_grad():
+            runner.validation_loop(epoch=1)
+        log_figure = runner.experiment_logger.experiment.log_figure
+        assert log_figure.call_count == 1
+        assert log_figure.call_args.kwargs["figure_name"] == "validation_visualization"
+        assert log_figure.call_args.kwargs["step"] == 7
+        assert not list(Path(tmp_dir).glob("*.png"))
+
+
+def test_crcm_emulator_figure_channel_names_exclude_mask():
+    runner = SimpleNamespace(
+        config=SimpleNamespace(data=SimpleNamespace(gcm_variables=["zg850", "psl"], crcm_variables=["tas"])),
+        dataset=SimpleNamespace(num_input_channels=3),
+    )
+    names = crcm_emulator_training.CRCMEmulatorTrainingFromConfig.figure_channel_names(runner)  # type: ignore[arg-type]
+    assert names["input_names"] == ["zg850", "psl"]
+    assert names["target_names"] == ["tas"]
+
+
+def test_crcm_emulator_consolidation_weights_losses_by_batch_size():
+
+    runner = SimpleNamespace(
+        running_validation_metrics={},
+        validation_metrics=MultiTimeseries(),
+        validation_diagnostics={},
+        metric_config_mapping={},
+    )
+    consolidator = crcm_emulator_training.CRCMEmulatorTrainingFromConfig
+    # 128 samples with zero error, then a partial batch of 1 sample with a squared error of 100
+    for batch_size, value in ((128, 0.0), (1, 100.0)):
+        metrics = {"mse_loss": torch.tensor(value), "some_other_metric": torch.tensor(value)}
+        consolidator.running_consolidation(runner, metrics, {}, batch_size)  # type: ignore[arg-type]
+    consolidator.consolidation(runner)  # type: ignore[arg-type]
+    assert runner.running_validation_metrics == {}
+    assert runner.validation_metrics["mse_loss"].values == [pytest.approx(100 / 129)]
+    # metrics that are not sample-averaged losses are a plain mean over batches
+    assert runner.validation_metrics["some_other_metric"].values == [pytest.approx(50.0)]
+
+
+def test_crcm_emulator_metrics_use_denormalized_data_but_losses_do_not():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas"]),
+            model=CRCMEmulatorModelConfig(
+                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+            ),
+            training=CRCMEmulatorTrainingConfig(device="cpu"),
+        )
+        runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+        dataset = CRCMEmulatorMockDataset(
+            num_samples=2, num_input_channels=2, num_output_channels=1, tile_size=128, coarsen_factor=4
+        )
+        runner.dataset = dataset
+        runner.init_unet()
+        seen: dict[str, torch.Tensor] = {}
+
+        class RecordMetric:
+            allow_per_batch_evaluation = True
+
+            def __call__(self, target: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+                seen["target"] = target
+                return target.amax(dim=(0, 2, 3))
+
+        class RecordMetricConfig(BaseMetricConfig):
+            name: Literal["record"] = "record"
+
+        runner.evaluation_step(
+            next(iter(td.DataLoader(dataset, 2))),
+            custom_metrics=[{"config": RecordMetricConfig(), "function": RecordMetric()}],
+        )
+        tas = crcm_variables["tas"]
+        assert tas.normalize_min is not None and tas.normalize_max is not None
+        assert seen["target"].min() >= tas.normalize_min
+        assert seen["target"].max() <= tas.normalize_max
+        assert set(runner.running_validation_metrics) >= {"tas/record", "mse_loss"}
+
+
+def test_crcm_emulator_custom_emission_names_set_linear_inputs():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(
+                tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas"], emission_names=["CO2", "CH4"]
+            ),
+            model=CRCMEmulatorModelConfig(
+                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+            ),
+        )
+        runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+        runner.dataset = CRCMEmulatorMockDataset(
+            num_samples=4,
+            num_input_channels=2,
+            num_output_channels=1,
+            tile_size=128,
+            coarsen_factor=4,
+            emission_names=config.data.emission_names,
+        )
+        runner.init_unet()
+        batch = next(iter(td.DataLoader(runner.dataset, 4)))
+        assert runner.dataset.num_linear_inputs == 4
+        assert runner.models["UNet"].linear_embedding.sequential_block[0].in_features == 4
+        assert {"CO2", "CH4"} <= batch.keys() and "N2O" not in batch
+        _, _, output = runner.forward_batch(batch)
+        assert output.shape[0] == 4
+
+
+def _celsius_config(
+    tmp_dir: str, mode: str = "celsius", variable: str = "tas", **loss_kwargs: Any
+) -> CRCMEmulatorConfig:
+    return CRCMEmulatorConfig(
+        experiment_name="test",
+        paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+        preprocessing=CRCMEmulatorPreprocessingConfig(
+            gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+            crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+        ),
+        data=CRCMEmulatorDataConfig(
+            tile_size=128,
+            coarsen_factor=4,
+            batch_size=4,
+            crcm_variables=[variable],
+            target_normalization={variable: cast(Any, mode)},
+        ),
+        loss=CRCMEmulatorLossConfig(**loss_kwargs),
+        model=CRCMEmulatorModelConfig(kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None),
+        training=CRCMEmulatorTrainingConfig(device="cpu"),
+    )
+
+
+def test_crcm_emulator_celsius_target_normalization_is_denormalized_to_kelvin():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=_celsius_config(tmp_dir))
+        dataset = CRCMEmulatorMockDataset(
+            num_samples=2, num_input_channels=2, num_output_channels=1, tile_size=128, coarsen_factor=4
+        )
+        runner.dataset = dataset
+        runner.init_unet()
+        seen: dict[str, torch.Tensor] = {}
+
+        class RecordMetric:
+            allow_per_batch_evaluation = True
+
+            def __call__(self, target: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+                seen["target"] = target
+                return target.amax(dim=(0, 2, 3))
+
+        class RecordMetricConfig(BaseMetricConfig):
+            name: Literal["record"] = "record"
+
+        batch = next(iter(td.DataLoader(dataset, 2)))
+        runner.evaluation_step(batch, custom_metrics=[{"config": RecordMetricConfig(), "function": RecordMetric()}])
+        assert seen["target"].numpy() == pytest.approx((batch["target"] + 273.15).numpy())
+
+
+@pytest.mark.parametrize(("variable", "mode"), [("tas", "celsius"), ("pr", "mm_per_day")])  # type: ignore[untyped-decorator]
+def test_crcm_emulator_unit_only_target_normalization_is_incompatible_with_ssim(variable: str, mode: str) -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        with pytest.raises(ValueError, match="ssim"):
+            crcm_emulator_training.CRCMEmulatorTrainingFromConfig(
+                config=_celsius_config(tmp_dir, mode, variable, default={"ssim": 1.0})
+            )
+
+
+def _baseline_runner(
+    tmp_dir: str, log_interpolation_baseline: bool, baselines_out_dirs: dict[str, Path]
+) -> crcm_emulator_training.CRCMEmulatorTrainingFromConfig:
+    config = CRCMEmulatorConfig(
+        experiment_name="test",
+        paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir), baselines_out_dirs=baselines_out_dirs),
+        preprocessing=CRCMEmulatorPreprocessingConfig(
+            gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+            crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+        ),
+        data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=4, crcm_variables=["tas", "pr"]),
+        model=CRCMEmulatorModelConfig(kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None),
+        training=CRCMEmulatorTrainingConfig(log_interpolation_baseline=log_interpolation_baseline),
+    )
+    runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+    # Set after init, so that the mock dataset is used
+    preprocessing = runner.config.preprocessing.model_copy(update={"simulations": [["GCM", "ssp245", "r1"]]})
+    runner.config = runner.config.model_copy(update={"preprocessing": preprocessing})
+    runner.experiment_logger.experiment = MagicMock()
+    return runner
+
+
+def test_evaluate_uses_active_metric_configuration(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = _baseline_runner(str(tmp_path), False, {})
+    target = torch.zeros(2, 2, 1, 2)
+    output = torch.ones_like(target)
+    output[:, 1] = -1.0
+    monkeypatch.setattr(runner, "forward_batch", MagicMock(return_value=(target, target, output)))
+    results = runner.evaluate(
+        [{}], evaluation_metrics=[DaysAboveThresholdConfig(variables=["tas", "pr"], threshold=290.0, days_per_year=4.0)]
+    )
+    assert results["tas/days_above_threshold_threshold_290_days_per_year_4"] == pytest.approx(4.0)
+    assert results["pr/days_above_threshold_threshold_290_days_per_year_4"] == pytest.approx(0.0)
+
+
+def test_crcm_emulator_interpolation_baseline_logged_as_constant_line(monkeypatch):
+    evaluate = MagicMock(return_value={"tas/rmse": 1.5})
+    monkeypatch.setattr(crcm_emulator_training.InterpolationBaseline, "evaluate", evaluate)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        Path(tmp_dir, "interpolation_baseline_GCM_ssp245_r1.zarr").mkdir()
+        runner = _baseline_runner(tmp_dir, True, {"interpolation": Path(tmp_dir)})
+        runner.score_interpolation_baseline()
+        runner.total_iterations = 7
+        runner.log_validation_metrics_to_experiment(epoch=1)
+        expected = {"tas/interpolation_baseline_validation_rmse": 1.5}
+        assert evaluate.call_args.kwargs["split"] == "validation"
+        baseline_steps = [
+            call.kwargs["step"]
+            for call in runner.experiment_logger.experiment.log_metrics.call_args_list
+            if call.args[0] == expected
+        ]
+        assert baseline_steps == [0, 7]
+
+
+@pytest.mark.parametrize(
+    ("log_interpolation_baseline", "baselines_out_dirs", "create_zarr"),
+    [(False, None, True), (True, {}, True), (True, None, False)],
+    ids=["disabled", "no_path", "missing_zarr"],
+)
+def test_crcm_emulator_interpolation_baseline_skipped(
+    monkeypatch, log_interpolation_baseline, baselines_out_dirs, create_zarr
+):
+    evaluate = MagicMock()
+    monkeypatch.setattr(crcm_emulator_training.InterpolationBaseline, "evaluate", evaluate)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        dirs = {"interpolation": Path(tmp_dir)} if baselines_out_dirs is None else baselines_out_dirs
+        if create_zarr:
+            Path(tmp_dir, "interpolation_baseline_GCM_ssp245_r1.zarr").mkdir()
+        runner = _baseline_runner(tmp_dir, log_interpolation_baseline, dirs)
+        runner.score_interpolation_baseline()
+        evaluate.assert_not_called()
+        assert runner.interpolation_baseline_metrics == {}
+
+
+def test_crcm_emulator_test_logs_best_checkpoint_metrics(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        runner = _baseline_runner(tmp_dir, False, {})
+        monkeypatch.setattr(runner, "build_test_data_loaders", lambda: {"hist": ["batch"]})
+        monkeypatch.setattr(runner, "load_state", MagicMock(side_effect=lambda *args, **kwargs: None))
+        monkeypatch.setattr(runner, "evaluate", lambda *args, **kwargs: {"tas/rmse": 0.5})
+        runner.total_iterations, runner.epoch_counter = 12, 3
+        assert runner.test() == {"tas/rmse_hist": 0.5}
+        runner.load_state.assert_called_once_with(Path(tmp_dir), tag="best")
+        call = runner.experiment_logger.experiment.log_metrics.call_args
+        assert call.args[0] == {"tas/test_rmse_hist": 0.5, "test_checkpoint_epoch": 3}
+        assert call.kwargs["step"] == 12
+
+
+def test_crcm_emulator_test_skipped_without_test_data():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        runner = _baseline_runner(tmp_dir, False, {})
+        assert runner.test() == {}
+        runner.experiment_logger.experiment.log_metrics.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("saved_metrics", "scored"),
+    [({"tas/rmse_hist": 1.0, "pr/rmse_hist": 2.0, "tas/ccc_hist": 0.5}, False), ({"tas/rmse_hist": 1.0}, True)],
+    ids=["complete", "incomplete"],
+)
+def test_crcm_emulator_interpolation_baseline_read_from_json(monkeypatch, saved_metrics, scored):
+    evaluate = MagicMock(return_value={"tas/rmse_hist": 3.0, "pr/rmse_hist": 4.0})
+    monkeypatch.setattr(crcm_emulator_training.InterpolationBaseline, "evaluate", evaluate)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        Path(tmp_dir, "interpolation_baseline_GCM_ssp245_r1.zarr").mkdir()
+        Path(tmp_dir, "interpolation_baseline_validation_results.json").write_text(
+            json.dumps({"metrics": saved_metrics})
+        )
+        runner = _baseline_runner(tmp_dir, True, {"interpolation": Path(tmp_dir)})
+        period = {"hist": [datetime(2000, 1, 1), datetime(2000, 1, 2)]}
+        runner.config = runner.config.model_copy(
+            update={
+                "data": runner.config.data.model_copy(update={"validation_periods": period}),
+                "training": runner.config.training.model_copy(update={"validation_metrics": [RMSEConfig()]}),
+            }
+        )
+        runner.score_interpolation_baseline()
+        expected = (
+            {"tas/rmse_hist": 3.0, "pr/rmse_hist": 4.0} if scored else {"tas/rmse_hist": 1.0, "pr/rmse_hist": 2.0}
+        )
+        assert evaluate.call_count == (1 if scored else 0)
+        assert runner.interpolation_baseline_metrics == {
+            f"{variable}/interpolation_baseline_validation_rmse_hist": value
+            for variable, value in zip(("tas", "pr"), expected.values(), strict=True)
+        }
+        saved = json.loads(Path(tmp_dir, "interpolation_baseline_validation_results.json").read_text())["metrics"]
+        assert saved == (expected if scored else saved_metrics)
+
+
+class _DatedMockDataset(CRCMEmulatorMockDataset):
+    def __getitem__(self, idx):
+        item = super().__getitem__(idx)
+        item.update(
+            simulation="CNRM-ESM2-1_historical_r1i1p1f2", year=np.array(2000), month=np.array(1), day=np.array(idx + 2)
+        )
+        return item
+
+
+def test_crcm_emulator_evaluate_saves_predictions():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config = CRCMEmulatorConfig(
+            experiment_name="test",
+            paths=CRCMEmulatorPathsConfig(output=Path(tmp_dir)),
+            preprocessing=CRCMEmulatorPreprocessingConfig(
+                gcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "gcm_preprocessing")),
+                crcm=CRCMEmulatorSourcePreprocessingConfig(path=Path(tmp_dir, "crcm_preprocessing")),
+            ),
+            data=CRCMEmulatorDataConfig(tile_size=128, coarsen_factor=4, batch_size=2, crcm_variables=["tas", "pr"]),
+            model=CRCMEmulatorModelConfig(
+                kernel_size=3, initial_num_of_hidden_channels=8, depth=2, reduction_ratio=None
+            ),
+            loss=CRCMEmulatorLossConfig(),
+            training=CRCMEmulatorTrainingConfig(nb_of_epochs=1, device="cpu"),
+        )
+        runner = crcm_emulator_training.CRCMEmulatorTrainingFromConfig(config=config)
+        dataset = _DatedMockDataset(
+            num_samples=3, num_input_channels=2, num_output_channels=2, tile_size=128, coarsen_factor=4
+        )
+        runner.dataset = dataset
+        runner.init_unet()
+        data_loader = td.DataLoader(dataset, 2, shuffle=False)
+        writer = PredictionZarrWriter(
+            output_directory=Path(tmp_dir),
+            prefix="test",
+            start_datetime=datetime(2000, 1, 1),
+            end_datetime=datetime(2000, 1, 5),
+            variable_names=["tas", "pr"],
+            institution="test",
+            method="UNet",
+            tile_size=128,
+            chunk_size=2,
+        )
+        runner.evaluate(data_loader, prediction_writer=writer)
+
+        # days 2, 3 and 4 of the month are saved, the others are left empty
+        saved = xarray.open_zarr(Path(tmp_dir, "test_CNRM-ESM2-1_historical_r1i1p1f2.zarr"))
+        assert saved["is_computed"].values.tolist() == [[0, 1, 1, 1, 0]] * 2
+        item = dataset[1]
+        runner.set_eval_mode()
+        with torch.no_grad():
+            _, _, output = runner.forward_batch(
+                {k: torch.as_tensor(v)[None] for k, v in item.items() if k != "simulation"}
+            )
+        expected = denormalize_crcm(output, ["tas", "pr"])[0].numpy()
+        np.testing.assert_allclose(saved["tas"].values[2], expected[0], rtol=1e-4)
+        np.testing.assert_allclose(saved["pr"].values[2], expected[1], rtol=1e-4)

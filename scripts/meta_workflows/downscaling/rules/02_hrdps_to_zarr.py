@@ -6,12 +6,12 @@ from pathlib import Path
 
 import numcodecs  # noqa: F401  # Imported to register logger for disabling
 
-from resoterre.experiments.rdps_to_hrdps_downscaling.rdps_to_hrdps_workflow import (
+from resoterre.logging_utils import start_root_logger
+from resoterre.pipelines.rdps_to_hrdps_downscaling.rdps_to_hrdps_workflow import (
     hrdps_to_zarr_from_config,
     rdps_to_hrdps_config_replace_for_inference,
     rdps_to_hrdps_parse_config,
 )
-from resoterre.logging_utils import start_root_logger
 
 
 logger = logging.getLogger(__name__)

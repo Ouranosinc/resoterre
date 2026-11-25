@@ -36,6 +36,9 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
+# Slurm logs
+/logs/
+
 # Unit test / coverage reports
 htmlcov/
 .tox/
@@ -210,10 +213,17 @@ __marimo__/
 
 # Project Files
 model/
+
+# System files
+.DS_Store
+.vscode/
+
+# Data files
+*.tar.gz
+
 geophysical/
 inputs/
 matrix/
-data/
 dataset/
 output/
 outputs/

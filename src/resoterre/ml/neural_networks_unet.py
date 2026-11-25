@@ -1,108 +1,13 @@
 """UNet architecture implementation with configurable parameters."""
 
-from dataclasses import dataclass, field
-
 import torch
 from torch import nn
 
-from resoterre.ml.neural_networks_basic import Conv2d, SEBlock
+from resoterre.ml.neural_networks_basic import Conv2d, LinearEmbedding, SEBlock
 
 
 default_relu_init = "kaiming_uniform_"
 default_relu_kwargs = {"nonlinearity": "relu"}
-
-
-@dataclass(frozen=True, slots=True)
-class UNetConfig:
-    """
-    Configuration for the UNet architecture.
-
-    Attributes
-    ----------
-    in_channels : int
-        Number of input channels.
-    out_channels : int
-        Number of output channels.
-    depth : int
-        Depth of the UNet, i.e., number of downsampling operations.
-    initial_nb_of_hidden_channels : int
-        Number of initial hidden channels.
-    kernel_size : int
-        Size of the convolution kernel. Must be an odd number.
-    resolution_increase_layers : int
-        Number of additional resolution increase layers at the end of the UNet.
-    go_to_1x1 : bool
-        If True, the UNet will go to a 1x1 layer at the bottom.
-    h_in : int, optional
-        Height of the input tensor. Required if `go_to_1x1` is True.
-    w_in : int, optional
-        Width of the input tensor. Required if `go_to_1x1` is True.
-    linear_size : int, optional
-        Size of the linear input tensor. Required if `go_to_1x1` is True.
-    num_last_layer_input_channels : int
-        Number of channels in the last layer input (for fixed additional 2d information).
-    reduction_ratio : int, optional
-        Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
-    """
-
-    in_channels: int
-    out_channels: int
-    depth: int = field(metadata={"is_hyperparameter": True, "immutable": True})
-    initial_nb_of_hidden_channels: int = field(
-        metadata={"is_hyperparameter": True, "immutable": True, "display_name": "init chan"}
-    )
-    kernel_size: int = 3
-    resolution_increase_layers: int = 0
-    go_to_1x1: bool = False
-    h_in: int | None = None
-    w_in: int | None = None
-    linear_size: int | None = None
-    num_last_layer_input_channels: int = 0
-    reduction_ratio: int | None = field(
-        default=None, metadata={"is_hyperparameter": True, "immutable": True, "display_name": "reduction ratio"}
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class DenseUNetConfig:
-    """
-    Configuration for the UNet architecture.
-
-    Attributes
-    ----------
-    in_channels : int
-        Number of input channels.
-    out_channels : int
-        Number of output channels.
-    depth : int
-        Depth of the UNet, i.e., number of downsampling operations.
-    out_additional_channels : int
-        Additional output channels for each dense convolution layer.
-    num_layers : int
-        Number of dense convolution layers in the block.
-    kernel_size : int
-        Size of the convolution kernel. Must be an odd number.
-    resolution_increase_layers : int
-        Number of additional resolution increase layers at the end of the UNet.
-    num_last_layer_input_channels : int
-        Number of channels in the last layer input (for fixed additional 2d information).
-    reduction_ratio : int, optional
-        Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
-    """
-
-    in_channels: int
-    out_channels: int
-    depth: int = field(metadata={"is_hyperparameter": True, "immutable": True})
-    out_additional_channels: int = field(
-        metadata={"is_hyperparameter": True, "immutable": True, "display_name": "add chan"}
-    )
-    num_layers: int = field(metadata={"is_hyperparameter": True, "immutable": True, "display_name": "num layers"})
-    kernel_size: int = 3
-    resolution_increase_layers: int = 0
-    num_last_layer_input_channels: int = 0
-    reduction_ratio: int | None = field(
-        default=None, metadata={"is_hyperparameter": True, "immutable": True, "display_name": "reduction ratio"}
-    )
 
 
 class DenseConvolution(nn.Module):  # type: ignore[misc]
@@ -620,6 +525,9 @@ class UNetBase(nn.Module):  # type: ignore[misc]
             if (self.to_1x1_operation is None) or (self.out_of_1x1_operation is None):
                 raise ValueError("x_linear can only be provided if go_to_1x1 is True.")
             x = self.to_1x1_operation(downward_layers[-1])
+            linear_embedding = getattr(self, "linear_embedding", None)
+            if linear_embedding is not None:
+                x_linear = linear_embedding(x_linear)
             x_linear = x_linear.unsqueeze(-1).unsqueeze(-1)
             x = torch.cat([x, x_linear], dim=1)
             x = self.out_of_1x1_operation(x)
@@ -667,6 +575,9 @@ class UNet(UNetBase, nn.Module):  # type: ignore[misc]
         Number of channels in the last layer input (for fixed additional 2d information).
     reduction_ratio : int, optional
         Reduction ratio for the Squeeze and Excitation block. If None, no SE block is added.
+    linear_embedding_sizes : list[int], optional
+        Output sizes of a small dense network applied to the linear input before it is concatenated at the 1x1
+        bottleneck, trained jointly with the UNet. If None, the linear input is concatenated as is.
 
     References
     ----------
@@ -688,6 +599,7 @@ class UNet(UNetBase, nn.Module):  # type: ignore[misc]
         linear_size: int | None = None,
         num_last_layer_input_channels: int = 0,
         reduction_ratio: int | None = None,
+        linear_embedding_sizes: list[int] | None = None,
     ) -> None:
         super().__init__()
         if go_to_1x1:
@@ -698,6 +610,12 @@ class UNet(UNetBase, nn.Module):  # type: ignore[misc]
                     raise ValueError("h_in and h_out must be divisible by 2 up to the depth of the UNET.")
                 h_in //= 2
                 w_in //= 2
+            if linear_embedding_sizes:
+                embedding = LinearEmbedding(linear_size, linear_embedding_sizes)
+                self.linear_embedding = embedding
+                linear_size = embedding.out_features
+        elif linear_embedding_sizes:
+            raise ValueError("linear_embedding_sizes can only be provided if go_to_1x1 is True.")
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size

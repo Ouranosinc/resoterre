@@ -19,6 +19,10 @@ Machine learning tools and extensions for climate science.
 * Free software: Apache Software License 2.0
 * Documentation: https://resoterre.readthedocs.io.
 
+Setup
+--------
+To add a new package, add package name to both `environment-dev.yml` and `pyproject.toml`.
+
 Features
 --------
 
