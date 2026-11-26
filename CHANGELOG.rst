@@ -10,6 +10,7 @@ Contributors: Contributors: Francis Charette-Migneault (:user:`fmigneault`), Bla
 
 Changes
 ^^^^^^^
+* Add CUDA 12.8 support in uv environment. (:pull:`#214`)
 * Update preprocessing path naming conventions from being keyed by experiment-name to model-scenario. (:pull:`#213`)
 * Change Python requirement to ``>=3.12.0``. (:pull:`#212`)
 * Change default Comet ML image format to PNG. (:pull:`#212`)
