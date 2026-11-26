@@ -15,7 +15,7 @@ cd path/to/resoterre/
 ## Setup
 
 ```bash
-uv sync --all-extras --all-groups
+uv sync --extra cu130 --extra workflow --all-groups
 ```
 
 Use `uv run --frozen <command>` to avoid rewriting `uv.lock` with a different `uv` version.
