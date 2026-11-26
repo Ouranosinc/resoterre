@@ -183,9 +183,11 @@ def evaluate_precomputed_predictions(
                 output_tensor = batch["output"].to(device).float()
                 batch_metrics = {}
                 for config, metric_function in metrics.items():
-                    batch_metrics.update(
-                        per_variable_metrics(config, metric_function(target_tensor, output_tensor), variable_names)
-                    )
+                    batch_metric_values = metric_function(target_tensor, output_tensor)
+                    if metric_function.allow_per_batch_evaluation:
+                        batch_metrics.update(per_variable_metrics(config, batch_metric_values, variable_names))
+                    else:
+                        batch_metrics[config.unique_string()] = batch_metric_values
                 running_consolidation(running_metrics, batch_metrics, configs, batch_size=target_tensor.shape[0])
     finally:
         evaluation_dataset.close()
