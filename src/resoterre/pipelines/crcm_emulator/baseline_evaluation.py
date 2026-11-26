@@ -122,6 +122,7 @@ def evaluate_precomputed_predictions(
     prediction_paths: dict[str, Path],
     variable_names: list[str],
     metric_configs: list[BaseMetricConfig],
+    metric_config_mapping: dict[str, BaseMetricConfig],
     batch_size: int,
     num_workers: int = 0,
     prefetch_factor: int = 2,
@@ -145,6 +146,8 @@ def evaluate_precomputed_predictions(
         Variables to score, in the order of the target channels.
     metric_configs : list[BaseMetricConfig]
         Metric configurations, as for ``inference.evaluation_metrics``.
+    metric_config_mapping : dict[str, BaseMetricConfig]
+        Mapping from metric unique strings to their corresponding metric configurations.
     batch_size : int
         Number of samples per batch.
     num_workers : int
@@ -173,9 +176,6 @@ def evaluate_precomputed_predictions(
         pin_memory=device.startswith("cuda"),
     )
     running_metrics: dict[str, tuple[torch.Tensor, float]] = {}
-    configs = {}
-    for metric_config in metric_configs:
-        configs.update({metric_config.unique_string(variable_name): metric_config for variable_name in variable_names})
     try:
         with torch.no_grad():
             for batch in tqdm(data_loader, desc=desc):
@@ -188,7 +188,9 @@ def evaluate_precomputed_predictions(
                         batch_metrics.update(per_variable_metrics(config, batch_metric_values, variable_names))
                     else:
                         batch_metrics[config.unique_string()] = batch_metric_values
-                running_consolidation(running_metrics, batch_metrics, configs, batch_size=target_tensor.shape[0])
+                running_consolidation(
+                    running_metrics, batch_metrics, metric_config_mapping, batch_size=target_tensor.shape[0]
+                )
     finally:
         evaluation_dataset.close()
-    return consolidation(running_metrics, configs)
+    return consolidation(running_metrics, metric_config_mapping)
