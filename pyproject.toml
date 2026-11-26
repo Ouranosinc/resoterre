@@ -50,7 +50,7 @@ dependencies = [
   "scikit-learn >=1.6.1",
   "scipy >=1.15.2",
   "shapely >=2.0.7",
-  "torch >=2.7.1",
+  "torch >=2.8.0",
   "torchmetrics >=1.8.2",
   "tqdm >=4.66",
   "xarray >=2025.01.2",
@@ -67,6 +67,12 @@ stac-mlm = [
   "httpx>=0.28.1",
   "pystac>=1.15.2",
   "stac-model>=0.7.0"
+]
+cu128 = [
+  "torch>=2.8.0"
+]
+cu130 = [
+  "torch>=2.14.0"
 ]
 
 [project.scripts]
@@ -402,6 +408,17 @@ convention = "numpy"
 
 [tool.tomlsort]
 sort_first = ["build-system", "project"]
+
+[tool.uv]
+conflicts = [[{ extra = "cu128" }, { extra = "cu130" }]]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128", extra = "cu128" }]
 
 [tool.vulture]
 exclude = []
