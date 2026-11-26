@@ -411,6 +411,7 @@ sort_first = ["build-system", "project"]
 
 [tool.uv]
 conflicts = [[{ extra = "cu128" }, { extra = "cu130" }]]
+constraint-dependencies = ["setuptools>=84.1.0"]
 
 [[tool.uv.index]]
 name = "pytorch-cu128"
