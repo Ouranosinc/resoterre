@@ -11,11 +11,19 @@ import xarray
 from resoterre.config import (
     CRCMEmulatorConfig,
     CRCMEmulatorDataConfig,
+    CRCMEmulatorInferenceConfig,
     CRCMEmulatorPathsConfig,
     CRCMEmulatorPreprocessingConfig,
     CRCMEmulatorSourcePreprocessingConfig,
 )
-from resoterre.config.metrics import BiasMapConfig, CCCConfig, MeanBiasConfig, RMSEConfig
+from resoterre.config.metrics import (
+    BiasMapConfig,
+    CCCConfig,
+    MeanBiasConfig,
+    RMSEConfig,
+    TemporalQuantileBiasConfig,
+    TemporalQuantileBiasMapConfig,
+)
 from resoterre.config.metrics_climate import DaysAboveThresholdConfig, DaysAboveThresholdMapConfig
 from resoterre.pipelines.crcm_emulator import crcm_emulator_baselines
 from resoterre.pipelines.crcm_emulator.baseline_evaluation import date_tuples
@@ -72,6 +80,15 @@ def _baseline(
             validation_periods={},
             test_periods={"test": [datetime(2000, 1, 2), datetime(2000, 1, 4)]},
         ),
+        inference=CRCMEmulatorInferenceConfig(
+            evaluation_metrics=[
+                DaysAboveThresholdConfig(threshold=31.0, days_per_year=6.0),
+                DaysAboveThresholdMapConfig(threshold=31.0, days_per_year=6.0),
+                MeanBiasConfig(),
+                TemporalQuantileBiasConfig(quantile=0.75),
+                TemporalQuantileBiasMapConfig(quantile=0.75),
+            ]
+        ),
     )
     baseline = InterpolationBaseline(config)
     crcm_emulator_output_format(
@@ -118,6 +135,22 @@ def test_evaluate_threshold_metrics_use_config(tmp_path: Path, monkeypatch: pyte
         torch.full((TILE_SIZE, TILE_SIZE), -2.0),
     )
     assert results["tas/days_above_threshold_threshold_31_days_per_year_6_test"] == pytest.approx(2.0)
+
+
+def test_evaluate_quantile_metrics_use_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    baseline = _baseline(tmp_path, monkeypatch, computed_days=[1, 2, 3, 4, 5])
+    results = baseline.evaluate(
+        [
+            TemporalQuantileBiasMapConfig(quantile=0.75),
+            TemporalQuantileBiasConfig(quantile=0.75),
+        ],
+        split="test",
+    )
+    torch.testing.assert_close(
+        results["tas/temporal_quantile_bias_map_quantile_0p75_test"],
+        torch.full((TILE_SIZE, TILE_SIZE), -2.5),
+    )
+    assert results["tas/temporal_quantile_bias_quantile_0p75_test"] == pytest.approx(-2.5)
 
 
 def test_save_and_load_results_drops_non_single_valued(tmp_path, monkeypatch):

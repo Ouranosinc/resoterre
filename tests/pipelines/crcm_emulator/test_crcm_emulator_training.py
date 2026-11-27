@@ -569,6 +569,7 @@ def test_crcm_emulator_figure_channel_names_exclude_mask():
 def test_crcm_emulator_consolidation_weights_losses_by_batch_size():
 
     runner = SimpleNamespace(
+        config=SimpleNamespace(data=SimpleNamespace(crcm_variables=["tas"])),
         running_validation_metrics={},
         validation_metrics=MultiTimeseries(),
         validation_diagnostics={},

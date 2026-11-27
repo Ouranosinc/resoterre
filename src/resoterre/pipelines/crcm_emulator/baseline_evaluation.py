@@ -193,4 +193,4 @@ def evaluate_precomputed_predictions(
                 )
     finally:
         evaluation_dataset.close()
-    return consolidation(running_metrics, metric_config_mapping)
+    return consolidation(running_metrics, metric_config_mapping, list_of_variables=variable_names)
