@@ -14,7 +14,10 @@ from resoterre.data_management.cftime_utils import decode_times_as_cftime
 from resoterre.datasets.cmip6.cmip6_utils import gcm_calendars
 from resoterre.hybrid_data_loaders.crcm_emulator_data_loader import CRCMEmulatorDataset
 from resoterre.pipelines.crcm_emulator.baseline_evaluation import date_tuples, evaluate_precomputed_predictions
-from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import crcm_emulator_parse_config
+from resoterre.pipelines.crcm_emulator.crcm_emulator_workflow import (
+    crcm_emulator_metrics_mapping,
+    crcm_emulator_parse_config,
+)
 from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import (
     crcm_emulator_output_format,
     write_crcm_time_slice_of_data,
@@ -203,6 +206,7 @@ class InterpolationBaseline:
                 {"_".join(x): self.baseline_zarr_path(x) for x in self.config.preprocessing.simulations},
                 variable_names,
                 metric_configs,
+                crcm_emulator_metrics_mapping(self.config),
                 batch_size=self.config.data.batch_size,
                 num_workers=self.config.data.num_workers,
                 prefetch_factor=self.config.data.prefetch_factor,

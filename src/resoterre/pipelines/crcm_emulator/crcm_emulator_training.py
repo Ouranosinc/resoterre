@@ -31,7 +31,6 @@ from resoterre.pipelines.crcm_emulator.crcm_emulator_zarr import PredictionZarrW
 from resoterre.pipelines.crcm_emulator.experiment_logger import config_to_experiment_parameters
 from resoterre.pipelines.crcm_emulator.losses import AVAILABLE_LOSSES, Loss
 from resoterre.pipelines.crcm_emulator.metrics import (
-    AVAILABLE_METRICS,
     build_metrics,
     consolidation,
     denormalize_crcm,
@@ -586,30 +585,11 @@ class CRCMEmulatorTrainingFromConfig(NNTraining):
         """
         if not self.running_validation_metrics:
             return
-        consolidated = consolidation(self.running_validation_metrics, self.metric_config_mapping)
-        metric_keys_to_remove = []
-        metrics_to_add = {}
-        for metric_key, value in consolidated.items():
-            if metric_key not in self.metric_config_mapping:
-                continue
-            metric_config = self.metric_config_mapping[metric_key]
-            if metric_config.name not in AVAILABLE_METRICS:
-                continue
-            metric_fn = build_metrics([metric_config])[metric_config.to_key()]
-            if not metric_fn.allow_per_batch_evaluation:
-                # values still contain all variables.
-                per_variable_metrics_dict = per_variable_metrics(metric_config, value, self.config.data.crcm_variables)
-                # ToDo: this is a repetition of the logic in consolidation, consider refactoring to avoid duplication.
-                for var_key, var_value in per_variable_metrics_dict.items():
-                    if isinstance(var_value, torch.Tensor):
-                        per_variable_metrics_dict[var_key] = var_value.cpu()
-                    if math.prod(per_variable_metrics_dict[var_key].shape) == 1:
-                        per_variable_metrics_dict[var_key] = per_variable_metrics_dict[var_key].item()
-                metrics_to_add.update(per_variable_metrics_dict)
-                metric_keys_to_remove.append(metric_key)
-        consolidated.update(metrics_to_add)
-        for metric_key in metric_keys_to_remove:
-            consolidated.pop(metric_key)
+        consolidated = consolidation(
+            self.running_validation_metrics,
+            self.metric_config_mapping,
+            list_of_variables=self.config.data.crcm_variables,
+        )
         self.running_validation_metrics = {}
         suffix = f"_{key}" if key else ""
         single_values_metrics = {

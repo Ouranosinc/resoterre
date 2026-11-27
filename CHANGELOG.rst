@@ -41,6 +41,7 @@ Changes
 
 Fixes
 ^^^^^
+* Fix use of metrics mapping for metrics that cannot be computed per batch. (:pull:`215`).
 * Fix Ruff PEP 695 checks by updating configuration generics and the recursive data loader type alias to Python 3.12 syntax. (:pull:`#212`)
 * Fix transition from historical to ssp periods in GCM and CRCM preprocessing. (:issue:`153`, :pull:`134`).
 * Fix ``vcs:tag`` reference in the notebook and corresponding STAC Item produced from it to refer to the actual Git tags for the repository.

@@ -127,8 +127,8 @@ def metrics_to_floats(metrics: dict[str, torch.Tensor]) -> dict[str, float]:
 
 
 def per_variable_metrics(
-    config: BaseMetricConfig, values: torch.Tensor, variable_names: list[str]
-) -> dict[str, torch.Tensor]:
+    config: BaseMetricConfig, values: torch.Tensor | np.ndarray | float, variable_names: list[str]
+) -> dict[str, torch.Tensor | np.ndarray]:
     """
     Split a metric computed for each variable into one scalar metric per variable.
 
@@ -136,17 +136,19 @@ def per_variable_metrics(
     ----------
     config : BaseMetricConfig
         Metric configuration containing the name of the metric.
-    values : torch.Tensor
+    values : torch.Tensor | np.ndarray | float
         Metric values with variables on the first axis. Any remaining dimensions are preserved per variable.
     variable_names : list[str]
         Names of the variables, in channel order.
 
     Returns
     -------
-    dict[str, torch.Tensor]
+    dict[str, torch.Tensor | np.ndarray]
         Per-variable metrics, named ``<variable>/<metric>`` (e.g. ``tas/rmse``), so that Comet groups metrics by
         variable.
     """
+    if isinstance(values, (float, int)):
+        values = np.array([values])
     return {
         f"{config.unique_string(variable_name)}": value
         for variable_name, value in zip(variable_names, values, strict=True)
@@ -540,7 +542,7 @@ class TDigestMapReducer:
             target_quantile_values[index] = state[0][0][index].quantile(self.quantile)
             output_quantile_values[index] = state[0][1][index].quantile(self.quantile)
         quantile_bias = output_quantile_values - target_quantile_values
-        return torch.from_numpy(quantile_bias)
+        return torch.from_numpy(quantile_bias.astype(np.float32))
 
 
 class TDigestReducer(TDigestMapReducer):
@@ -1173,6 +1175,7 @@ def running_consolidation(
 def consolidation(
     running_metrics: dict[str, ReducerState],
     configs: dict[str, BaseMetricConfig],
+    list_of_variables: list[str] | None = None,
 ) -> dict[str, float | torch.Tensor | np.ndarray]:
     """
     Consolidate the running statistics into one value per metric, whatever its reduction.
@@ -1183,6 +1186,8 @@ def consolidation(
         Running statistics keyed by metric as string, with values (running value, total weight).
     configs : dict[str, BaseMetricConfig]
         Metric configuration objects keyed by metric as string.
+    list_of_variables : list[str], optional
+        List of variable names to consider for per-variable metrics that are computed post-consolidation.
 
     Returns
     -------
@@ -1197,5 +1202,30 @@ def consolidation(
             value = value.cpu()
         # Convert the value to a Python scalar if it is a single-element.
         results[key] = value.item() if math.prod(value.shape) == 1 else value
+
+    # Update keys that are not yet per variable
+    if list_of_variables is None:
+        return results
+    metric_keys_to_remove = []
+    metrics_to_add = {}
+    for metric_key, value in results.items():
+        if metric_key not in configs:
+            continue
+        metric_config = configs[metric_key]
+        if metric_config.name not in AVAILABLE_METRICS:
+            continue
+        metric_fn = build_metrics([metric_config])[metric_config.to_key()]
+        if not metric_fn.allow_per_batch_evaluation:
+            per_variable_metrics_dict = per_variable_metrics(metric_config, value, list_of_variables)
+            for var_key, var_value in per_variable_metrics_dict.items():
+                if isinstance(var_value, torch.Tensor):
+                    per_variable_metrics_dict[var_key] = var_value.cpu()
+                if math.prod(per_variable_metrics_dict[var_key].shape) == 1:
+                    per_variable_metrics_dict[var_key] = per_variable_metrics_dict[var_key].item()
+            metrics_to_add.update(per_variable_metrics_dict)
+            metric_keys_to_remove.append(metric_key)
+    results.update(metrics_to_add)
+    for metric_key in metric_keys_to_remove:
+        results.pop(metric_key)
 
     return results
